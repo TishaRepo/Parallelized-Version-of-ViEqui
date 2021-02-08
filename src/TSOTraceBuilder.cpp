@@ -45,18 +45,24 @@ TSOTraceBuilder::~TSOTraceBuilder(){
 }
 
 bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun){
+  outs() << "snj: entering schedule\n";
   assert(!has_vclocks && "Can't add more events after analysing the trace");
 
   *dryrun = false;
   *alt = 0;
   this->dryrun = false;
   if(replay){
+    outs() << "snj: in replay\n";
     /* Are we done with the current Event? */
     if(0 <= prefix_idx && threads[curev().iid.get_pid()].last_event_index() <
        curev().iid.get_index() + curbranch().size - 1){
       /* Continue executing the current Event */
       IPid pid = curev().iid.get_pid();
+      // snj: evry thread has 1 aux thread (TSO has a single store buffer)
+      //      even no pid for actual threads and odd for aux threads
+      //      eg pid=0 actual thread pid=1 its aux thread
       *proc = pid/2;
+      // snj: boolean aux or not (-1 for actual thread, 0 for aux thread)
       *aux = pid % 2 - 1;
       *alt = 0;
       assert(threads[pid].available);
@@ -138,6 +144,7 @@ bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun){
      == prefix[prefix.len()-2].iid.get_pid() &&
      !prefix[prefix.len()-1].may_conflict &&
      prefix[prefix.len()-1].sleep.empty()){
+    outs() << "snj: if 1\n";  
     assert(prefix.children_after(prefix.len()-1) == 0);
     assert(prefix[prefix.len()-1].wakeup.empty());
     assert(curev().sym.empty()); /* Would need to be copied */
@@ -153,6 +160,7 @@ bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun){
   } else {
     /* Copy symbolic events to wakeup tree */
     if (prefix.len() > 0) {
+      outs() << "snj: if 2\n";
       if (!curbranch().sym.empty()) {
 #ifndef NDEBUG
         sym_ty expected = curev().sym;
@@ -161,6 +169,7 @@ bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun){
         assert(curbranch().sym == expected);
 #endif
       } else {
+        outs() << "snj: else of if 1,2\n";
         Branch b = curbranch();
         b.sym = curev().sym;
         if (conf.dpor_algorithm == Configuration::OBSERVERS)
@@ -172,6 +181,7 @@ bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun){
   }
 
   /* Create a new Event */
+  outs() << "snj: new event\n";
   sym_idx = 0;
 
   /* Find an available thread (auxiliary or real).
@@ -197,6 +207,7 @@ bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun){
   for(p = 0; p < sz; p += 2){ // Loop through real threads
     if(threads[p].available && !threads[p].sleeping &&
        (conf.max_search_depth < 0 || threads[p].last_event_index() < conf.max_search_depth)){
+      outs() << "snj: real thread loop: thread[" << p << "].event_indices.push_back(" << prefix_idx << ")\n";
       threads[p].event_indices.push_back(++prefix_idx);
       assert(prefix_idx == int(prefix.len()));
       prefix.push(Branch(IPid(p)),
@@ -207,6 +218,8 @@ bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun){
     }
   }
 
+  // snj: return false so that we don't enter this function again from
+  //      the while loop in void Interpreter::run() in Execution.cpp
   return false; // No available threads
 }
 
@@ -295,8 +308,19 @@ Trace *TSOTraceBuilder::get_trace() const{
 }
 
 bool TSOTraceBuilder::reset(){
+   /* snj:
+    If an enabled event exists, then this function returns from line 216 with true
+    the 'true' ensures we enter this function again from the while loop in 
+    void Interpreter::run() in Execution.cpp
+
+    If all events are done then we move forward with the following 2 function
+    calls computing hb and races.
+  */
+
+  // snj: computes hb relations in the events of this sequence
   compute_vclocks();
 
+  // snj: compute race based on the previously computed hb
   do_race_detect();
 
   if(conf.debug_print_on_reset){
@@ -1651,6 +1675,7 @@ static It frontier_filter(It first, It last, LessFn less){
 }
 
 void TSOTraceBuilder::compute_vclocks(){
+  outs() << "snj: in compute vclocks\n";
   /* Be idempotent */
   if (has_vclocks) return;
 

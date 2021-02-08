@@ -190,6 +190,22 @@ Trace *DPORDriver::run_once(TraceBuilder &TB, llvm::Module *mod,
   std::unique_ptr<DPORInterpreter> EE(create_execution_engine(TB,mod,conf));
 
   // Run main.
+  /* snj: 
+  
+    llvm::ExecutionEngine::runFunctionAsMain(*function, (argc,argv), env_var)
+    further calls,
+    llvm::interpreter::runFunction(*function, (argc,argv), env_var)
+
+    to do the following:
+    Call the main function as if its signature were:
+      int main (int argc, char **argv, const char **envp)
+    using the contents of conf.arv to determine argc & argv, 
+    here, 0 for envp
+
+    llvm::interpreter::runFunction(*function, (argc,argv), env_var)
+    further calls,
+    llvm::interpreter::run() @ Execution.cpp:line no. 3459
+  */
   EE->runFunctionAsMain(mod->getFunction("main"), conf.argv, 0);
 
   // Run static destructors.
@@ -201,6 +217,10 @@ Trace *DPORDriver::run_once(TraceBuilder &TB, llvm::Module *mod,
 
   assume_blocked = EE->assumeBlocked();
 
+  /* snj:
+    remove module from ExecutionEngine's module list
+    free heap, free stack
+  */
   EE.reset();
 
   Trace *t = 0;
@@ -453,13 +473,30 @@ DPORDriver::Result DPORDriver::run(){
     }
 
     bool assume_blocked = false;
+    /* snj:
+      Execute 1 maximal sequence 
+        if a branching point exists branch from there else start fresh
+        recognize new events where no prefix is given
+        execute one event at a time till enabled events exist
+      When no enabled event left:
+        1. form hb relations in the events of the sequence
+        2. look for race based on the computed hb
+    */
     Trace *t = run_once(*TB, mod.get(), assume_blocked);
 
     if (handle_trace(TB, t, &computation_count, res, assume_blocked)) break;
     if(conf.print_progress_estimate && (computation_count+1) % 100 == 0){
       estimate = std::round(TB->estimate_trace_count());
     }
-  }while(TB->reset());
+  }while(TB->reset()); /* snj:
+    find a branching point in prefix of last explored sequence (if any)
+    (say prefix[i])
+    remove events after prefix[i] ie keep prefix[0] to prefix[i]
+    mark i as replay point
+    restrore couple of flags to default for next run
+
+    return true if a branch point if found false otherwise
+  */
 
   if(conf.print_progress){
     llvm::dbgs() << ESC_char << "[K\n";
