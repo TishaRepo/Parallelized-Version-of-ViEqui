@@ -3347,7 +3347,7 @@ void Interpreter::run() {
       continue;
     }
 
-    outs() << "snj: executing event\n";
+    // std::cout << "snj: executing event\n";
     // Interpret a single instruction & increment the "PC".
     ExecutionContext &SF = ECStack()->back();  // Current stack frame
     Instruction &I = *SF.CurInst++;            // Increment before execute
@@ -3419,7 +3419,7 @@ void Interpreter::run() {
     }
   }
 
-  outs() << "snj: leaving while\n";
+  // std::cout << "snj: leaving while\n";
   CurrentThread = 0;
   clearAllStacks();
 }
