@@ -35,9 +35,11 @@
  * options can be manually set or decided by the program switches
  * given by the user.
  */
-class Configuration{
+class Configuration
+{
 public:
-  enum MemoryModel{
+  enum MemoryModel
+  {
     MM_UNDEF, // No memory model was specified
     SC,
     ARM,
@@ -45,14 +47,17 @@ public:
     PSO,
     TSO
   };
-  enum DPORAlgorithm{
+  enum DPORAlgorithm
+  {
     SOURCE,
     OPTIMAL,
     OBSERVERS,
     READS_FROM,
+    VIEW_EQ
   };
   /* Assign default values to all configuration parameters. */
-  Configuration(){
+  Configuration()
+  {
     n_threads = 1;
     explore_all_traces = false;
     malloc_may_fail = false;
@@ -62,31 +67,29 @@ public:
     c11 = false;
     dpor_algorithm = SOURCE;
     extfun_no_fence = {
-      "pthread_self",
-      "malloc",
-      "__VERIFIER_nondet_int",
-      "__VERIFIER_nondet_uint",
-      "__VERIFIER_assume",
-      "printf",
-      "puts"
-    };
+        "pthread_self",
+        "malloc",
+        "__VERIFIER_nondet_int",
+        "__VERIFIER_nondet_uint",
+        "__VERIFIER_assume",
+        "printf",
+        "puts"};
     extfun_no_full_memory_conflict = {
-      "pthread_create",
-      "pthread_join",
-      "pthread_self",
-      "pthread_exit",
-      "pthread_mutex_init",
-      "pthread_mutex_lock",
-      "pthread_mutex_trylock",
-      "pthread_mutex_unlock",
-      "pthread_mutex_destroy",
-      "malloc",
-      "__VERIFIER_nondet_int",
-      "__VERIFIER_nondet_uint",
-      "__VERIFIER_assume",
-      "__assert_fail",
-      "atexit"
-    };
+        "pthread_create",
+        "pthread_join",
+        "pthread_self",
+        "pthread_exit",
+        "pthread_mutex_init",
+        "pthread_mutex_lock",
+        "pthread_mutex_trylock",
+        "pthread_mutex_unlock",
+        "pthread_mutex_destroy",
+        "malloc",
+        "__VERIFIER_nondet_int",
+        "__VERIFIER_nondet_uint",
+        "__VERIFIER_assume",
+        "__assert_fail",
+        "atexit"};
     check_robustness = false;
     ee_store_trace = false;
     debug_collect_all_traces = false;
@@ -203,14 +206,16 @@ public:
   int n_threads;
 
   /* Scheduler to use when exploring in parallel with --n-threads */
-  enum ExplorationScheduler {
+  enum ExplorationScheduler
+  {
     PRIOQUEUE,
     WORKSTEALING,
   } exploration_scheduler;
 
   /* Sat solver to use. */
-  enum SatSolverEnum {
-        SMTLIB,
+  enum SatSolverEnum
+  {
+    SMTLIB,
   } sat_solver;
   std::unique_ptr<SatSolver> get_sat_solver() const;
   /* The arguments that will be passed to the program under test */
@@ -218,7 +223,8 @@ public:
   /* The default program name to send to the program under test as
    * argv[0].
    */
-  static const std::string &get_default_program_name(){
+  static const std::string &get_default_program_name()
+  {
     static const std::string pname = "a.out";
     return pname;
   }
