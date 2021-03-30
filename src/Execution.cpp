@@ -3996,6 +3996,7 @@ bool Interpreter::isPthreadMutexLock(Instruction &I, GenericValue **ptr)
   return true;
 }
 
+// [rmnt] : Checks if I is a thread join instruction, and if the joining thread has not completed, returns true
 bool Interpreter::checkRefuse(Instruction &I)
 {
   {
@@ -4174,7 +4175,10 @@ void Interpreter::run()
       continue;
     }
 
-    /* Execute */
+    /* 
+      Execute
+      [rmnt] : Acts as a wrapper function for executing different functions based on the type of instruction. Different functions defined in this file (e.g. VisitLoadInst). Detailed documentation at llvm/IR/InstVisitor.h : Line 35 
+    */
     visit(I);
 
     /* Atomic function? */

@@ -204,7 +204,7 @@ Trace *DPORDriver::run_once(TraceBuilder &TB, llvm::Module *mod,
 
     llvm::interpreter::runFunction(*function, (argc,argv), env_var)
     further calls,
-    llvm::interpreter::run() @ Execution.cpp:line no. 3339
+    llvm::interpreter::run() @ Execution.cpp:line no. 4115
   */
   EE->runFunctionAsMain(mod->getFunction("main"), conf.argv, 0);
 
