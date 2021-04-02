@@ -35,6 +35,10 @@
 #include "Interpreter.h"
 #include "Debug.h"
 
+// [rmnt] : Include iostream and llvm/Support/raw_ostream.h for debug couts
+#include <iostream>
+#include <llvm/Support/raw_ostream.h>
+
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/SmallString.h>
 #include <llvm/ADT/Statistic.h>
@@ -1487,6 +1491,7 @@ void Interpreter::visitStoreInst(StoreInst &I)
     return;
 
   SymData sd = GetSymData(*Ptr_sas, I.getOperand(0)->getType(), Val);
+
   if (!conf.c11 || I.isVolatile() || I.getOrdering() != llvm::AtomicOrdering::NotAtomic)
   {
     if (!TB.atomic_store(sd))
@@ -4131,6 +4136,12 @@ void Interpreter::run()
     // Interpret a single instruction & increment the "PC".
     ExecutionContext &SF = ECStack()->back(); // Current stack frame
     Instruction &I = *SF.CurInst++;           // Increment before execute
+
+    // [rmnt] : Debugging
+    std::cout << "rmnt: Fetched current instruction : "
+              << "\n";
+    I.print(llvm::outs(), true);
+    std::cout << "\n";
 
     if (isUnknownIntrinsic(I))
     {

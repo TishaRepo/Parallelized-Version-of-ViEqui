@@ -35,32 +35,34 @@
 extern llvm::cl::opt<std::string> cl_transform;
 
 llvm::cl::opt<std::string>
-cl_input_file(llvm::cl::desc("<input bitcode or assembly>"),
-              llvm::cl::Positional,
-              llvm::cl::init("-"));
+    cl_input_file(llvm::cl::desc("<input bitcode or assembly>"),
+                  llvm::cl::Positional,
+                  llvm::cl::init("-"));
 
 extern llvm::cl::list<std::string>
-cl_program_arguments;
+    cl_program_arguments;
 
 static Timing::Context global_timing_context("global");
 
 #ifdef LLVM_CL_VERSIONPRINTER_TAKES_RAW_OSTREAM
-void print_version(llvm::raw_ostream &out){
+void print_version(llvm::raw_ostream &out)
+{
 #else
-void print_version(){
+void print_version()
+{
   auto &out = std::cout;
 #endif
   out << PACKAGE_STRING
-            << " ("
+      << " ("
 #ifdef GIT_COMMIT
-            << GIT_COMMIT << ", "
+      << GIT_COMMIT << ", "
 #endif
 #ifndef NDEBUG
-            << "Debug"
+      << "Debug"
 #else
-            << "Release"
+      << "Release"
 #endif
-            << ", with LLVM-" << LLVM_VERSION << ":" << LLVM_BUILDMODE << ")\n";
+      << ", with LLVM-" << LLVM_VERSION << ":" << LLVM_BUILDMODE << ")\n";
 }
 
 // Normal exit code
@@ -68,7 +70,8 @@ void print_version(){
 // Exit code when verification failed (an error was detected)
 #define VERIFICATION_FAILURE 42
 
-int main(int argc, char *argv[]){
+int main(int argc, char *argv[])
+{
   /* Command line options */
   llvm::cl::SetVersionPrinter(print_version);
   {
@@ -76,21 +79,24 @@ int main(int argc, char *argv[]){
      * approved by Configuration.
      */
     std::set<std::string, std::less<void>> visible_options =
-      {"version"};
+        {"version"};
     visible_options.insert(Configuration::commandline_opts().begin(),
                            Configuration::commandline_opts().end());
 #ifdef LLVM_CL_GETREGISTEREDOPTIONS_TAKES_ARGUMENT
-    llvm::StringMap<llvm::cl::Option*> opts;
+    llvm::StringMap<llvm::cl::Option *> opts;
     llvm::cl::getRegisteredOptions(opts);
 #else
-    llvm::StringMap<llvm::cl::Option*> &opts =
-      llvm::cl::getRegisteredOptions();
+    llvm::StringMap<llvm::cl::Option *> &opts =
+        llvm::cl::getRegisteredOptions();
 #endif
-    for(auto it = opts.begin(); it != opts.end(); ++it){
-      if(visible_options.count(it->getKey()) == 0){
+    for (auto it = opts.begin(); it != opts.end(); ++it)
+    {
+      if (visible_options.count(it->getKey()) == 0)
+      {
         it->getValue()->setHiddenFlag(llvm::cl::Hidden);
       }
-      if (it->getKey() == "help-list") {
+      if (it->getKey() == "help-list")
+      {
         /* Hide --help-list-hidden from --help-list description; there
          * be dragons ('s options that we are pulling in due to how we
          * link)
@@ -105,18 +111,22 @@ int main(int argc, char *argv[]){
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
   bool errors_detected = false;
-  try{
+  try
+  {
     Timing::Guard timing_guard(global_timing_context);
     Configuration conf;
     conf.assign_by_commandline();
     conf.check_commandline();
 
-    if(cl_transform != ""){
-      Transform::transform(cl_input_file,cl_transform,conf);
-    }else{
+    if (cl_transform != "")
+    {
+      Transform::transform(cl_input_file, cl_transform, conf);
+    }
+    else
+    {
       /* Use DPORDriver to explore the given module */
       DPORDriver *driver =
-        DPORDriver::parseIRFile(cl_input_file,conf);
+          DPORDriver::parseIRFile(cl_input_file, conf);
 
       DPORDriver::Result res = driver->run();
       std::cout << "Trace count: " << res.trace_count << std::endl;
@@ -126,11 +136,14 @@ int main(int argc, char *argv[]){
       if (res.sleepset_blocked_trace_count > 0)
         std::cout << "Sleepset-blocked trace count: "
                   << res.sleepset_blocked_trace_count << std::endl;
-      if(res.has_errors()){
+      if (res.has_errors())
+      {
         errors_detected = true;
         std::cout << "\n Error detected:\n"
                   << res.error_trace->to_string(2);
-      }else{
+      }
+      else
+      {
         std::cout << "No errors were detected." << std::endl;
       }
 
@@ -138,12 +151,16 @@ int main(int argc, char *argv[]){
     }
     GlobalContext::destroy();
     llvm::llvm_shutdown();
-  }catch(std::exception *exc){
+  }
+  catch (std::exception *exc)
+  {
     std::cerr << "Error: " << exc->what() << "\n";
     GlobalContext::destroy();
     llvm::llvm_shutdown();
     return 1;
-  }catch(std::exception &exc){
+  }
+  catch (std::exception &exc)
+  {
     std::cerr << "Error: " << exc.what() << "\n";
     GlobalContext::destroy();
     llvm::llvm_shutdown();
