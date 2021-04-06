@@ -31,6 +31,7 @@
 #include "TSOTraceBuilder.h"
 #include "RFSCTraceBuilder.h"
 #include "RFSCUnfoldingTree.h"
+#include "ViewEqTraceBuilder.h"
 #include "Cpubind.h"
 
 #include <fstream>
@@ -430,9 +431,12 @@ DPORDriver::Result DPORDriver::run(){
 
   switch(conf.memory_model){
   case Configuration::SC:
-    if(conf.dpor_algorithm != Configuration::READS_FROM){
+    if (conf.dpor_algorithm == Configuration::VIEW_EQ) {
+      TB = new ViewEqTraceBuilder(conf);
+    }
+    else if(conf.dpor_algorithm != Configuration::READS_FROM){
       TB = new TSOTraceBuilder(conf);
-    }else{
+    } else {
       if (conf.n_threads == 1){
         res = run_rfsc_sequential();
       } else {

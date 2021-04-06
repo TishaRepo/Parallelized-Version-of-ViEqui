@@ -363,10 +363,6 @@ Trace *TSOTraceBuilder::get_trace() const
 bool TSOTraceBuilder::reset()
 {
   /* snj:
-    If an enabled event exists, then this function returns from line 216 with true
-    the 'true' ensures we enter this function again from the while loop in 
-    void Interpreter::run() in Execution.cpp
-
     If all events are done then we move forward with the following 2 function
     calls computing hb and races.
   */
