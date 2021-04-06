@@ -4122,26 +4122,8 @@ void Interpreter::run()
 {
   int aux;
   bool rerun = false;
-  while (true)
+  while (rerun || TB.schedule(&CurrentThread, &aux, &CurrentAlt, &DryRun))
   {
-    /*
-    snj: originally
-    while (rerun || TB.schedule(&CurrentThread, &aux, &CurrentAlt, &DryRun))
-    */
-    if (!rerun)
-    {
-      if (conf.dpor_algorithm == Configuration::VIEW_EQ)
-      {
-        if (!TB.schedule(&CurrentThread, &aux, &CurrentAlt, &DryRun))
-          break;
-      }
-      else
-      {
-        if (!TB.schedule(&CurrentThread, &aux, &CurrentAlt, &DryRun))
-          break;
-      }
-    }
-
     assert(0 <= CurrentThread && CurrentThread < long(Threads.size()));
     rerun = false;
     if (0 <= aux)

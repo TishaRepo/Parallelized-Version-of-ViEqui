@@ -19,6 +19,16 @@ public:
     virtual void mark_available(int proc, int aux = -1) override;
     virtual void mark_unavailable(int proc, int aux = -1) override;
 
+    virtual NODISCARD bool spawn() override;
+    virtual NODISCARD bool store(const SymData &ml) override;
+    virtual NODISCARD bool atomic_store(const SymData &ml) override;
+    virtual NODISCARD bool compare_exchange
+    (const SymData &sd, const SymData::block_type expected, bool success) override;
+    virtual NODISCARD bool load(const SymAddrSize &ml) override;
+    virtual NODISCARD bool full_memory_conflict() override;
+    virtual NODISCARD bool fence() override;
+    virtual NODISCARD bool join(int tgt_proc) override;
+
 protected:
     typedef int IPid;
 
@@ -38,6 +48,7 @@ protected:
         IID<IPid> iid;
         sym_ty symEvent;
         const llvm::MDNode *md;
+
         std::vector<Event> unexploredInfluencers(Sequence &seq);
         std::vector<Event> exploredInfluencers(Sequence &seq);
         std::vector<Event> exploredWitnesses(Sequence &seq);
@@ -62,9 +73,11 @@ protected:
         std::vector<unsigned> event_indices;
     };
 
-    // [rmnt]: Keeping a vector containing all the events which have been executed (and also the ongoing one). Meant to emulate the prefix without needing any WakeupTree functionality.
-    std::vector<Event> prefix;
+    // [rmnt]: Keeping a vector containing all the events which have been executed (and also the ongoing one). 
+    // Meant to emulate the prefix without needing any WakeupTree functionality.
+    std::vector<Event> execution_sequence;
 
+    // [snj]: index in execution sequence aka index size of sequence
     int prefix_idx;
 
     // [rmnt]: TODO: Do we need sym_idx? It seems to play an important role in record_symbolic as well as whenever we are replaying
@@ -74,6 +87,7 @@ protected:
 
     bool schedule(int *proc);
 
+    // [snj]: TODO remove dependence on aux
     IPid ipid(int proc, int aux) const
     {
         assert(-1 <= aux && aux <= 0);
@@ -85,7 +99,7 @@ protected:
     {
         assert(0 <= prefix_idx);
         assert(prefix_idx < int(prefix.size()));
-        return prefix[prefix_idx];
+        return execution_sequence[prefix_idx];
     };
 };
 
