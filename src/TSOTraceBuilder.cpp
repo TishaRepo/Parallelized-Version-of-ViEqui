@@ -48,215 +48,192 @@ TSOTraceBuilder::~TSOTraceBuilder()
 
 bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun)
 {
+  // outs() << "snj: entering schedule\n";
+  assert(!has_vclocks && "Can't add more events after analysing the trace");
+
   *dryrun = false;
   *alt = 0;
-  const unsigned size = threads.size();
-  unsigned i;
-
-  for (i = 0; i < size; i += 2)
+  this->dryrun = false;
+  if (replay)
   {
-    if (threads[i].available && !threads[i].sleeping && (conf.max_search_depth < 0 || threads[i].last_event_index() < conf.max_search_depth))
+    // outs() << "snj: in replay\n";
+    /* Are we done with the current Event? */
+    if (0 <= prefix_idx && threads[curev().iid.get_pid()].last_event_index() <
+                               curev().iid.get_index() + curbranch().size - 1)
     {
-      threads[i].event_indices.push_back(++prefix_idx);
-      // Event event = Event(IID<IPid>(IPid(i), threads[i].event_indices.size()));
-      prefix.push(Branch(IPid(i)),
-                  Event(IID<IPid>(IPid(i), threads[i].last_event_index())));
-      *proc = i / 2;
+      /* Continue executing the current Event */
+      IPid pid = curev().iid.get_pid();
+      // snj: evry thread has 1 aux thread (TSO has a single store buffer)
+      //      even no pid for actual threads and odd for aux threads
+      //      eg pid=0 actual thread pid=1 its aux thread
+      *proc = pid / 2;
+      // snj: boolean aux or not (-1 for actual thread, 0 for aux thread)
+      *aux = pid % 2 - 1;
+      *alt = 0;
+      assert(threads[pid].available);
+      threads[pid].event_indices.push_back(prefix_idx);
+      return true;
+    }
+    else if (prefix_idx + 1 == int(prefix.len()) && prefix.lastnode().size() == 0)
+    {
+      /* We are done replaying. Continue below... */
+      assert(prefix_idx < 0 || curev().sym.size() == sym_idx || (errors.size() && errors.back()->get_location() == IID<CPid>(threads[curbranch().pid].cpid, curev().iid.get_index())));
+      replay = false;
+      assert(conf.dpor_algorithm == Configuration::SOURCE || (errors.size() && errors.back()->get_location() == IID<CPid>(threads[curev().iid.get_pid()].cpid, curev().iid.get_index())) || std::all_of(threads.cbegin(), threads.cend(), [](const Thread &t) { return !t.sleeping; }));
+    }
+    else if (prefix_idx + 1 != int(prefix.len()) &&
+             dry_sleepers < int(prefix[prefix_idx + 1].sleep.size()))
+    {
+      /* Before going to the next event, dry run the threads that are
+       * being put to sleep.
+       */
+      IPid pid = prefix[prefix_idx + 1].sleep[dry_sleepers];
+      prefix[prefix_idx + 1].sleep_evs.resize(prefix[prefix_idx + 1].sleep.size());
+      threads[pid].sleep_sym = &prefix[prefix_idx + 1].sleep_evs[dry_sleepers];
+      threads[pid].sleep_sym->clear();
+      ++dry_sleepers;
+      threads[pid].sleeping = true;
+      *proc = pid / 2;
+      *aux = pid % 2 - 1;
+      *alt = 0;
+      *dryrun = true;
+      this->dryrun = true;
+      return true;
+    }
+    else
+    {
+      /* Go to the next event. */
+      assert(prefix_idx < 0 || curev().sym.size() == sym_idx || (errors.size() && errors.back()->get_location() == IID<CPid>(threads[curbranch().pid].cpid, curev().iid.get_index())));
+      dry_sleepers = 0;
+      sym_idx = 0;
+      ++prefix_idx;
+      IPid pid;
+      if (prefix_idx < int(prefix.len()))
+      {
+        /* The event is already in prefix */
+        pid = curev().iid.get_pid();
+        curev().happens_after.clear();
+      }
+      else
+      {
+        /* We are replaying from the wakeup tree */
+        pid = prefix.first_child().pid;
+        prefix.enter_first_child(Event(IID<IPid>(pid, threads[pid].last_event_index() + 1),
+                                       /* Jump a few hoops to get the next Branch before
+                  * calling enter_first_child() */
+                                       prefix.parent_at(prefix_idx).begin().branch().sym));
+      }
+      *proc = pid / 2;
+      *aux = pid % 2 - 1;
+      *alt = curbranch().alt;
+      assert(threads[pid].available);
+      threads[pid].event_indices.push_back(prefix_idx);
+      assert(!threads[pid].sleeping);
+      return true;
+    }
+  }
+
+  assert(!replay);
+  /* Create a new Event */
+
+  // TEMP: Until we have a SymEv for store()
+  // assert(prefix_idx < 0 || !!curev().sym.size() == curev().may_conflict);
+
+  /* Should we merge the last two events? */
+  if (prefix.len() > 1 &&
+      prefix[prefix.len() - 1].iid.get_pid() == prefix[prefix.len() - 2].iid.get_pid() &&
+      !prefix[prefix.len() - 1].may_conflict &&
+      prefix[prefix.len() - 1].sleep.empty())
+  {
+    // outs() << "snj: if 1\n";
+    assert(prefix.children_after(prefix.len() - 1) == 0);
+    assert(prefix[prefix.len() - 1].wakeup.empty());
+    assert(curev().sym.empty());     /* Would need to be copied */
+    assert(curbranch().sym.empty()); /* Can't happen */
+    unsigned size = curbranch().size;
+    prefix.delete_last();
+    --prefix_idx;
+    Branch b = curbranch();
+    b.size += size;
+    prefix.set_last_branch(std::move(b));
+    assert(int(threads[curev().iid.get_pid()].event_indices.back()) == prefix_idx + 1);
+    threads[curev().iid.get_pid()].event_indices.back() = prefix_idx;
+  }
+  else
+  {
+    /* Copy symbolic events to wakeup tree */
+    if (prefix.len() > 0)
+    {
+      // outs() << "snj: if 2\n";
+      if (!curbranch().sym.empty())
+      {
+#ifndef NDEBUG
+        sym_ty expected = curev().sym;
+        if (conf.dpor_algorithm == Configuration::OBSERVERS)
+          clear_observed(expected);
+        assert(curbranch().sym == expected);
+#endif
+      }
+      else
+      {
+        // outs() << "snj: else of if 1,2\n";
+        Branch b = curbranch();
+        b.sym = curev().sym;
+        if (conf.dpor_algorithm == Configuration::OBSERVERS)
+          clear_observed(b.sym);
+        for (SymEv &e : b.sym)
+          e.purge_data();
+        prefix.set_last_branch(std::move(b));
+      }
+    }
+  }
+
+  /* Create a new Event */
+  // outs() << "snj: new event\n";
+  sym_idx = 0;
+
+  /* Find an available thread (auxiliary or real).
+   *
+   * Prioritize auxiliary before real, and older before younger
+   * threads.
+   */
+  const unsigned sz = threads.size();
+  unsigned p;
+  for (p = 1; p < sz; p += 2)
+  { // Loop through auxiliary threads
+    if (threads[p].available && !threads[p].sleeping &&
+        (conf.max_search_depth < 0 || threads[p].last_event_index() < conf.max_search_depth))
+    {
+      threads[p].event_indices.push_back(++prefix_idx);
+      assert(prefix_idx == int(prefix.len()));
+      prefix.push(Branch(IPid(p)),
+                  Event(IID<IPid>(IPid(p), threads[p].last_event_index())));
+      *proc = p / 2;
+      *aux = 0;
+      return true;
+    }
+  }
+
+  for (p = 0; p < sz; p += 2)
+  { // Loop through real threads
+    if (threads[p].available && !threads[p].sleeping &&
+        (conf.max_search_depth < 0 || threads[p].last_event_index() < conf.max_search_depth))
+    {
+      // outs() << "snj: real thread loop: thread[" << p << "].event_indices.push_back(" << prefix_idx << ")\n";
+      threads[p].event_indices.push_back(++prefix_idx);
+      assert(prefix_idx == int(prefix.len()));
+      prefix.push(Branch(IPid(p)),
+                  Event(IID<IPid>(IPid(p), threads[p].last_event_index())));
+      *proc = p / 2;
       *aux = -1;
       return true;
     }
   }
 
-  return false;
+  // snj: return false so that we don't enter this function again from
+  //      the while loop in void Interpreter::run() in Execution.cpp
+  return false; // No available threads
 }
-// bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun)
-// {
-//   // outs() << "snj: entering schedule\n";
-//   assert(!has_vclocks && "Can't add more events after analysing the trace");
-
-//   *dryrun = false;
-//   *alt = 0;
-//   this->dryrun = false;
-//   if (replay)
-//   {
-//     // outs() << "snj: in replay\n";
-//     /* Are we done with the current Event? */
-//     if (0 <= prefix_idx && threads[curev().iid.get_pid()].last_event_index() <
-//                                curev().iid.get_index() + curbranch().size - 1)
-//     {
-//       /* Continue executing the current Event */
-//       IPid pid = curev().iid.get_pid();
-//       // snj: evry thread has 1 aux thread (TSO has a single store buffer)
-//       //      even no pid for actual threads and odd for aux threads
-//       //      eg pid=0 actual thread pid=1 its aux thread
-//       *proc = pid / 2;
-//       // snj: boolean aux or not (-1 for actual thread, 0 for aux thread)
-//       *aux = pid % 2 - 1;
-//       *alt = 0;
-//       assert(threads[pid].available);
-//       threads[pid].event_indices.push_back(prefix_idx);
-//       return true;
-//     }
-//     else if (prefix_idx + 1 == int(prefix.len()) && prefix.lastnode().size() == 0)
-//     {
-//       /* We are done replaying. Continue below... */
-//       assert(prefix_idx < 0 || curev().sym.size() == sym_idx || (errors.size() && errors.back()->get_location() == IID<CPid>(threads[curbranch().pid].cpid, curev().iid.get_index())));
-//       replay = false;
-//       assert(conf.dpor_algorithm == Configuration::SOURCE || (errors.size() && errors.back()->get_location() == IID<CPid>(threads[curev().iid.get_pid()].cpid, curev().iid.get_index())) || std::all_of(threads.cbegin(), threads.cend(), [](const Thread &t) { return !t.sleeping; }));
-//     }
-//     else if (prefix_idx + 1 != int(prefix.len()) &&
-//              dry_sleepers < int(prefix[prefix_idx + 1].sleep.size()))
-//     {
-//       /* Before going to the next event, dry run the threads that are
-//        * being put to sleep.
-//        */
-//       IPid pid = prefix[prefix_idx + 1].sleep[dry_sleepers];
-//       prefix[prefix_idx + 1].sleep_evs.resize(prefix[prefix_idx + 1].sleep.size());
-//       threads[pid].sleep_sym = &prefix[prefix_idx + 1].sleep_evs[dry_sleepers];
-//       threads[pid].sleep_sym->clear();
-//       ++dry_sleepers;
-//       threads[pid].sleeping = true;
-//       *proc = pid / 2;
-//       *aux = pid % 2 - 1;
-//       *alt = 0;
-//       *dryrun = true;
-//       this->dryrun = true;
-//       return true;
-//     }
-//     else
-//     {
-//       /* Go to the next event. */
-//       assert(prefix_idx < 0 || curev().sym.size() == sym_idx || (errors.size() && errors.back()->get_location() == IID<CPid>(threads[curbranch().pid].cpid, curev().iid.get_index())));
-//       dry_sleepers = 0;
-//       sym_idx = 0;
-//       ++prefix_idx;
-//       IPid pid;
-//       if (prefix_idx < int(prefix.len()))
-//       {
-//         /* The event is already in prefix */
-//         pid = curev().iid.get_pid();
-//         curev().happens_after.clear();
-//       }
-//       else
-//       {
-//         /* We are replaying from the wakeup tree */
-//         pid = prefix.first_child().pid;
-//         prefix.enter_first_child(Event(IID<IPid>(pid, threads[pid].last_event_index() + 1),
-//                                        /* Jump a few hoops to get the next Branch before
-//                   * calling enter_first_child() */
-//                                        prefix.parent_at(prefix_idx).begin().branch().sym));
-//       }
-//       *proc = pid / 2;
-//       *aux = pid % 2 - 1;
-//       *alt = curbranch().alt;
-//       assert(threads[pid].available);
-//       threads[pid].event_indices.push_back(prefix_idx);
-//       assert(!threads[pid].sleeping);
-//       return true;
-//     }
-//   }
-
-//   assert(!replay);
-//   /* Create a new Event */
-
-//   // TEMP: Until we have a SymEv for store()
-//   // assert(prefix_idx < 0 || !!curev().sym.size() == curev().may_conflict);
-
-//   /* Should we merge the last two events? */
-//   if (prefix.len() > 1 &&
-//       prefix[prefix.len() - 1].iid.get_pid() == prefix[prefix.len() - 2].iid.get_pid() &&
-//       !prefix[prefix.len() - 1].may_conflict &&
-//       prefix[prefix.len() - 1].sleep.empty())
-//   {
-//     // outs() << "snj: if 1\n";
-//     assert(prefix.children_after(prefix.len() - 1) == 0);
-//     assert(prefix[prefix.len() - 1].wakeup.empty());
-//     assert(curev().sym.empty());     /* Would need to be copied */
-//     assert(curbranch().sym.empty()); /* Can't happen */
-//     unsigned size = curbranch().size;
-//     prefix.delete_last();
-//     --prefix_idx;
-//     Branch b = curbranch();
-//     b.size += size;
-//     prefix.set_last_branch(std::move(b));
-//     assert(int(threads[curev().iid.get_pid()].event_indices.back()) == prefix_idx + 1);
-//     threads[curev().iid.get_pid()].event_indices.back() = prefix_idx;
-//   }
-//   else
-//   {
-//     /* Copy symbolic events to wakeup tree */
-//     if (prefix.len() > 0)
-//     {
-//       // outs() << "snj: if 2\n";
-//       if (!curbranch().sym.empty())
-//       {
-// #ifndef NDEBUG
-//         sym_ty expected = curev().sym;
-//         if (conf.dpor_algorithm == Configuration::OBSERVERS)
-//           clear_observed(expected);
-//         assert(curbranch().sym == expected);
-// #endif
-//       }
-//       else
-//       {
-//         // outs() << "snj: else of if 1,2\n";
-//         Branch b = curbranch();
-//         b.sym = curev().sym;
-//         if (conf.dpor_algorithm == Configuration::OBSERVERS)
-//           clear_observed(b.sym);
-//         for (SymEv &e : b.sym)
-//           e.purge_data();
-//         prefix.set_last_branch(std::move(b));
-//       }
-//     }
-//   }
-
-//   /* Create a new Event */
-//   // outs() << "snj: new event\n";
-//   sym_idx = 0;
-
-//   /* Find an available thread (auxiliary or real).
-//    *
-//    * Prioritize auxiliary before real, and older before younger
-//    * threads.
-//    */
-//   const unsigned sz = threads.size();
-//   unsigned p;
-//   for (p = 1; p < sz; p += 2)
-//   { // Loop through auxiliary threads
-//     if (threads[p].available && !threads[p].sleeping &&
-//         (conf.max_search_depth < 0 || threads[p].last_event_index() < conf.max_search_depth))
-//     {
-//       threads[p].event_indices.push_back(++prefix_idx);
-//       assert(prefix_idx == int(prefix.len()));
-//       prefix.push(Branch(IPid(p)),
-//                   Event(IID<IPid>(IPid(p), threads[p].last_event_index())));
-//       *proc = p / 2;
-//       *aux = 0;
-//       return true;
-//     }
-//   }
-
-//   for (p = 0; p < sz; p += 2)
-//   { // Loop through real threads
-//     if (threads[p].available && !threads[p].sleeping &&
-//         (conf.max_search_depth < 0 || threads[p].last_event_index() < conf.max_search_depth))
-//     {
-//       // outs() << "snj: real thread loop: thread[" << p << "].event_indices.push_back(" << prefix_idx << ")\n";
-//       threads[p].event_indices.push_back(++prefix_idx);
-//       assert(prefix_idx == int(prefix.len()));
-//       prefix.push(Branch(IPid(p)),
-//                   Event(IID<IPid>(IPid(p), threads[p].last_event_index())));
-//       *proc = p / 2;
-//       *aux = -1;
-//       return true;
-//     }
-//   }
-
-//   // snj: return false so that we don't enter this function again from
-//   //      the while loop in void Interpreter::run() in Execution.cpp
-//   return false; // No available threads
-// }
 
 void TSOTraceBuilder::refuse_schedule()
 {

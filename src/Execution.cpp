@@ -4122,23 +4122,8 @@ void Interpreter::run()
 {
   int aux;
   bool rerun = false;
-  while (true)
-  { 
-    /*
-    snj: originally
-    while (rerun || TB.schedule(&CurrentThread, &aux, &CurrentAlt, &DryRun))
-    */
-    if (!rerun) {
-      if (conf.dpor_algorithm == Configuration::VIEW_EQ) {
-        if (!TB.schedule(&CurrentThread))
-            break;
-      }
-      else {
-        if (!TB.schedule(&CurrentThread, &aux, &CurrentAlt, &DryRun))
-            break;
-      }
-    }
-
+  while (rerun || TB.schedule(&CurrentThread, &aux, &CurrentAlt, &DryRun))
+  {
     assert(0 <= CurrentThread && CurrentThread < long(Threads.size()));
     rerun = false;
     if (0 <= aux)
@@ -4190,6 +4175,7 @@ void Interpreter::run()
       }
     }
 
+    // [rmnt]: TODO: Check whether we need metadata function
     TB.metadata(I.getMetadata("dbg"));
 
     assert(DryRunMem.empty());
