@@ -10,7 +10,8 @@ void *t0(void *arg){
 }
 
 void *t1(void *arg){
-  if(x) int c = x;
+  int c;
+  if(x) c = x;
   return NULL;
 }
 

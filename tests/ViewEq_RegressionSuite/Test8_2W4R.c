@@ -10,8 +10,9 @@ void *t0(void *arg){
 }
 
 void *t1(void *arg){
-  int b = y;
-  int c = x;
+  int b, c;
+  b = y;
+  c = x;
   return NULL;
 }
 
@@ -45,14 +46,12 @@ int main(int argc, char *argv[]){
   pthread_create(&thr2, NULL, t2, NULL);
   pthread_create(&thr3, NULL, t3, NULL);
   pthread_create(&thr4, NULL, t4, NULL);
-  pthread_create(&thr5, NULL, t5, NULL);
 
   pthread_join(thr0, NULL);
   pthread_join(thr1, NULL);
   pthread_join(thr2, NULL);
   pthread_join(thr3, NULL);
   pthread_join(thr4, NULL);
-  pthread_join(thr5, NULL);
 
   return 0;
 }

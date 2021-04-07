@@ -15,14 +15,15 @@ void *t1(void *arg){
 
 void *t2(void *arg){
   int a = y;
-  if(a = 0) z = 1;
+  if(a == 0) z = 1;
   return NULL;
 }
 
 void *t3(void *arg){
-  int n = y;
-  int l = y;
-  if(n && !l) int p = x;
+  int n, l, p;
+  n = y;
+  l = y;
+  if(n && !l) p = x;
   return NULL;
 }
 

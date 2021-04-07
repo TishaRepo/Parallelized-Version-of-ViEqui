@@ -3,9 +3,11 @@
 
 int x;
 int y;
+int z;
 
 void *t0(void *arg){
-  int m = y;
+  int m;
+  m = y;
   if(m == 0) x = 2;
   return NULL;
 }
@@ -30,6 +32,7 @@ int main(int argc, char *argv[]){
 
   x = 0;
   y = 0;
+  z = 0;
 
   pthread_create(&thr0, NULL, t0, NULL);
   pthread_create(&thr1, NULL, t1, NULL);
