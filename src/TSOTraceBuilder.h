@@ -27,9 +27,10 @@
 #include "WakeupTrees.h"
 #include "Option.h"
 
-typedef llvm::SmallVector<SymEv,1> sym_ty;
+typedef llvm::SmallVector<SymEv, 1> sym_ty;
 
-class TSOTraceBuilder : public TSOPSOTraceBuilder{
+class TSOTraceBuilder : public TSOPSOTraceBuilder
+{
 public:
   TSOTraceBuilder(const Configuration &conf = Configuration::default_conf);
   virtual ~TSOTraceBuilder() override;
@@ -51,8 +52,7 @@ public:
   virtual NODISCARD bool spawn() override;
   virtual NODISCARD bool store(const SymData &ml) override;
   virtual NODISCARD bool atomic_store(const SymData &ml) override;
-  virtual NODISCARD bool compare_exchange
-  (const SymData &sd, const SymData::block_type expected, bool success) override;
+  virtual NODISCARD bool compare_exchange(const SymData &sd, const SymData::block_type expected, bool success) override;
   virtual NODISCARD bool load(const SymAddrSize &ml) override;
   virtual NODISCARD bool full_memory_conflict() override;
   virtual NODISCARD bool fence() override;
@@ -67,12 +67,13 @@ public:
   virtual NODISCARD bool cond_signal(const SymAddrSize &ml) override;
   virtual NODISCARD bool cond_broadcast(const SymAddrSize &ml) override;
   virtual NODISCARD bool cond_wait(const SymAddrSize &cond_ml,
-                         const SymAddrSize &mutex_ml) override;
+                                   const SymAddrSize &mutex_ml) override;
   virtual NODISCARD bool cond_awake(const SymAddrSize &cond_ml,
-                          const SymAddrSize &mutex_ml) override;
+                                    const SymAddrSize &mutex_ml) override;
   virtual int cond_destroy(const SymAddrSize &ml) override;
   virtual NODISCARD bool register_alternatives(int alt_count) override;
   virtual long double estimate_trace_count() const override;
+
 protected:
   /* An identifier for a thread. An index into this->threads.
    *
@@ -89,28 +90,38 @@ protected:
    * (tp,ml) with tp in {R,W}, is a Read or Write access to the byte
    * indicated by the pointer ml.
    */
-  class Access{
+  class Access
+  {
   public:
     /* The type of memory access. */
-    enum Type {R, W, W_ALL_MEMORY, NA} type;
+    enum Type
+    {
+      R,
+      W,
+      W_ALL_MEMORY,
+      NA
+    } type;
     /* The accessed byte. */
     const void *ml;
-    bool operator<(const Access &a) const{
+    bool operator<(const Access &a) const
+    {
       return type < a.type || (type == a.type && ml < a.ml);
     };
-    bool operator==(const Access &a) const{
+    bool operator==(const Access &a) const
+    {
       return type == a.type && (type == NA || ml == a.ml);
     };
-    Access() : type(NA), ml(0) {};
-    Access(Type t, const void *m) : type(t), ml(m) {};
+    Access() : type(NA), ml(0){};
+    Access(Type t, const void *m) : type(t), ml(m){};
   };
 
   /* A store pending in a store buffer. */
-  class PendingStore{
+  class PendingStore
+  {
   public:
     PendingStore(const SymAddrSize &ml, unsigned store_event,
                  const llvm::MDNode *md)
-      : ml(ml), store_event(store_event), last_rowe(-1), md(md) {};
+        : ml(ml), store_event(store_event), last_rowe(-1), md(md){};
     /* The memory location that is being written to. */
     SymAddrSize ml;
     /* The index into prefix of the store event that produced this store
@@ -131,11 +142,12 @@ protected:
 
   /* Various information about a thread in the current execution.
    */
-  class Thread{
+  class Thread
+  {
   public:
     Thread(const CPid &cpid, int spawn_event)
-      : cpid(cpid), available(true), spawn_event(spawn_event), sleeping(false),
-        sleep_full_memory_conflict(false), sleep_sym(nullptr) {};
+        : cpid(cpid), available(true), spawn_event(spawn_event), sleeping(false),
+          sleep_full_memory_conflict(false), sleep_sym(nullptr){};
     CPid cpid;
     /* Is the thread available for scheduling? */
     bool available;
@@ -199,9 +211,10 @@ protected:
    * memory. In particular, it recalls which events have recently
    * accessed that byte.
    */
-  class ByteInfo{
+  class ByteInfo
+  {
   public:
-    ByteInfo() : last_update(-1), last_update_ml({SymMBlock::Global(0),0},1) {};
+    ByteInfo() : last_update(-1), last_update_ml({SymMBlock::Global(0), 0}, 1){};
     /* An index into prefix, to the latest update that accessed this
      * byte. last_update == -1 if there has been no update to this
      * byte.
@@ -228,12 +241,15 @@ protected:
      * the vector as necessary to accomodate accesses through
      * operator[].
      */
-    struct last_read_t {
+    struct last_read_t
+    {
       std::vector<int> v;
       int operator[](int i) const { return (i < int(v.size()) ? v[i] : -1); };
-      int &operator[](int i) {
-        if(int(v.size()) <= i){
-          v.resize(i+1,-1);
+      int &operator[](int i)
+      {
+        if (int(v.size()) <= i)
+        {
+          v.resize(i + 1, -1);
         }
         return v[i];
       };
@@ -243,7 +259,7 @@ protected:
       std::vector<int>::const_iterator end() const { return v.end(); };
     } last_read;
   };
-  std::map<SymAddr,ByteInfo> mem;
+  std::map<SymAddr, ByteInfo> mem;
   /* Index into prefix pointing to the latest full memory conflict.
    * -1 if there has been no full memory conflict.
    */
@@ -251,10 +267,11 @@ protected:
 
   /* A Mutex represents a pthread_mutex_t object.
    */
-  class Mutex{
+  class Mutex
+  {
   public:
-    Mutex() : last_access(-1), last_lock(-1), locked(false) {};
-    Mutex(int lacc) : last_access(lacc), last_lock(-1), locked(false) {};
+    Mutex() : last_access(-1), last_lock(-1), locked(false){};
+    Mutex(int lacc) : last_access(lacc), last_lock(-1), locked(false){};
     int last_access;
     int last_lock;
     bool locked;
@@ -263,13 +280,14 @@ protected:
    * execution. The key is the position in memory of the actual
    * pthread_mutex_t object.
    */
-  std::map<SymAddr,Mutex> mutexes;
+  std::map<SymAddr, Mutex> mutexes;
 
   /* A CondVar represents a pthread_cond_t object. */
-  class CondVar{
+  class CondVar
+  {
   public:
-    CondVar() : last_signal(-1) {};
-    CondVar(int init_idx) : last_signal(init_idx) {};
+    CondVar() : last_signal(-1){};
+    CondVar(int init_idx) : last_signal(init_idx){};
     /* Index in prefix of the latest call to either of
      * pthread_cond_init, pthread_cond_signal, or
      * pthread_cond_broadcast for this condition variable.
@@ -287,7 +305,7 @@ protected:
    * current execution. The key is the position in memory of the
    * actual pthread_cond_t object.
    */
-  std::map<SymAddr,CondVar> cond_vars;
+  std::map<SymAddr, CondVar> cond_vars;
 
   /* A Branch object is a pair of an IPid p and an alternative index
    * (see Event::alt below) i. It will be tagged on an event in the
@@ -295,12 +313,13 @@ protected:
    * to execute (with alternative index i), then a different trace can
    * be produced.
    */
-  class Branch{
+  class Branch
+  {
   public:
-    Branch (IPid pid, int alt = 0, sym_ty sym = {})
-      : sym(std::move(sym)), pid(pid), alt(alt), size(1) {}
-    Branch (const Branch &base, sym_ty sym)
-      : sym(std::move(sym)), pid(base.pid), alt(base.alt), size(base.size) {}
+    Branch(IPid pid, int alt = 0, sym_ty sym = {})
+        : sym(std::move(sym)), pid(pid), alt(alt), size(1) {}
+    Branch(const Branch &base, sym_ty sym)
+        : sym(std::move(sym)), pid(base.pid), alt(base.alt), size(base.size) {}
     /* Symbolic representation of the globally visible operation of this event.
      */
     sym_ty sym;
@@ -316,17 +335,21 @@ protected:
     int alt;
     /* The number of events in this sequence. */
     int size;
-    bool operator<(const Branch &b) const{
+    bool operator<(const Branch &b) const
+    {
       return pid < b.pid || (pid == b.pid && alt < b.alt);
     };
-    bool operator==(const Branch &b) const{
+    bool operator==(const Branch &b) const
+    {
       return pid == b.pid && alt == b.alt;
     };
   };
 
-  struct Race {
+  struct Race
+  {
   public:
-    enum Kind {
+    enum Kind
+    {
       /* Any kind of event that does not block any other process */
       NONBLOCK,
       /* A nonblocking race where additionally a third event is
@@ -344,35 +367,40 @@ protected:
     int first_event;
     int second_event;
     IID<IPid> second_process;
-    union{
+    union
+    {
       const Mutex *mutex;
       int witness_event;
       int alternative;
       int unlock_event;
     };
-    static Race Nonblock(int first, int second) {
-      return Race(NONBLOCK, first, second, {-1,0}, nullptr);
+    static Race Nonblock(int first, int second)
+    {
+      return Race(NONBLOCK, first, second, {-1, 0}, nullptr);
     };
-    static Race Observed(int first, int second, int witness) {
-      return Race(OBSERVED, first, second, {-1,0}, witness);
+    static Race Observed(int first, int second, int witness)
+    {
+      return Race(OBSERVED, first, second, {-1, 0}, witness);
     };
     static Race LockFail(int first, int second, IID<IPid> process,
-                         const Mutex *mutex) {
+                         const Mutex *mutex)
+    {
       assert(mutex);
       return Race(LOCK_FAIL, first, second, process, mutex);
     };
-    static Race LockSuc(int first, int second, int unlock) {
-      return Race(LOCK_SUC, first, second, {-1,0}, unlock);
+    static Race LockSuc(int first, int second, int unlock)
+    {
+      return Race(LOCK_SUC, first, second, {-1, 0}, unlock);
     };
-    static Race Nondet(int event, int alt) {
-      return Race(NONDET, event, -1, {-1,0}, alt);
+    static Race Nondet(int event, int alt)
+    {
+      return Race(NONDET, event, -1, {-1, 0}, alt);
     };
+
   private:
-    Race(Kind k, int f, int s, IID<IPid> p, const Mutex *m) :
-      kind(k), first_event(f), second_event(s), second_process(p), mutex(m) {}
-    Race(Kind k, int f, int s, IID<IPid> p, int w) :
-      kind(k), first_event(f), second_event(s), second_process(p),
-      witness_event(w) {}
+    Race(Kind k, int f, int s, IID<IPid> p, const Mutex *m) : kind(k), first_event(f), second_event(s), second_process(p), mutex(m) {}
+    Race(Kind k, int f, int s, IID<IPid> p, int w) : kind(k), first_event(f), second_event(s), second_process(p),
+                                                     witness_event(w) {}
   };
 
   /* Locations in the trace where a process is blocked waiting for a
@@ -385,11 +413,12 @@ protected:
    * with other events, and if the sequence has a conflicting event,
    * it must be the first event in the sequence.
    */
-  class Event{
+  class Event
+  {
   public:
     Event(const IID<IPid> &iid, sym_ty sym = {})
-      : iid(iid), origin_iid(iid), md(0), clock(), may_conflict(false),
-        sym(std::move(sym)), sleep_branch_trace_count(0) {};
+        : iid(iid), origin_iid(iid), md(0), clock(), may_conflict(false),
+          sym(std::move(sym)), sleep_branch_trace_count(0){};
     /* The identifier for the first event in this event sequence. */
     IID<IPid> iid;
     /* The IID of the program instruction which is the origin of this
@@ -479,25 +508,29 @@ protected:
   /* The latest value passed to this->metadata(). */
   const llvm::MDNode *last_md;
 
-  IPid ipid(int proc, int aux) const {
+  IPid ipid(int proc, int aux) const
+  {
     assert(-1 <= aux && aux <= 0);
-    assert(proc*2+1 < int(threads.size()));
-    return aux ? proc*2 : proc*2+1;
+    assert(proc * 2 + 1 < int(threads.size()));
+    return aux ? proc * 2 : proc * 2 + 1;
   };
 
-  Event &curev() {
+  Event &curev()
+  {
     assert(0 <= prefix_idx);
     assert(prefix_idx < int(prefix.len()));
     return prefix[prefix_idx];
   };
 
-  const Event &curev() const {
+  const Event &curev() const
+  {
     assert(0 <= prefix_idx);
     assert(prefix_idx < int(prefix.len()));
     return prefix[prefix_idx];
   };
 
-  const Branch &curbranch() const {
+  const Branch &curbranch() const
+  {
     assert(0 <= prefix_idx);
     assert(prefix_idx < int(prefix.len()));
     return prefix.branch(prefix_idx);
@@ -508,7 +541,8 @@ protected:
    * branch_with_symbolic_data(i) returns a Branch of the event i, but
    * with data of memory accesses in the symbolic events.
    */
-  Branch branch_with_symbolic_data(unsigned index) const {
+  Branch branch_with_symbolic_data(unsigned index) const
+  {
     return Branch(prefix.branch(index), prefix[index].sym);
   };
 
@@ -528,7 +562,7 @@ protected:
   /* Finds the index in prefix of the event of process pid that has iid-index
    * index.
    */
-  std::pair<bool,unsigned> try_find_process_event(IPid pid, int index) const;
+  std::pair<bool, unsigned> try_find_process_event(IPid pid, int index) const;
   unsigned find_process_event(IPid pid, int index) const;
 
   /* Pretty-prints the iid of prefix[pos]. */
@@ -607,7 +641,7 @@ protected:
    *
    * All pairs in seen should be increasing indices into prefix.
    */
-  void see_event_pairs(const VecSet<std::pair<int,int>> &seen);
+  void see_event_pairs(const VecSet<std::pair<int, int>> &seen);
   /* Adds a non-reversible happens-before edge between first and
    * second.
    */
@@ -644,11 +678,13 @@ protected:
    * events prefix[0..i] ++ v
    */
   void recompute_cmpxhg_success(sym_ty &es, const std::vector<Branch> &v, int i)
-    const;
+      const;
   /* Recompute the observation states on the symbolic events in v. */
   void recompute_observed(std::vector<Branch> &v) const;
-  struct obs_sleep {
-    struct sleeper {
+  struct obs_sleep
+  {
+    struct sleeper
+    {
       IPid pid;
       const sym_ty *sym;
       Option<SymAddrSize> not_if_read;
@@ -670,7 +706,8 @@ protected:
    * from e.
    */
   void obs_sleep_add(struct obs_sleep &sleep, const Event &e) const;
-  enum class obs_wake_res {
+  enum class obs_wake_res
+  {
     CLEAR,
     CONTINUE,
     BLOCK,
@@ -695,10 +732,10 @@ protected:
    * executed, it will never block, and thus has no return value.
    */
   void obs_sleep_wake(struct obs_sleep &sleep, const Event &e) const;
-  void race_detect(const Race&, const struct obs_sleep&);
-  void race_detect_optimal(const Race&, const struct obs_sleep&);
+  void race_detect(const Race &, const struct obs_sleep &);
+  void race_detect_optimal(const Race &, const struct obs_sleep &);
   /* Compute the wakeup sequence for reversing a race. */
-  std::vector<Branch> wakeup_sequence(const Race&) const;
+  std::vector<Branch> wakeup_sequence(const Race &) const;
   /* Checks if a sequence of events will clear a sleep set. */
   bool sequence_clears_sleep(const std::vector<Branch> &seq,
                              const struct obs_sleep &sleep) const;
@@ -718,4 +755,3 @@ protected:
 };
 
 #endif
-

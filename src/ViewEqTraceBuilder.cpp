@@ -2,8 +2,8 @@
 
 ViewEqTraceBuilder::ViewEqTraceBuilder(const Configuration &conf) : TSOPSOTraceBuilder(conf)
 {
-    threads.push_back(Thread(CPid(), -1));
-    prefix_idx = -1;
+  threads.push_back(Thread(CPid(), -1));
+  prefix_idx = -1;
 }
 /*
     [rmnt] : This function is meant to replace the schedule function used in Interpreter::run in Execution.cpp. It searches for an available real thread (we are storing thread numbers at even indices since some backend functions rely on that). Once it finds one we push its index (prefix_idx is a global index keeping track of the number of events we have executed) to the respective thread's event indices. We also create its event object. Now here we have some work left. What they do is insert this object into prefix. We have to figure out where the symbolic event member of the Event object is being filled up (its empty on initialisation) as that will get us to how they find the type of event. Also, we have to implement certain functions like mark_available, mark_unavailable, reset etc which are required for this to replace the interface of the current schedule function. There are also other functions like metadata() and fence() that we are not sure whether our implementation would need.
@@ -11,65 +11,66 @@ ViewEqTraceBuilder::ViewEqTraceBuilder(const Configuration &conf) : TSOPSOTraceB
 */
 bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun)
 {
-    // snj: For compatibility with existing design
-    *alt = 0;
-    *dryrun = false;
-    // // //
+  // snj: For compatibility with existing design
+  *alt = 0;
+  *dryrun = false;
+  // // //
 
-    const unsigned size = threads.size();
-    unsigned i;
+  const unsigned size = threads.size();
+  unsigned i;
 
-    for (i = 0; i < size; i += 2)
+  for (i = 0; i < size; i += 2)
+  {
+    if (threads[i].available && (conf.max_search_depth < 0 || threads[i].event_indices.size() < conf.max_search_depth))
     {
-        if (threads[i].available && (conf.max_search_depth < 0 || threads[i].event_indices.size() < conf.max_search_depth))
-        {
-            threads[i].event_indices.push_back(++prefix_idx);
-            Event event = Event(IID<IPid>(IPid(i), threads[i].event_indices.size()));
-            execution_sequence.push_back(event);
-            *proc = i / 2;
-            *aux = -1;
-            return true;
-        }
+      threads[i].event_indices.push_back(++prefix_idx);
+      Event event = Event(IID<IPid>(IPid(i), threads[i].event_indices.size()));
+      execution_sequence.push_back(event);
+      *proc = i / 2;
+      *aux = -1;
+      return true;
     }
+  }
 
-    return false;
+  return false;
 }
 
 void ViewEqTraceBuilder::mark_available(int proc, int aux)
 {
-    threads[ipid(proc, aux)].available = true;
+  threads[ipid(proc, aux)].available = true;
 }
 
 void ViewEqTraceBuilder::mark_unavailable(int proc, int aux)
 {
-    threads[ipid(proc, aux)].available = false;
+  threads[ipid(proc, aux)].available = false;
 }
 
 void ViewEqTraceBuilder::metadata(const llvm::MDNode *md)
 {
-    // [rmnt]: Originally, they check whether dryrun is false before updating the current event's metadata and also maintain a last_md object inside TSOTraceBuilder. Since we don't use dryrun, we have omitted the checks and also last_md
-    assert(curev().md == 0);
-    curev().md = md;
+  // [rmnt]: Originally, they check whether dryrun is false before updating the current event's metadata and also maintain a last_md object inside TSOTraceBuilder. Since we don't use dryrun, we have omitted the checks and also last_md
+  assert(curev().md == 0);
+  curev().md = md;
 }
 
-bool ViewEqTraceBuilder::spawn() {
-    IPid parent_ipid = curev().iid.get_pid();
-    CPid child_cpid = CPS.spawn(threads[parent_ipid].cpid);
-    /* TODO: First event of thread happens before parents spawn */
-    threads.push_back(Thread(child_cpid, prefix_idx));
-    //[snj]: TODO remove this statement
-    threads.push_back(Thread(CPS.new_aux(child_cpid), prefix_idx));
-    threads.back().available = false; // Empty store buffer
-    curev().may_conflict = true;
-    return record_symbolic(SymEv::Spawn(threads.size() / 2 - 1));
+bool ViewEqTraceBuilder::spawn()
+{
+  IPid parent_ipid = curev().iid.get_pid();
+  CPid child_cpid = CPS.spawn(threads[parent_ipid].cpid);
+  /* TODO: First event of thread happens before parents spawn */
+  threads.push_back(Thread(child_cpid, prefix_idx));
+  //[snj]: TODO remove this statement
+  threads.push_back(Thread(CPS.new_aux(child_cpid), prefix_idx));
+  threads.back().available = false; // Empty store buffer
+  curev().may_conflict = true;
+  return record_symbolic(SymEv::Spawn(threads.size() / 2 - 1));
 }
 
 bool ViewEqTraceBuilder::store_pre(const SymData &sd)
 {
   curev().may_conflict = true; /* prefix_idx might become bad otherwise */
-  
+
   if (!record_symbolic(SymEv::Store(sd)))
-      return false;
+    return false;
 
   return true;
 }
@@ -82,17 +83,18 @@ bool ViewEqTraceBuilder::store_post(const SymData &sd)
 
   // [snj]: TODO remove this part eventually
   bool is_update = ipid % 2;
-  if (is_update) {
-      llvm::outs() << "snj: FIX NEEDED: aux event is being accessed";
-      return true;
+  if (is_update)
+  {
+    llvm::outs() << "snj: FIX NEEDED: aux event is being accessed";
+    return true;
   }
   // remove till here
 
-//   IPid uipid = ipid;                        // ID of the thread changing the memory
-//   IPid tipid = is_update ? ipid - 1 : ipid; // ID of the (real) thread that issued the store
+  //   IPid uipid = ipid;                        // ID of the thread changing the memory
+  //   IPid tipid = is_update ? ipid - 1 : ipid; // ID of the (real) thread that issued the store
 
-    // [snj]: I think seen_accesses is not needed
-//   VecSet<int> seen_accesses;
+  // [snj]: I think seen_accesses is not needed
+  //   VecSet<int> seen_accesses;
 
   /* See previous updates reads to ml */
   for (SymAddr b : ml)
@@ -129,7 +131,7 @@ bool ViewEqTraceBuilder::load_pre(const SymAddrSize &ml)
 {
   if (!record_symbolic(SymEv::Load(ml)))
     return false;
-  
+
   return true;
 }
 
@@ -150,28 +152,29 @@ bool ViewEqTraceBuilder::load_post(const SymAddrSize &ml)
     mem[b].last_read[ipid] = prefix_idx;
   }
 
-//   seen_accesses.insert(last_full_memory_conflict);
+  //   seen_accesses.insert(last_full_memory_conflict);
 
-//   see_events(seen_accesses);
+  //   see_events(seen_accesses);
 }
 
+// [rmnt]: TODO : Implement the notion of replay and associated functions
 bool ViewEqTraceBuilder::record_symbolic(SymEv event)
 {
   llvm::outs() << "rmnt: Inside record_symbolic where we have a symbolic event \n";
   llvm::outs() << event.to_string() << "\n";
-  
+
   if (!replay)
   {
-    assert(sym_idx == curev().sym.size());
+    assert(sym_idx == curev().symEvent.size());
     /* New event */
-    curev().sym.push_back(event);
+    curev().symEvent.push_back(event);
     sym_idx++;
   }
   else
   {
     /* Replay. SymEv::set() asserts that this is the same event as last time. */
-    assert(sym_idx < curev().sym.size());
-    SymEv &last = curev().sym[sym_idx++];
+    assert(sym_idx < curev().symEvent.size());
+    SymEv &last = curev().symEvent[sym_idx++];
     if (!last.is_compatible_with(event))
     {
       auto pid_str = [this](IPid p) { return threads[p].cpid.to_string(); };
