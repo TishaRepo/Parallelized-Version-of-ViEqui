@@ -16,6 +16,9 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun)
   *dryrun = false;
   // // //
 
+  // [rmnt] : When creating a new event, initialize sym_idx to 0
+  sym_idx = 0;
+
   const unsigned size = threads.size();
   unsigned i;
 
