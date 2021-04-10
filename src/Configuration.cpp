@@ -102,7 +102,9 @@ cl_dpor_algorithm(llvm::cl::NotHidden, llvm::cl::init(Configuration::SOURCE),
                   llvm::cl::values(clEnumValN(Configuration::SOURCE,"source","Source-DPOR (default)"),
                                    clEnumValN(Configuration::OPTIMAL,"optimal","Optimal-DPOR"),
                                    clEnumValN(Configuration::OBSERVERS,"observers","Optimal-DPOR with Observers"),
-                                   clEnumValN(Configuration::READS_FROM,"rf","Optimal Reads-From-centric SMC")
+                                   clEnumValN(Configuration::READS_FROM,"rf","Optimal Reads-From-centric SMC"),
+                                   //[nau]: view option added
+                                   clEnumValN(Configuration::VIEW_EQ,"view","Optimal Value-centric SMC")
 #ifdef LLVM_CL_VALUES_USES_SENTINEL
                                   ,clEnumValEnd
 #endif
@@ -176,7 +178,7 @@ const std::set<std::string> &Configuration::commandline_opts(){
     "no-cpubind","no-cpubind-singlify",
     "sc","tso","pso","power","arm",
     "smtlib",
-    "source","optimal","observers","rf",
+    "source","optimal","observers","rf","view",//view option added
     "check-robustness",
     "no-spin-assume",
     "unroll",
