@@ -28,6 +28,30 @@ public:
     virtual NODISCARD bool fence() override;
     virtual NODISCARD bool join(int tgt_proc) override;
 
+    //[nau]: added virtual function definitions for the sake of compiling
+    bool sleepset_is_empty() const{return TraceBuilder::sleepset_is_empty();}
+    bool check_for_cycles(){return TraceBuilder::check_for_cycles();}
+    Trace *get_trace() const {return TraceBuilder::get_trace();};
+    bool reset() {return TraceBuilder::reset();}
+    IID<CPid> get_iid() const{return TraceBuilder::get_iid(); }
+    bool is_replaying() const {return TSOPSOTraceBuilder::is_replaying(); }
+    void cancel_replay() {}
+    NODISCARD bool mutex_lock(const SymAddrSize &ml) {return TSOPSOTraceBuilder::mutex_lock(ml);}
+    NODISCARD bool mutex_lock_fail(const SymAddrSize &ml) {return TSOPSOTraceBuilder::mutex_lock_fail(ml);}
+    NODISCARD bool mutex_trylock(const SymAddrSize &ml){return TSOPSOTraceBuilder::mutex_trylock(ml);}
+    NODISCARD bool mutex_unlock(const SymAddrSize &ml){return TSOPSOTraceBuilder::mutex_unlock(ml);}
+    NODISCARD bool mutex_init(const SymAddrSize &ml){return TSOPSOTraceBuilder::mutex_init(ml);}
+    NODISCARD bool mutex_destroy(const SymAddrSize &ml){return TSOPSOTraceBuilder::mutex_destroy(ml);}
+    NODISCARD bool cond_init(const SymAddrSize &ml){return TSOPSOTraceBuilder::cond_init(ml);}
+    NODISCARD bool cond_signal(const SymAddrSize &ml){return TSOPSOTraceBuilder::cond_signal(ml);}
+    NODISCARD bool cond_broadcast(const SymAddrSize &ml){return TSOPSOTraceBuilder::cond_broadcast(ml);}
+    NODISCARD bool cond_wait(const SymAddrSize &cond_ml,
+                            const SymAddrSize &mutex_ml){return TSOPSOTraceBuilder::cond_wait(cond_ml,mutex_ml);}
+    NODISCARD bool cond_awake(const SymAddrSize &cond_ml,
+                            const SymAddrSize &mutex_ml){return TSOPSOTraceBuilder::cond_awake(cond_ml,mutex_ml);}
+    NODISCARD int cond_destroy(const SymAddrSize &ml){return TSOPSOTraceBuilder::cond_destroy(ml);}
+    NODISCARD bool register_alternatives(int alt_count){return TSOPSOTraceBuilder::register_alternatives(alt_count);}
+
     /* [rmnt]: I have just copied their comment for now. TODO Write our own
     * Records a symbolic representation of the current event.
     *
@@ -91,7 +115,7 @@ protected:
     int prefix_idx;
 
     // [rmnt]: TODO: Do we need sym_idx? It seems to play an important role in record_symbolic as well as whenever we are replaying
-    /* [rmnt]: Using their comment for now 
+    /* [rmnt]: Using their comment for now
     * The index of the currently expected symbolic event, as an index into
     * curev().sym. Equal to curev().sym.size() (or 0 when prefix_idx == -1) when
     * not replaying.
@@ -103,8 +127,8 @@ protected:
     /* [rmnt]: The CPids of threads in the current execution. */
     CPidSystem CPS;
 
-    /*[rmnt]: Taken their ByteInfo object and representation of Memory as a mapping from SymAddr to ByteInfo as it is. 
-    * TODO: Do we need all the fields inside ByteInfo (last_update for example)? 
+    /*[rmnt]: Taken their ByteInfo object and representation of Memory as a mapping from SymAddr to ByteInfo as it is.
+    * TODO: Do we need all the fields inside ByteInfo (last_update for example)?
     */
     /* A ByteInfo object contains information about one byte in
    * memory. In particular, it recalls which events have recently
