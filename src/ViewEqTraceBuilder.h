@@ -19,16 +19,22 @@ public:
     virtual void mark_available(int proc, int aux = -1) override;
     virtual void mark_unavailable(int proc, int aux = -1) override;
 
+    //[snj]: split store and load functions to pre and post
+    NODISCARD bool store_pre(const SymData &ml) override;
+    NODISCARD bool store_post(const SymData &ml) override;
+    NODISCARD bool load_pre(const SymAddrSize &ml) override;
+    NODISCARD bool load_post(const SymAddrSize &ml) override;
+    virtual NODISCARD bool full_memory_conflict() override;
+    virtual NODISCARD bool join(int tgt_proc) override;
+
+    //[nau]: added virtual function definitions for the sake of compiling
+    //[snj]: added some more to the list
     virtual NODISCARD bool spawn() override;
     virtual NODISCARD bool store(const SymData &ml) override;
     virtual NODISCARD bool atomic_store(const SymData &ml) override;
     virtual NODISCARD bool compare_exchange(const SymData &sd, const SymData::block_type expected, bool success) override;
     virtual NODISCARD bool load(const SymAddrSize &ml) override;
-    virtual NODISCARD bool full_memory_conflict() override;
     virtual NODISCARD bool fence() override;
-    virtual NODISCARD bool join(int tgt_proc) override;
-
-    //[nau]: added virtual function definitions for the sake of compiling
     bool sleepset_is_empty() const{return TraceBuilder::sleepset_is_empty();}
     bool check_for_cycles(){return TraceBuilder::check_for_cycles();}
     Trace *get_trace() const {return TraceBuilder::get_trace();};
@@ -51,6 +57,7 @@ public:
                             const SymAddrSize &mutex_ml){return TSOPSOTraceBuilder::cond_awake(cond_ml,mutex_ml);}
     NODISCARD int cond_destroy(const SymAddrSize &ml){return TSOPSOTraceBuilder::cond_destroy(ml);}
     NODISCARD bool register_alternatives(int alt_count){return TSOPSOTraceBuilder::register_alternatives(alt_count);}
+    // [snj]: TODO check whether we can do without the above listed functions
 
     /* [rmnt]: I have just copied their comment for now. TODO Write our own
     * Records a symbolic representation of the current event.
@@ -127,10 +134,7 @@ protected:
     /* [rmnt]: The CPids of threads in the current execution. */
     CPidSystem CPS;
 
-    /*[rmnt]: Taken their ByteInfo object and representation of Memory as a mapping from SymAddr to ByteInfo as it is.
-    * TODO: Do we need all the fields inside ByteInfo (last_update for example)?
-    */
-    /* A ByteInfo object contains information about one byte in
+   /* A ByteInfo object contains information about one byte in
    * memory. In particular, it recalls which events have recently
    * accessed that byte.
    */
@@ -142,7 +146,7 @@ protected:
      * byte. last_update == -1 if there has been no update to this
      * byte.
      */
-        int last_update;
+        int last_update; //[snj]: TODO might need, check
         /* The complete memory location (possibly multiple bytes) that was
      * accessed by the last update. Undefined if there has been no
      * update to this byte.
@@ -152,7 +156,7 @@ protected:
      *
      * Either contains last_update or is empty.
      */
-        VecSet<int> unordered_updates;
+       // [snj]: don't need: VecSet<int> unordered_updates;
         /* last_read[tid] is the index in prefix of the latest (visible)
      * read of thread tid to this memory location, or -1 if thread tid
      * has not read this memory location.
@@ -164,23 +168,24 @@ protected:
      * the vector as necessary to accomodate accesses through
      * operator[].
      */
-        struct last_read_t
-        {
-            std::vector<int> v;
-            int operator[](int i) const { return (i < int(v.size()) ? v[i] : -1); };
-            int &operator[](int i)
-            {
-                if (int(v.size()) <= i)
-                {
-                    v.resize(i + 1, -1);
-                }
-                return v[i];
-            };
-            std::vector<int>::iterator begin() { return v.begin(); };
-            std::vector<int>::const_iterator begin() const { return v.begin(); };
-            std::vector<int>::iterator end() { return v.end(); };
-            std::vector<int>::const_iterator end() const { return v.end(); };
-        } last_read;
+
+        // [snj]: don't need: struct last_read_t
+        // {
+        //     std::vector<int> v;
+        //     int operator[](int i) const { return (i < int(v.size()) ? v[i] : -1); };
+        //     int &operator[](int i)
+        //     {
+        //         if (int(v.size()) <= i)
+        //         {
+        //             v.resize(i + 1, -1);
+        //         }
+        //         return v[i];
+        //     };
+        //     std::vector<int>::iterator begin() { return v.begin(); };
+        //     std::vector<int>::const_iterator begin() const { return v.begin(); };
+        //     std::vector<int>::iterator end() { return v.end(); };
+        //     std::vector<int>::const_iterator end() const { return v.end(); };
+        // } last_read;
     };
     std::map<SymAddr, ByteInfo> mem;
 

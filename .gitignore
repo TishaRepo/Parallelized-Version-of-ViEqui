@@ -5,6 +5,7 @@
 *.trs
 *.aux
 *.toc
+src/.vscode
 src/nidhugg
 src/nidhuggc
 src/unittest
