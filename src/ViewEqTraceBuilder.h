@@ -20,10 +20,10 @@ public:
     virtual void mark_unavailable(int proc, int aux = -1) override;
 
     //[snj]: split store and load functions to pre and post
-    NODISCARD bool store_pre(const SymData &ml) override;
-    NODISCARD bool store_post(const SymData &ml) override;
-    NODISCARD bool load_pre(const SymAddrSize &ml) override;
-    NODISCARD bool load_post(const SymAddrSize &ml) override;
+    NODISCARD bool store_pre(const SymData &ml);
+    NODISCARD bool store_post(const SymData &ml);
+    NODISCARD bool load_pre(const SymAddrSize &ml);
+    NODISCARD bool load_post(const SymAddrSize &ml);
     virtual NODISCARD bool full_memory_conflict() override;
     virtual NODISCARD bool join(int tgt_proc) override;
 

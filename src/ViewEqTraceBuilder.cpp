@@ -1,6 +1,6 @@
 #include "ViewEqTraceBuilder.h"
 
-ViewEqTraceBuilder::ViewEqTraceBuilder(const Configuration &conf) : TSOPSOTraceBuilder(conf)
+ViewEqTraceBuilder::ViewEqTraceBuilder(const Configuration &conf = Configuration::default_conf) : TSOPSOTraceBuilder(conf)
 {
   threads.push_back(Thread(CPid(), -1));
   prefix_idx = -1;
