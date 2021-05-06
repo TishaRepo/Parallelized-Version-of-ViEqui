@@ -1,10 +1,14 @@
 #include "ViewEqTraceBuilder.h"
 
-ViewEqTraceBuilder::ViewEqTraceBuilder(const Configuration &conf = Configuration::default_conf) : TSOPSOTraceBuilder(conf)
+
+ViewEqTraceBuilder::ViewEqTraceBuilder(const Configuration &conf) : TSOPSOTraceBuilder(conf)
 {
   threads.push_back(Thread(CPid(), -1));
   prefix_idx = -1;
 }
+
+ViewEqTraceBuilder::~ViewEqTraceBuilder() {}
+
 /*
     [rmnt] : This function is meant to replace the schedule function used in Interpreter::run in Execution.cpp. It searches for an available real thread (we are storing thread numbers at even indices since some backend functions rely on that). Once it finds one we push its index (prefix_idx is a global index keeping track of the number of events we have executed) to the respective thread's event indices. We also create its event object. Now here we have some work left. What they do is insert this object into prefix. We have to figure out where the symbolic event member of the Event object is being filled up (its empty on initialisation) as that will get us to how they find the type of event. Also, we have to implement certain functions like mark_available, mark_unavailable, reset etc which are required for this to replace the interface of the current schedule function. There are also other functions like metadata() and fence() that we are not sure whether our implementation would need.
              We needed to keep the signature same to maintain legacy, even though we don't use either auxilliary threads, or dryruns, or alternate events in our algorithm.
@@ -62,16 +66,13 @@ bool ViewEqTraceBuilder::spawn()
   /* TODO: First event of thread happens before parents spawn */
   threads.push_back(Thread(child_cpid, prefix_idx));
   //[snj]: TODO remove this statement
-  threads.push_back(Thread(CPS.new_aux(child_cpid), prefix_idx));
-  threads.back().available = false; // Empty store buffer
-  curev().may_conflict = true;
-  return record_symbolic(SymEv::Spawn(threads.size() / 2 - 1));
+  // threads.push_back(Thread(CPS.new_aux(child_cpid), prefix_idx));
+  
+  return record_symbolic(SymEv::Spawn(threads.size())); // [snj]: chenged from Spawn(threads.size() / 2 - 1)
 }
 
 bool ViewEqTraceBuilder::store_pre(const SymData &sd)
 {
-  curev().may_conflict = true; /* prefix_idx might become bad otherwise */
-
   if (!record_symbolic(SymEv::Store(sd)))
     return false;
 
@@ -82,15 +83,14 @@ bool ViewEqTraceBuilder::store_post(const SymData &sd)
 {
   const SymAddrSize &ml = sd.get_ref();
   IPid ipid = curev().iid.get_pid();
-  curev().may_conflict = true;
-
+  
   // [snj]: TODO remove this part eventually
-  bool is_update = ipid % 2;
-  if (is_update)
-  {
-    llvm::outs() << "snj: FIX NEEDED: aux event is being accessed";
-    return true;
-  }
+  // bool is_update = ipid % 2;
+  // if (is_update)
+  // {
+  //   llvm::outs() << "snj: FIX NEEDED: aux event is being accessed";
+  //   return true;
+  // }
   // remove till here
 
   //   IPid uipid = ipid;                        // ID of the thread changing the memory
@@ -128,6 +128,8 @@ bool ViewEqTraceBuilder::store_post(const SymData &sd)
   // seen_accesses.insert(last_full_memory_conflict);
 
   // see_events(seen_accesses); [snj]: updates race information
+
+  return true;
 }
 
 bool ViewEqTraceBuilder::load_pre(const SymAddrSize &ml)
@@ -140,7 +142,6 @@ bool ViewEqTraceBuilder::load_pre(const SymAddrSize &ml)
 
 bool ViewEqTraceBuilder::load_post(const SymAddrSize &ml)
 {
-  curev().may_conflict = true; // [snj]: TODO do we need may_conflict
   IPid ipid = curev().iid.get_pid();
 
   /* Load from memory */
@@ -152,12 +153,14 @@ bool ViewEqTraceBuilder::load_post(const SymAddrSize &ml)
     //load_post(mem[b]); // [snj]: TODO why the recursive call also its a overloaded diff function
 
     /* Register load in memory */
-    mem[b].last_read[ipid] = prefix_idx;
+    // mem[b].last_read[ipid] = prefix_idx; //[snj]: I don't think its needed
   }
 
   //   seen_accesses.insert(last_full_memory_conflict);
 
   //   see_events(seen_accesses);
+
+  return true;
 }
 
 // [rmnt]: TODO : Implement the notion of replay and associated functions
@@ -188,3 +191,45 @@ bool ViewEqTraceBuilder::record_symbolic(SymEv event)
   }
   return true;
 }
+
+bool ViewEqTraceBuilder::reset() {return false;} //[snj]: TODO -- find replay point, setup for replay (next events etc)
+IID<CPid> ViewEqTraceBuilder::get_iid() const{
+  IPid pid = curev().iid.get_pid();
+  int idx = curev().iid.get_index();
+  return IID<CPid>(threads[pid].cpid, idx);
+}
+
+void ViewEqTraceBuilder::refuse_schedule() {} //[snj]: ???
+
+bool ViewEqTraceBuilder::is_replaying() const {return false;} //[snj]: TODO
+void ViewEqTraceBuilder::cancel_replay() {replay = false;} //[snj]: needed?
+
+bool ViewEqTraceBuilder::full_memory_conflict() {return false;} //[snj]: TODO
+bool ViewEqTraceBuilder::join(int tgt_proc) {return false;} //[snj]: TODO
+
+Trace* ViewEqTraceBuilder::get_trace() const {Trace *t = NULL; return t;} //[snj]: TODO
+void ViewEqTraceBuilder::debug_print() const {} //[snj]: TODO
+
+bool ViewEqTraceBuilder::store(const SymData &ml) {llvm::outs() << "[snj]: sym_data being invoked!!"; assert(false); return false;}
+bool ViewEqTraceBuilder::atomic_store(const SymData &ml) {llvm::outs() << "[snj]: atomic_store being invoked!!"; assert(false); return false;}
+bool ViewEqTraceBuilder::compare_exchange(const SymData &sd, const SymData::block_type expected, bool success) 
+                                                    {llvm::outs() << "[snj]: cmp_exch being invoked!!"; assert(false); return false;}
+bool ViewEqTraceBuilder::load(const SymAddrSize &ml) {llvm::outs() << "[snj]: mutex_lock being invoked!!"; assert(false); return false;}
+bool ViewEqTraceBuilder::fence() {llvm::outs() << "[snj]: frnce being invoked!!"; assert(false); return false;}
+bool ViewEqTraceBuilder::sleepset_is_empty() const{llvm::outs() << "[snj]: sleepset_is_empty being invoked!!"; assert(false); return false;}
+bool ViewEqTraceBuilder::check_for_cycles(){llvm::outs() << "[snj]: check_for_cycles being invoked!!"; assert(false); return false;}
+bool ViewEqTraceBuilder::mutex_lock(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_lock being invoked!!"; assert(false); return false;}
+bool ViewEqTraceBuilder::mutex_lock_fail(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_lock_fail being invoked!!"; assert(false); return false;}
+bool ViewEqTraceBuilder::mutex_trylock(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_trylock being invoked!!"; assert(false); return false;}
+bool ViewEqTraceBuilder::mutex_unlock(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_unlock being invoked!!"; assert(false); return false;}
+bool ViewEqTraceBuilder::mutex_init(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_init being invoked!!"; assert(false); return false;}
+bool ViewEqTraceBuilder::mutex_destroy(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_ destroy being invoked!!"; assert(false); return false;}
+bool ViewEqTraceBuilder::cond_init(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_init being invoked!!"; assert(false); return false;}
+bool ViewEqTraceBuilder::cond_signal(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_signal being invoked!!"; assert(false); return false;}
+bool ViewEqTraceBuilder::cond_broadcast(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_broadcast being invoked!!"; assert(false); return false;}
+bool ViewEqTraceBuilder::cond_wait(const SymAddrSize &cond_ml,
+                        const SymAddrSize &mutex_ml){llvm::outs() << "[snj]: cond_wait being invoked!!"; assert(false); return false;}
+bool ViewEqTraceBuilder::cond_awake(const SymAddrSize &cond_ml,
+                        const SymAddrSize &mutex_ml){llvm::outs() << "[snj]: cond_awake being invoked!!"; assert(false); return false;}
+int ViewEqTraceBuilder::cond_destroy(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_destroy being invoked!!"; assert(false); return false;}
+bool ViewEqTraceBuilder::register_alternatives(int alt_count){llvm::outs() << "[snj]: register_alternatives being invoked!!"; assert(false); return false;}

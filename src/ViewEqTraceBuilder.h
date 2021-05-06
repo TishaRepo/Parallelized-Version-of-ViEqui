@@ -26,37 +26,39 @@ public:
     NODISCARD bool load_post(const SymAddrSize &ml);
     virtual NODISCARD bool full_memory_conflict() override;
     virtual NODISCARD bool join(int tgt_proc) override;
+    virtual NODISCARD bool spawn() override;
+
+    virtual bool reset() override;
+    virtual IID<CPid> get_iid() const override;
+    virtual void cancel_replay() override;
+    virtual bool is_replaying() const override;
+    virtual Trace *get_trace() const override;
+    virtual void debug_print() const override;
 
     //[nau]: added virtual function definitions for the sake of compiling
     //[snj]: added some more to the list
-    virtual NODISCARD bool spawn() override;
-    virtual NODISCARD bool store(const SymData &ml) override;
-    virtual NODISCARD bool atomic_store(const SymData &ml) override;
+    virtual NODISCARD bool store(const SymData &ml)  override;
+    virtual NODISCARD bool atomic_store(const SymData &ml)  override;
     virtual NODISCARD bool compare_exchange(const SymData &sd, const SymData::block_type expected, bool success) override;
-    virtual NODISCARD bool load(const SymAddrSize &ml) override;
+    virtual NODISCARD bool load(const SymAddrSize &ml)  override;
     virtual NODISCARD bool fence() override;
-    bool sleepset_is_empty() const{return TraceBuilder::sleepset_is_empty();}
-    bool check_for_cycles(){return TraceBuilder::check_for_cycles();}
-    Trace *get_trace() const {return TraceBuilder::get_trace();};
-    bool reset() {return TraceBuilder::reset();}
-    IID<CPid> get_iid() const{return TraceBuilder::get_iid(); }
-    bool is_replaying() const {return TSOPSOTraceBuilder::is_replaying(); }
-    void cancel_replay() {}
-    NODISCARD bool mutex_lock(const SymAddrSize &ml) {return TSOPSOTraceBuilder::mutex_lock(ml);}
-    NODISCARD bool mutex_lock_fail(const SymAddrSize &ml) {return TSOPSOTraceBuilder::mutex_lock_fail(ml);}
-    NODISCARD bool mutex_trylock(const SymAddrSize &ml){return TSOPSOTraceBuilder::mutex_trylock(ml);}
-    NODISCARD bool mutex_unlock(const SymAddrSize &ml){return TSOPSOTraceBuilder::mutex_unlock(ml);}
-    NODISCARD bool mutex_init(const SymAddrSize &ml){return TSOPSOTraceBuilder::mutex_init(ml);}
-    NODISCARD bool mutex_destroy(const SymAddrSize &ml){return TSOPSOTraceBuilder::mutex_destroy(ml);}
-    NODISCARD bool cond_init(const SymAddrSize &ml){return TSOPSOTraceBuilder::cond_init(ml);}
-    NODISCARD bool cond_signal(const SymAddrSize &ml){return TSOPSOTraceBuilder::cond_signal(ml);}
-    NODISCARD bool cond_broadcast(const SymAddrSize &ml){return TSOPSOTraceBuilder::cond_broadcast(ml);}
-    NODISCARD bool cond_wait(const SymAddrSize &cond_ml,
-                            const SymAddrSize &mutex_ml){return TSOPSOTraceBuilder::cond_wait(cond_ml,mutex_ml);}
-    NODISCARD bool cond_awake(const SymAddrSize &cond_ml,
-                            const SymAddrSize &mutex_ml){return TSOPSOTraceBuilder::cond_awake(cond_ml,mutex_ml);}
-    NODISCARD int cond_destroy(const SymAddrSize &ml){return TSOPSOTraceBuilder::cond_destroy(ml);}
-    NODISCARD bool register_alternatives(int alt_count){return TSOPSOTraceBuilder::register_alternatives(alt_count);}
+    virtual bool sleepset_is_empty() const override;
+    virtual bool check_for_cycles() override;
+    virtual NODISCARD bool mutex_lock(const SymAddrSize &ml) override;
+    virtual NODISCARD bool mutex_lock_fail(const SymAddrSize &ml) override;
+    virtual NODISCARD bool mutex_trylock(const SymAddrSize &ml) override;
+    virtual NODISCARD bool mutex_unlock(const SymAddrSize &ml) override;
+    virtual NODISCARD bool mutex_init(const SymAddrSize &ml) override;
+    virtual NODISCARD bool mutex_destroy(const SymAddrSize &ml) override;
+    virtual NODISCARD bool cond_init(const SymAddrSize &ml) override;
+    virtual NODISCARD bool cond_signal(const SymAddrSize &ml) override;
+    virtual NODISCARD bool cond_broadcast(const SymAddrSize &ml) override;
+    virtual NODISCARD bool cond_wait(const SymAddrSize &cond_ml,
+                            const SymAddrSize &mutex_ml) override;
+    virtual NODISCARD bool cond_awake(const SymAddrSize &cond_ml,
+                            const SymAddrSize &mutex_ml) override;
+    virtual NODISCARD int cond_destroy(const SymAddrSize &ml) override;
+    virtual NODISCARD bool register_alternatives(int alt_count) override;
     // [snj]: TODO check whether we can do without the above listed functions
 
     /* [rmnt]: I have just copied their comment for now. TODO Write our own
@@ -117,17 +119,6 @@ protected:
     // [rmnt]: Keeping a vector containing all the events which have been executed (and also the ongoing one).
     // Meant to emulate the prefix without needing any WakeupTree functionality.
     std::vector<Event> execution_sequence;
-
-    // [snj]: index in execution sequence aka index size of sequence
-    int prefix_idx;
-
-    // [rmnt]: TODO: Do we need sym_idx? It seems to play an important role in record_symbolic as well as whenever we are replaying
-    /* [rmnt]: Using their comment for now
-    * The index of the currently expected symbolic event, as an index into
-    * curev().sym. Equal to curev().sym.size() (or 0 when prefix_idx == -1) when
-    * not replaying.
-    */
-    unsigned sym_idx;
 
     std::vector<Thread>
         threads;
@@ -205,6 +196,42 @@ protected:
         assert(prefix_idx < int(prefix.size()));
         return execution_sequence[prefix_idx];
     };
+
+    const Event &curev() const
+    {
+        assert(0 <= prefix_idx);
+        assert(prefix_idx < int(prefix.size()));
+        return execution_sequence[prefix_idx];
+    };
+
+
+    /* The index into prefix corresponding to the last event that was
+    * scheduled. Has the value -1 when no events have been scheduled.
+    */
+    // [snj]: index in execution sequence aka index size of sequence
+    int prefix_idx;
+
+    // [rmnt]: TODO: Do we need sym_idx? It seems to play an important role in record_symbolic as well as whenever we are replaying
+    /* [rmnt]: Using their comment for now
+    * The index of the currently expected symbolic event, as an index into
+    * curev().sym. Equal to curev().sym.size() (or 0 when prefix_idx == -1) when
+    * not replaying.
+    */
+    unsigned sym_idx;
+
+    /* Are we currently replaying the events given in prefix from the
+    * previous execution? Or are we executing new events by arbitrary
+    * scheduling?
+    */
+    bool replay;
+
+    /* The number of events that were or are going to be replayed in the
+    * current computation.
+    */
+    int replay_point;
+
+    /* The latest value passed to this->metadata(). */
+    const llvm::MDNode *last_md;
 };
 
 #endif
