@@ -81,6 +81,7 @@ protected:
     };
 
     class Sequence;
+    
     class Event
     {
         Object object;
@@ -101,7 +102,16 @@ protected:
 
     class Sequence
     {
+    private:
         std::vector<Event> events;
+    public:
+        std::size_t size() const {return events.size();}
+        Event& last() {return events.back();}
+        void push_back(Event event) {events.push_back(event);}
+        void pop_back() {events.pop_back();}
+        
+        Event& operator[](std::size_t i) {return events[i];}
+        const Event& operator[](std::size_t i) const {return events[i];}
 
         Sequence &merge(Sequence &other_seq);
     };
@@ -118,7 +128,7 @@ protected:
 
     // [rmnt]: Keeping a vector containing all the events which have been executed (and also the ongoing one).
     // Meant to emulate the prefix without needing any WakeupTree functionality.
-    std::vector<Event> execution_sequence;
+    Sequence execution_sequence;
 
     std::vector<Thread>
         threads;
@@ -182,19 +192,16 @@ protected:
 
     bool schedule(int *proc);
 
-    // [snj]: TODO remove dependence on aux
     IPid ipid(int proc, int aux) const
     {
-        assert(-1 <= aux && aux <= 0);
-        assert(proc * 2 + 1 < int(threads.size()));
-        return aux ? proc * 2 : proc * 2 + 1;
+        return proc;
     };
 
     Event &curev()
     {
         assert(0 <= prefix_idx);
         assert(prefix_idx < int(prefix.size()));
-        return execution_sequence[prefix_idx];
+        return execution_sequence[prefix_idx];  //at(prefix_idx);
     };
 
     const Event &curev() const
