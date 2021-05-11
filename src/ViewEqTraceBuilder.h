@@ -10,6 +10,7 @@ typedef llvm::SmallVector<SymEv, 1> sym_ty;
 class ViewEqTraceBuilder : public TSOPSOTraceBuilder
 {
 public:
+    int round;
     ViewEqTraceBuilder(const Configuration &conf = Configuration::default_conf);
     virtual ~ViewEqTraceBuilder() override;
 
@@ -75,29 +76,30 @@ public:
 protected:
     typedef int IPid;
 
-    class Object
-    {
-        std::string var_name;
-    };
-
     class Sequence;
     
     class Event
     {
-        Object object;
-
     public:
-        Event(const IID<IPid> &iid, sym_ty sym = {}) : iid(iid), symEvent(std::move(sym)), md(0){};
-        int getValue(Sequence &seq);
         IID<IPid> iid;
         sym_ty symEvent;
         const llvm::MDNode *md;
+        // [snj]: value signifies the value read by a read event or written by a write event in the current 
+        // execution sequence, all value are initialized to 0 by default
+        int value;    
 
+        Event(const IID<IPid> &iid, sym_ty sym = {}) : iid(iid), symEvent(std::move(sym)), md(0){value = 0;};
         std::vector<Event> unexploredInfluencers(Sequence &seq);
         std::vector<Event> exploredInfluencers(Sequence &seq);
         std::vector<Event> exploredWitnesses(Sequence &seq);
         Sequence prefix(Sequence &seq);
         std::vector<Event> poPrefix(Sequence &seq);
+
+        std::string to_string();
+        inline std::ostream &operator<<(std::ostream &os){return os << to_string();}
+        inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os){return os << to_string();}
+
+        bool operator==(Event event);
     };
 
     class Sequence
@@ -109,6 +111,7 @@ protected:
         Event& last() {return events.back();}
         void push_back(Event event) {events.push_back(event);}
         void pop_back() {events.pop_back();}
+        void clear() {events.clear();}
         
         Event& operator[](std::size_t i) {return events[i];}
         const Event& operator[](std::size_t i) const {return events[i];}

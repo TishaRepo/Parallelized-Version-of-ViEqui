@@ -5,6 +5,7 @@ ViewEqTraceBuilder::ViewEqTraceBuilder(const Configuration &conf) : TSOPSOTraceB
 {
   threads.push_back(Thread(CPid(), -1));
   prefix_idx = -1;
+  round  = 3;
 }
 
 ViewEqTraceBuilder::~ViewEqTraceBuilder() {}
@@ -188,7 +189,28 @@ bool ViewEqTraceBuilder::record_symbolic(SymEv event)
   return true;
 }
 
-bool ViewEqTraceBuilder::reset() {llvm::outs() << "[snj]: reached reset\n"; replay_point = 0; return false;} //[snj]: TODO -- find replay point, setup for replay (next events etc)
+bool ViewEqTraceBuilder::reset() {
+  if (round == 1) return false;
+  llvm::outs() << "reset round " << round << "\n";
+  round--;
+  execution_sequence.clear();
+  
+  // CPS = CPidSystem();
+  threads.clear();
+  threads.push_back(Thread(CPid(), -1));
+  // mutexes.clear();
+  // cond_vars.clear();
+  mem.clear();
+  // last_full_memory_conflict = -1;
+  prefix_idx = -1;
+  // dryrun = false;
+  replay = true;
+  // dry_sleepers = 0;
+  last_md = 0;
+  
+  return true;
+}
+
 IID<CPid> ViewEqTraceBuilder::get_iid() const{
   IPid pid = curev().iid.get_pid();
   int idx = curev().iid.get_index();
@@ -223,12 +245,13 @@ bool ViewEqTraceBuilder::load(const SymAddrSize &ml) {
 }
 
 bool ViewEqTraceBuilder::store(const SymData &ml) {
-  llvm::outs() << "[snj]: in store\n";
+  // [snj]: visitStoreInst in Execution.cpp lands in atomic_store not her
   bool pre_ret = store_pre(ml);
   return store_post(ml) && pre_ret;
 }
 
 bool ViewEqTraceBuilder::atomic_store(const SymData &ml) {
+  // [snj]: visitStoreInst in Execution.cpp lands here not in store
   bool pre_ret = store_pre(ml);
   return store_post(ml) && pre_ret;
 }
@@ -240,6 +263,12 @@ bool ViewEqTraceBuilder::fence() {
 }
 
 Trace* ViewEqTraceBuilder::get_trace() const {Trace *t = NULL; return t;} //[snj]: TODO
+
+// [snj]: HOW TO READ
+//  - stack operations have been abstracted ( as they are mostly parameters 'void *arg')
+//  - heap operations also abstracted for now
+//  - Load(Global(location_id)(block_size))
+//  - Store(Global(thr_id)(block_size),value)
 void ViewEqTraceBuilder::debug_print() const {
   llvm::outs() << "Debug_print: execution_sequence.size()=" << execution_sequence.size() << "\n";
   for (int i = 0; i < execution_sequence.size(); i++) {
@@ -247,6 +276,15 @@ void ViewEqTraceBuilder::debug_print() const {
       llvm::outs() << "[" << i << "]: --\n";
       continue;
     }
+    if (execution_sequence[i].symEvent[0].arg.addr.addr.block.is_stack()) {
+      llvm::outs() << "[" << i << "]: Stack Operation\n";
+      continue;
+    }
+    if (execution_sequence[i].symEvent[0].arg.addr.addr.block.is_heap()) {
+      llvm::outs() << "[" << i << "]: Heap Operation\n";
+      continue;
+    }
+
     llvm::outs() << "[" << i << "]: " << "<" << execution_sequence[i].symEvent[0] << ">\n";
   }
 } //[snj]: TODO
@@ -270,3 +308,10 @@ bool ViewEqTraceBuilder::cond_awake(const SymAddrSize &cond_ml,
                         const SymAddrSize &mutex_ml){llvm::outs() << "[snj]: cond_awake being invoked!!"; assert(false); return false;}
 int ViewEqTraceBuilder::cond_destroy(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_destroy being invoked!!"; assert(false); return false;}
 bool ViewEqTraceBuilder::register_alternatives(int alt_count){llvm::outs() << "[snj]: register_alternatives being invoked!!"; assert(false); return false;}
+
+bool ViewEqTraceBuilder::Event::operator==(ViewEqTraceBuilder::Event event) {
+  if (value != event.value)
+    return false;
+
+  return (symEvent == event.symEvent);
+}

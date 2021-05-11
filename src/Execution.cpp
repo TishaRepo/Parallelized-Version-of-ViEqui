@@ -1501,6 +1501,8 @@ void Interpreter::visitStoreInst(StoreInst &I)
     }
   }
 
+  if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ) return;
+
   if (DryRun)
   {
     DryRunMem.emplace_back(std::move(sd));
