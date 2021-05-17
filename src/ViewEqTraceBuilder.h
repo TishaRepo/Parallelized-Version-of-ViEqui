@@ -88,36 +88,71 @@ protected:
         // execution sequence, all value are initialized to 0 by default
         int value;    
 
+        Event() {}
         Event(const IID<IPid> &iid, sym_ty sym = {}) : iid(iid), symEvent(std::move(sym)), md(0){value = 0;};
+        SymEv sym_event() const {return symEvent[0];}
+
+        bool is_read() {return (sym_event().kind == SymEv::LOAD);}
+        bool is_write() {return (sym_event().kind == SymEv::STORE);}
+        bool same_object(Event e);
+
         std::vector<Event> unexploredInfluencers(Sequence &seq);
         std::vector<Event> exploredInfluencers(Sequence &seq);
         std::vector<Event> exploredWitnesses(Sequence &seq);
         Sequence prefix(Sequence &seq);
         std::vector<Event> poPrefix(Sequence &seq);
 
-        std::string to_string();
+        std::string to_string() const;
         inline std::ostream &operator<<(std::ostream &os){return os << to_string();}
         inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os){return os << to_string();}
 
         bool operator==(Event event);
+        bool operator!=(Event event);
     };
 
     class Sequence
     {
     private:
-        std::vector<Event> events;
+        // [snj]: required by Sequence::cmerge function
+        std::tuple<Sequence, Sequence, Sequence> join(Sequence &primary, Sequence &other, Event delim, Sequence &joined);
+        // [snj]: projects tuple projectsions on the thress sequqnces respectively
+        void project(std::tuple<Sequence, Sequence, Sequence> &triple, Sequence &seq1, Sequence &seq2, Sequence &seq3);
+
     public:
+        std::vector<Event> events;
+
+        Sequence(){}
+        Sequence(std::vector<Event> &seq){events = seq;}
+
+        bool empty() {return (size() == 0);}
         std::size_t size() const {return events.size();}
-        Event& last() {return events.back();}
+        Event last() {return events.back();}
+        std::vector<Event>::iterator begin() {return events.begin();}
+        std::vector<Event>::iterator end() {return events.end();}
+        Event head() {return events.front();}
+        Sequence tail() {
+            std::vector<Event> tl(events.begin()+1, events.end()); 
+            Sequence stl(tl);
+            return stl;
+        }
+
         void push_back(Event event) {events.push_back(event);}
         void pop_back() {events.pop_back();}
+        void pop_front() {events.erase(events.begin());};
         void clear() {events.clear();}
-        
+        bool has(Event event) {return std::find(events.begin(), events.end(), event) != events.end();} 
+
+        void concatenate(Sequence seq) {events.insert(events.end(), seq.events.begin(), seq.events.end());}
+        bool hasRWpairs(Sequence &seq);
+
         Event& operator[](std::size_t i) {return events[i];}
         const Event& operator[](std::size_t i) const {return events[i];}
 
-        Sequence &merge(Sequence &other_seq);
+        // [snj]: consistent merge, merges 2 sequences such that all read events maitain their sources
+        //          i.e, reads-from relation remain unchanged
+        Sequence cmerge(Sequence &other_seq);
     };
+    typedef std::vector<Event>::iterator sequence_iterator;
 
     class Thread
     {
