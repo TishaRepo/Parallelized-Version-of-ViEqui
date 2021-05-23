@@ -104,7 +104,8 @@ protected:
     CPidSystem CPS;
 
     /*[rmnt]: Taken their ByteInfo object and representation of Memory as a mapping from SymAddr to ByteInfo as it is. 
-    * TODO: Do we need all the fields inside ByteInfo (last_update for example)? 
+    * TODO: Do we need all the fields inside ByteInfo (last_update for example)?
+    * UPDATE: Commented them out for now, will see if we need them later 
     */
     /* A ByteInfo object contains information about one byte in
    * memory. In particular, it recalls which events have recently
@@ -113,22 +114,22 @@ protected:
     class ByteInfo
     {
     public:
-        ByteInfo() : last_update(-1), last_update_ml({SymMBlock::Global(0), 0}, 1){};
+        ByteInfo() : {}; //last_update(-1), last_update_ml({SymMBlock::Global(0), 0}, 1){};
         /* An index into prefix, to the latest update that accessed this
      * byte. last_update == -1 if there has been no update to this
      * byte.
      */
-        int last_update;
+        // int last_update;
         /* The complete memory location (possibly multiple bytes) that was
      * accessed by the last update. Undefined if there has been no
      * update to this byte.
      */
-        SymAddrSize last_update_ml;
+        // SymAddrSize last_update_ml;
         /* Set of events that updated this byte since it was last read.
      *
      * Either contains last_update or is empty.
      */
-        VecSet<int> unordered_updates;
+        // VecSet<int> unordered_updates;
         /* last_read[tid] is the index in prefix of the latest (visible)
      * read of thread tid to this memory location, or -1 if thread tid
      * has not read this memory location.
@@ -159,8 +160,6 @@ protected:
         } last_read;
     };
     std::map<SymAddr, ByteInfo> mem;
-
-    bool schedule(int *proc);
 
     // [snj]: TODO remove dependence on aux
     IPid ipid(int proc, int aux) const
