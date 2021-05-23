@@ -205,7 +205,7 @@ Trace *DPORDriver::run_once(TraceBuilder &TB, llvm::Module *mod,
 
     llvm::interpreter::runFunction(*function, (argc,argv), env_var)
     further calls,
-    llvm::interpreter::run() @ Execution.cpp:line no. 4115
+    llvm::interpreter::run() @ Execution.cpp:line no. 4121
   */
   EE->runFunctionAsMain(mod->getFunction("main"), conf.argv, 0);
 
@@ -276,8 +276,16 @@ bool DPORDriver::handle_trace(TraceBuilder *TB, Trace *t, uint64_t *computation_
     t_used = true;
   }
   if(!TB->sleepset_is_empty()) {
+    if (conf.dpor_algorithm == Configuration::VIEW_EQ) {
+      llvm::outs() << "[snj]: sleepset is not empty\n";
+      assert(false);
+    }
     ++res.sleepset_blocked_trace_count;
   }else if(assume_blocked){
+    if (conf.dpor_algorithm == Configuration::VIEW_EQ) {
+      llvm::outs() << "[snj]: assume_blocked is true\n";
+      assert(false);
+    }
     ++res.assume_blocked_trace_count;
   }else{
     ++res.trace_count;

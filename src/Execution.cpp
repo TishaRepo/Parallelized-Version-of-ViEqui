@@ -1501,6 +1501,8 @@ void Interpreter::visitStoreInst(StoreInst &I)
     }
   }
 
+  if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ) return;
+
   if (DryRun)
   {
     DryRunMem.emplace_back(std::move(sd));
@@ -4127,7 +4129,9 @@ void Interpreter::run()
     assert(0 <= CurrentThread && CurrentThread < long(Threads.size()));
     rerun = false;
     if (0 <= aux)
-    { // Run some auxiliary thread
+    { 
+      assert(conf.dpor_algorithm != Configuration::VIEW_EQ);
+      // Run some auxiliary thread
       runAux(CurrentThread, aux);
       continue;
     }
@@ -4137,11 +4141,11 @@ void Interpreter::run()
     ExecutionContext &SF = ECStack()->back(); // Current stack frame
     Instruction &I = *SF.CurInst++;           // Increment before execute
 
-    // [rmnt] : Debugging
-    std::cout << "rmnt: Fetched current instruction : "
-              << "\n";
-    I.print(llvm::outs(), true);
-    std::cout << "\n";
+    // [rmnt] : Debugging -- [snj]: its not printing anything
+    // std::cout << "rmnt: Fetched current instruction : "
+    //           << "\n";
+    // I.print(llvm::outs(), true);
+    // std::cout << "\n";
 
     if (isUnknownIntrinsic(I))
     {
@@ -4192,7 +4196,7 @@ void Interpreter::run()
       [rmnt] : Acts as a wrapper function for executing different functions based on the type of instruction. Different functions defined in this file (e.g. VisitLoadInst). Detailed documentation at llvm/IR/InstVisitor.h : Line 35 
     */
     visit(I);
-
+    
     /* Atomic function? */
     if (0 <= AtomicFunctionCall)
     {

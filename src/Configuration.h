@@ -65,7 +65,7 @@ public:
     max_search_depth = -1;
     memory_model = MM_UNDEF;
     c11 = false;
-    dpor_algorithm = VIEW_EQ; // snj: changed from SOURCE to VIEW_EQ
+    dpor_algorithm = VIEW_EQ; // [snj]: changed from SOURCE to VIEW_EQ
     extfun_no_fence = {
         "pthread_self",
         "malloc",
