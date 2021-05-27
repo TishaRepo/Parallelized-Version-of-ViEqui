@@ -57,7 +57,7 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *type, int *alt, bool *doexecut
   // reverse loop to prioritize newly created threads
   for (int i = threads.size()-1; i >=0 ; i--) {  // [snj: after x=0 in main, no thread available]
     llvm::outs() << "threads.size()=" << threads.size() << "\n";
-    if (threads[i].available && threads[i].performing_setup) {   // && (conf.max_search_depth < 0 || threads[i].event_indices.size() < conf.max_search_depth)){
+    if (threads[i].available && threads[i].performing_setup) {   // && (conf.max_search_depth < 0 || threads[i].events.size() < conf.max_search_depth)){
       // llvm::outs() << "thread[" << i << "] availabe and performing setup\n";
       current_thread = i;
       *proc = i;
@@ -107,7 +107,7 @@ void ViewEqTraceBuilder::mark_unavailable(int proc, int aux)
 
 bool ViewEqTraceBuilder::is_enabled(int thread_id) {
   for (auto i = Enabled.begin(); i != Enabled.end(); i++) {
-    if ((*i).first == thread_id) 
+    if ((*i).get_pid() == thread_id) 
       return true;
   }
   return false;
@@ -166,7 +166,7 @@ bool ViewEqTraceBuilder::reset() {
   replay = true;
   // dry_sleepers = 0;
   last_md = 0;
-  
+
   return true;
 }
 
@@ -195,7 +195,7 @@ bool ViewEqTraceBuilder::spawn()
   
   // [snj]: create event in thread that is spawning a new event
   current_event = event;
-  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].event_indices.size());
+  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
   threads[current_thread].push_back(current_event);
 
   // [snj]: add new thread that is being spawned
@@ -220,7 +220,7 @@ bool ViewEqTraceBuilder::join(int tgt_proc) {
   event.make_join();
 
   current_event = event;
-  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].event_indices.size());
+  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
   threads[current_thread].push_back(current_event);
   
   return true;
@@ -232,7 +232,7 @@ bool ViewEqTraceBuilder::load(const SymAddrSize &ml) {
   event.make_read();  
   
   current_event = event;
-  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].event_indices.size());
+  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
   threads[current_thread].push_back(current_event);
 
   return true;
@@ -245,7 +245,7 @@ bool ViewEqTraceBuilder::store(const SymData &ml) {
   event.make_write();
   
   current_event = event;
-  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].event_indices.size());
+  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
   threads[current_thread].push_back(current_event);
 
   return true;
@@ -258,15 +258,15 @@ bool ViewEqTraceBuilder::atomic_store(const SymData &ml) {
   event.make_write();
   
   current_event = event;
-  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].event_indices.size());
+  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
   threads[current_thread].push_back(current_event);
 
   return true;
 }
 
-bool ViewEqTraceBuilder::fence() { 
+bool ViewEqTraceBuilder::fence() {
   // [snj]: invoked at pthread create
-  // llvm::outs() << "[snj]: fence being invoked!!"; 
+  // llvm::outs() << "[snj]: fence being invoked!!";
   return true;
 }
 
@@ -280,23 +280,25 @@ Trace* ViewEqTraceBuilder::get_trace() const {Trace *t = NULL; return t;} //[snj
 void ViewEqTraceBuilder::debug_print() const {
   llvm::outs() << "Debug_print: execution_sequence.size()=" << execution_sequence.size() << "\n";
   for (int i = 0; i < execution_sequence.size(); i++) {
-    if (execution_sequence[i].symEvent.size() < 1) {
+    int thread = execution_sequence[i].get_pid();
+    Event event = threads[thread][execution_sequence[i].get_index()];
+    if (event.symEvent.size() < 1) {
       llvm::outs() << "[" << i << "]: --\n";
       continue;
     }
-    if (execution_sequence[i].sym_event().addr().addr.block.is_stack()) {
+    if (event.sym_event().addr().addr.block.is_stack()) {
       llvm::outs() << "[" << i << "]: Stack Operation\n";
       continue;
     }
-    if (execution_sequence[i].sym_event().addr().addr.block.is_heap()) {
+    if (event.sym_event().addr().addr.block.is_heap()) {
       llvm::outs() << "[" << i << "]: Heap Operation\n";
       continue;
     }
-    llvm::outs() << "[" << i << "]: " << execution_sequence[i].to_string() << "\n";
+    llvm::outs() << "[" << i << "]: " << event.to_string() << "\n";
   }
 } //[snj]: TODO
 
-bool ViewEqTraceBuilder::compare_exchange(const SymData &sd, const SymData::block_type expected, bool success) 
+bool ViewEqTraceBuilder::compare_exchange(const SymData &sd, const SymData::block_type expected, bool success)
                                                     {llvm::outs() << "[snj]: cmp_exch being invoked!!"; assert(false); return false;}
 bool ViewEqTraceBuilder::sleepset_is_empty() const{llvm::outs() << "[snj]: sleepset_is_empty being invoked!!"; assert(false); return true;}
 bool ViewEqTraceBuilder::check_for_cycles(){llvm::outs() << "[snj]: check_for_cycles being invoked!!"; assert(false); return false;}
@@ -363,13 +365,99 @@ std::string ViewEqTraceBuilder::Event::to_string() const {
   return (sym_event().to_string() + " *** (" + type_to_string() + "(" + std::to_string(object) + "," + std::to_string(value) + "))");
 }
 
-void  ViewEqTraceBuilder::Sequence::project(std::tuple<Sequence, Sequence, Sequence> &triple, Sequence &seq1, Sequence &seq2, Sequence &seq3) {
+ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::prefix(IID<IPid> ev) {
+  assert(this->has(ev));
+  sequence_iterator it = find(begin(), end(), ev);
+  std::vector<IID<IPid>> pre(begin(), it);
+  Sequence sprefix(pre);
+  return sprefix;
+}
+
+ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::suffix(IID<IPid> ev) {
+  assert(this->has(ev));
+  sequence_iterator it = find(begin(), end(), ev);
+  std::vector<IID<IPid>> suf(it+1, end());
+  Sequence ssuffix(suf);
+  return ssuffix;
+}
+
+ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::suffix(ViewEqTraceBuilder::Sequence &seq) {
+  sequence_iterator it = find(begin(), end(), *(seq.end()-1));
+  std::vector<Event> suf(it+1, end());
+  Sequence ssuffix(suf);
+  return ssuffix;
+}
+
+bool ViewEqTraceBuilder::Sequence::conflicting(ViewEqTraceBuilder::Sequence &other_seq){
+  for(int i = 0; i < events.size(); i++){
+    for(int j = i + 1; j < events.size() ; j++){
+      if(other_seq.has(events[i]) && other_seq.has(events[j])){
+        sequence_iterator it1 = find(other_seq.begin(),other_seq.end(),events[i]);
+        sequence_iterator it2 = find(other_seq.begin(),other_seq.end(),events[j]);
+        if ((it1 - it2) > 0) return true;
+
+      }
+    }
+  }
+  return false;
+}
+
+bool ViewEqTraceBuilder::Sequence::isPrefix(ViewEqTraceBuilder::Sequence &seq){
+  for(int i = 0; i<events.size(); i++){
+    if(events[i] != seq.events[i]) return false;
+  }
+  return true;
+}
+
+ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::commonPrefix(ViewEqTraceBuilder::Sequence &seq){
+  int i = 0;
+  for( ; i<events.size(); i++){
+    if(events[i] != seq.events[i]) break;
+  }
+  std::vector<Event> cPre(events.begin(), events.begin()+i );
+  Sequence comPrefix(cPre);
+  assert(comPrefix.isPrefix(*this) && comPrefix.isPrefix(seq));
+  return comPrefix;
+}
+
+ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix(IID<IPid> ev){
+  assert(this->has(ev));
+  sequence_iterator it;
+  std::vector<IID<IPid>> poPre;
+  for(it = events.begin(); (*it) != ev; it++){
+    if(it->get_pid() == ev.get_pid()) poPre.push_back(*it);
+  }
+  Sequence spoPrefix(poPre);
+  return spoPrefix;
+}
+
+ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1, IID<IPid> e2){
+  assert(this->has(e1) && this->has(e2));
+  std::vector<IID<IPid>> taupr{e1};
+  ViewEqTraceBuilder::Sequence tauPrime(taupr);
+  tauPrime.concatenate(this->suffix(e1));
+  tauPrime.push_back(e2);
+  ViewEqTraceBuilder::Sequence res = tauPrime.poPrefix(e2);
+  ViewEqTraceBuilder::Event event1 = threads[e1.get_pid()][e1.get_index()];
+  ViewEqTraceBuilder::Event event2 = threads[e2.get_pid()][e2.get_index()];
+  if(event1.is_write()) res.push_back(e1);
+  if(event2.is_write()) res.push_back(e2);
+  if(event1.is_read()) res.push_back(e1);
+  if(event2.is_read()) res.push_back(e2);
+
+  return res;
+}
+
+
+void  ViewEqTraceBuilder::Sequence::project(std::tuple<ViewEqTraceBuilder::Sequence, ViewEqTraceBuilder::Sequence, ViewEqTraceBuilder::Sequence> &triple,
+ViewEqTraceBuilder::Sequence &seq1, ViewEqTraceBuilder::Sequence &seq2, ViewEqTraceBuilder::Sequence &seq3) {
   seq1 = std::get<0>(triple);
   seq2 = std::get<1>(triple);
   seq3 = std::get<2>(triple);
 }
 
-std::tuple<Sequence, Sequence, Sequence> ViewEqTraceBuilder::Sequence::join(Sequence &primary, Sequence &other, Event delim, Sequence &joined) 
+std::tuple<ViewEqTraceBuilder::Sequence, ViewEqTraceBuilder::Sequence, ViewEqTraceBuilder::Sequence> 
+ViewEqTraceBuilder::Sequence::join(Sequence &primary, Sequence &other, Event delim, Sequence &joined) 
 {
   typedef std::tuple<Sequence, Sequence, Sequence> return_type;
 
@@ -380,7 +468,7 @@ std::tuple<Sequence, Sequence, Sequence> ViewEqTraceBuilder::Sequence::join(Sequ
     return std::make_tuple(primary, other, joined);
   }
 
-    ViewEqTraceBuilder::Event e = primary.head();
+    IID<IPid> e = primary.head();
 
     if (e == delim) {
       if (joined.last() == e) {
@@ -394,15 +482,17 @@ std::tuple<Sequence, Sequence, Sequence> ViewEqTraceBuilder::Sequence::join(Sequ
       }
     }
 
-    if (e.is_write()) { // algo 6-17
+    ViewEqTraceBuilder::Event ev = threads[e.get_pid()][e.get_index()];
+    if (ev.is_write()) { // algo 6-17
       if (!other.has(e)) { // e not in both primary and other [algo 6-12]
-        Event er;
+        IID<IPid> er;
         ViewEqTraceBuilder::sequence_iterator it;
         for (it = other.events.begin(); it != other.events.end(); it++) {
           er = *it;
-          if (!er.is_read()) continue;
+          ViewEqTraceBuilder::Event event_er = threads[er.get_pid()][er.get_index()];
+          if (!event_er.is_read()) continue;
           if (primary.has(er)) continue;
-          if (e.same_object(er)) break; // found a read er that is not in primary s.t. obj(e) == obj(er)
+          if (ev.same_object(event_er)) break; // found a read er that is not in primary s.t. obj(e) == obj(er)
         }
 
         if (it != other.events.end()) { // there exists a read er that is not in primary s.t. obj(e) == obj(er)
@@ -425,7 +515,7 @@ std::tuple<Sequence, Sequence, Sequence> ViewEqTraceBuilder::Sequence::join(Sequ
       }
     }
 
-    if (e.is_read()) { // algo 18-21
+    if (ev.is_read()) { // algo 18-21
       if (!other.has(e)) { // algo 18
         joined.push_back(e);
         primary.pop_front();
@@ -463,7 +553,7 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::cmerge(Sequence &othe
   Event dummy;
   Sequence joined;
   std::tuple<Sequence, Sequence, Sequence> triple = join(current_seq, other_seq, dummy, joined);
-  
+
   assert(std::get<0>(triple).size() == 0);
   assert(std::get<1>(triple).size() == 0);
 
@@ -474,9 +564,11 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::cmerge(Sequence &othe
 bool ViewEqTraceBuilder::Sequence::hasRWpairs(Sequence &seq) {
   for (sequence_iterator it1 = (*this).events.begin(); it1 != (*this).events.end(); it1++) {
     for (sequence_iterator it2 = seq.events.begin(); it2 != seq.events.end(); it2++) {
-      if ((*it1).same_object(*it2)) {
-        if ((*it1).is_read() && (*it2).is_write()) return true;
-        if ((*it1).is_write() && (*it2).is_read()) return true;
+      ViewEqTraceBuilder::Event e1 = threads[it1->get_pid()][it1->get_index()];
+      ViewEqTraceBuilder::Event e2 = threads[it2->get_pid()][it2->get_index()];
+      if (e1.same_object(e2)) {
+        if (e1.is_read() && e2.is_write()) return true;
+        if (e1.is_write() && e2.is_read()) return true;
       }
     }
   }
