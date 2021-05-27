@@ -126,7 +126,7 @@ protected:
     {
     private:
         // [snj]: required by Sequence::cmerge function
-        std::tuple<Sequence, Sequence, Sequence> join(Sequence &primary, Sequence &other, Event delim, Sequence &joined);
+        std::tuple<Sequence, Sequence, Sequence> join(Sequence &primary, Sequence &other, IID<IPid> delim, Sequence &joined);
         // [snj]: projects tuple projectsions on the thress sequqnces respectively
         void project(std::tuple<Sequence, Sequence, Sequence> &triple, Sequence &seq1, Sequence &seq2, Sequence &seq3);
 
