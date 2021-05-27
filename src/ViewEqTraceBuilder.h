@@ -10,21 +10,16 @@ typedef llvm::SmallVector<SymEv, 1> sym_ty;
 class ViewEqTraceBuilder : public TSOPSOTraceBuilder
 {
 public:
-    int round;
+    int round; //[snj]: TODO temporary
     ViewEqTraceBuilder(const Configuration &conf = Configuration::default_conf);
     virtual ~ViewEqTraceBuilder() override;
 
-    virtual bool schedule(int *proc, int *aux, int *alt, bool *dryrun) override;
+    virtual bool schedule(int *proc, int *type, int *alt, bool *doexecute) override;
     virtual void refuse_schedule() override;
     virtual void metadata(const llvm::MDNode *md) override;
     virtual void mark_available(int proc, int aux = -1) override;
     virtual void mark_unavailable(int proc, int aux = -1) override;
-
-    //[snj]: split store and load functions to pre and post
-    NODISCARD bool store_pre(const SymData &ml);
-    NODISCARD bool store_post(const SymData &ml);
-    NODISCARD bool load_pre(const SymAddrSize &ml);
-    NODISCARD bool load_post(const SymAddrSize &ml);
+            bool is_enabled(int thread_id);
     virtual NODISCARD bool full_memory_conflict() override;
     virtual NODISCARD bool join(int tgt_proc) override;
     virtual NODISCARD bool spawn() override;
@@ -71,6 +66,8 @@ public:
     *
     * Otherwise returns true.
     */
+    // [snj]: record symbolic event for event
+    // bool NODISCARD record_symbolic(Event event, SymEv symevent);
     bool NODISCARD record_symbolic(SymEv event);
 
 protected:
@@ -81,20 +78,33 @@ protected:
     class Event
     {
     public:
+        enum ACCESS_TYPE {READ, WRITE, SPAWN, JOIN} type;
         IID<IPid> iid;
         sym_ty symEvent;
         const llvm::MDNode *md;
         // [snj]: value signifies the value read by a read event or written by a write event in the current 
         // execution sequence, all value are initialized to 0 by default
-        int value;    
+        int value;
+        unsigned object;
 
         Event() {}
-        Event(const IID<IPid> &iid, sym_ty sym = {}) : iid(iid), symEvent(std::move(sym)), md(0){value = 0;};
+        Event(SymEv sym) {symEvent.push_back(sym);}
+        Event(const IID<IPid> &iid, sym_ty sym = {}) : iid(iid), symEvent(std::move(sym)), md(0){};
+        void make_spawn();
+        void make_join();
+        void make_read();
+        void make_write();
         SymEv sym_event() const {return symEvent[0];}
 
-        bool is_read() {return (sym_event().kind == SymEv::LOAD);}
-        bool is_write() {return (sym_event().kind == SymEv::STORE);}
+        /* is read of shared object */
+        bool is_read() {return (sym_event().addr().addr.block.is_global() && type == READ);}
+        /* is write of shared object */
+        bool is_write() {return (sym_event().addr().addr.block.is_global() && type == WRITE);}
         bool same_object(Event e);
+        IID<IPid> get_iid() const {return iid;}
+        int get_id() {iid.get_index();}
+        IPid get_pid() {return iid.get_pid();}
+
 
         std::vector<Event> unexploredInfluencers(Sequence &seq);
         std::vector<Event> exploredInfluencers(Sequence &seq);
@@ -103,12 +113,15 @@ protected:
         std::vector<Event> poPrefix(Sequence &seq);
 
         std::string to_string() const;
+        std::string type_to_string() const;
         inline std::ostream &operator<<(std::ostream &os){return os << to_string();}
         inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os){return os << to_string();}
 
         bool operator==(Event event);
         bool operator!=(Event event);
+        // std::string   operator<<() {to_string();}
     };
+    typedef std::vector<Event>::iterator sequence_iterator;
 
     class Sequence
     {
@@ -119,7 +132,7 @@ protected:
         void project(std::tuple<Sequence, Sequence, Sequence> &triple, Sequence &seq1, Sequence &seq2, Sequence &seq3);
 
     public:
-        std::vector<Event> events;
+        std::vector<IID<IPid>> events;
 
         Sequence(){}
         Sequence(std::vector<Event> &seq){events = seq;}
@@ -140,10 +153,13 @@ protected:
         void pop_back() {events.pop_back();}
         void pop_front() {events.erase(events.begin());};
         void clear() {events.clear();}
+        sequence_iterator find(Event event) {return std::find(events.begin(), events.end(), event);}
+        sequence_iterator find(sequence_iterator start, sequence_iterator end, Event event) {return std::find(start, end, event);}
         bool has(Event event) {return std::find(events.begin(), events.end(), event) != events.end();} 
 
         void concatenate(Sequence seq) {events.insert(events.end(), seq.events.begin(), seq.events.end());}
         bool hasRWpairs(Sequence &seq);
+        bool conflits_with(Sequence &seq);
 
         Event& operator[](std::size_t i) {return events[i];}
         const Event& operator[](std::size_t i) const {return events[i];}
@@ -152,16 +168,20 @@ protected:
         //          i.e, reads-from relation remain unchanged
         Sequence cmerge(Sequence &other_seq);
     };
-    typedef std::vector<Event>::iterator sequence_iterator;
 
     class Thread
     {
     public:
-        Thread(const CPid &cpid, int spawn_event) : cpid(cpid), spawn_event(spawn_event), available(true){};
+        // [snj]: TODO is spawn event needed?
+        Thread(const CPid &cpid, int spawn_event) : cpid(cpid), spawn_event(spawn_event), available(true), performing_setup(true){};
+        Thread(const CPid &cpid) : cpid(cpid), available(true), performing_setup(true){};
         CPid cpid;
         int spawn_event;
         bool available;
-        std::vector<unsigned> event_indices;
+        std::vector<Event> events;
+        bool performing_setup;
+
+        void push_back(Event event) {events.push_back(event);}
     };
 
     // [rmnt]: Keeping a vector containing all the events which have been executed (and also the ongoing one).
@@ -228,6 +248,19 @@ protected:
     };
     std::map<SymAddr, ByteInfo> mem;
 
+    class State
+    {
+        // index of sequence explored corresponding to current state
+        int sequence_prefix;
+        // std::unordered_set leads;
+        // std::unordered_set done;
+
+    public:
+        bool hasUnexploredEvents();
+        bool hasUnexploredRWpair();
+        std::pair<Event,Event> unexploredRWpair();
+    };
+
     bool schedule(int *proc);
 
     IPid ipid(int proc, int aux) const
@@ -235,25 +268,10 @@ protected:
         return proc;
     };
 
-    Event &curev()
-    {
-        assert(0 <= prefix_idx);
-        assert(prefix_idx < int(prefix.size()));
-        return execution_sequence[prefix_idx];  //at(prefix_idx);
-    };
-
-    const Event &curev() const
-    {
-        assert(0 <= prefix_idx);
-        assert(prefix_idx < int(prefix.size()));
-        return execution_sequence[prefix_idx];
-    };
-
-
     /* The index into prefix corresponding to the last event that was
     * scheduled. Has the value -1 when no events have been scheduled.
     */
-    // [snj]: index in execution sequence aka index size of sequence
+    // [snj]: index in execution sequence same as size of sequence-1
     int prefix_idx;
 
     // [rmnt]: TODO: Do we need sym_idx? It seems to play an important role in record_symbolic as well as whenever we are replaying
@@ -277,6 +295,18 @@ protected:
 
     /* The latest value passed to this->metadata(). */
     const llvm::MDNode *last_md;
+
+    /* [snj]: Thread id of the thr(current event) */
+    int current_thread;
+
+    /* [snj]: current event */
+    Event current_event;
+
+    /* [snj]: set of enabled events ie next events of each thread */
+    // list of (thread id, next event) pairs
+    std::vector<IID<IPid>> Enabled;
+
+    bool performing_setup;
 };
 
 #endif

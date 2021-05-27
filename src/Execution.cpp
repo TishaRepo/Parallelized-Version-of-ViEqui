@@ -1470,6 +1470,9 @@ void Interpreter::visitLoadInst(LoadInst &I)
     }
   }
 
+  // [snj]: stops reading to memory 
+  if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ) return;
+
   if (DryRun && DryRunMem.size())
   {
     DryRunLoadValueFromMemory(Result, Ptr, *Ptr_sas, I.getType());
@@ -1501,6 +1504,7 @@ void Interpreter::visitStoreInst(StoreInst &I)
     }
   }
 
+  // [snj]: stops writing to memory
   if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ) return;
 
   if (DryRun)
@@ -1509,6 +1513,31 @@ void Interpreter::visitStoreInst(StoreInst &I)
     return;
   }
 
+  StoreValueToMemory(Val, Ptr, I.getOperand(0)->getType());
+}
+
+// [snj]: complete load for ViewEqTraceBuilder
+void Interpreter::completeLoadInst(LoadInst &I)
+{
+  ExecutionContext &SF = ECStack()->back();
+  GenericValue SRC = getOperandValue(I.getPointerOperand(), SF);
+  GenericValue *Ptr = (GenericValue *)GVTOP(SRC);
+  GenericValue Result;
+
+  LoadValueFromMemory(Result, Ptr, I.getType());
+  // [snj]: next 2 lines to check the value loaded from memory
+  // APInt a = Result.IntVal;
+  // llvm::outs() << "Loaded Value:"; a.print(llvm::outs(), true); llvm::outs() << "\n";
+  SetValue(&I, Result, SF);
+}
+
+// [snj]: complete store for ViewEqTraceBuilder
+void Interpreter::completeStoreInst(StoreInst &I)
+{
+  ExecutionContext &SF = ECStack()->back();
+  GenericValue Val = getOperandValue(I.getOperand(0), SF);
+  GenericValue *Ptr = (GenericValue *)GVTOP(getOperandValue(I.getPointerOperand(), SF));
+  
   StoreValueToMemory(Val, Ptr, I.getOperand(0)->getType());
 }
 
@@ -2982,6 +3011,16 @@ GenericValue Interpreter::getOperandValue(Value *V, ExecutionContext &SF)
 void Interpreter::callPthreadCreate(Function *F,
                                     const std::vector<GenericValue> &ArgVals)
 {
+  if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ && DryRun) {
+    if (!TB.fence() || !TB.spawn())
+    {
+      abort();
+    }
+    DryRun = false;
+
+    return;
+  }
+
   // Return 0 (success)
   GenericValue Result;
   Result.IntVal = APInt(F->getReturnType()->getIntegerBitWidth(), 0);
@@ -3006,11 +3045,13 @@ void Interpreter::callPthreadCreate(Function *F,
     }
   }
 
-  // Memory fence
-  if (!TB.fence() || !TB.spawn())
-  {
-    abort();
-    return;
+  if (conf.dpor_algorithm != Configuration::DPORAlgorithm::VIEW_EQ) {
+    // Memory fence
+    if (!TB.fence() || !TB.spawn())
+    {
+      abort();
+      return;
+    }
   }
 
   // Add a new stack for the new thread
@@ -3038,15 +3079,27 @@ void Interpreter::callPthreadCreate(Function *F,
 
   // Return to caller
   CurrentThread = caller_thread;
+  llvm::outs() << "PthreadCreate created " << CurrentThread << "\n";
 }
 
 void Interpreter::callPthreadJoin(Function *F,
                                   const std::vector<GenericValue> &ArgVals)
 {
-  int tid = pthread_t_to_tid(F->arg_begin()->getType(), ArgVals[0]);
+  int tid = pthread_t_to_tid(F->arg_begin()->getType(), ArgVals[0]);  
+  llvm::outs() << "in callPthreadJoin\n";
+  if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ && DryRun) {
+    if (!TB.fence() || !TB.join(tid))
+    {
+      abort();
+      return;
+    }
+    DryRun = false;
+    return;
+  }
 
   if (tid < 0 || int(Threads.size()) <= tid || tid == CurrentThread)
   {
+      llvm::outs() << "tid < 0 || int(Threads.size()) <= tid || tid == CurrentThread - TRUE (tid=" << tid << ")\n";
     std::stringstream ss;
     ss << "Invalid thread ID in pthread_join: " << tid;
     if (tid == CurrentThread)
@@ -3058,10 +3111,13 @@ void Interpreter::callPthreadJoin(Function *F,
 
   assert(Threads[tid].ECStack.empty());
 
-  if (!TB.fence() || !TB.join(tid))
-  {
-    abort();
-    return;
+  if (conf.dpor_algorithm != Configuration::DPORAlgorithm::VIEW_EQ) {
+      llvm::outs() << "calling TB fence and join\n";
+    if (!TB.fence() || !TB.join(tid))
+    {
+      abort();
+      return;
+    }
   }
 
   // Forward return value
@@ -3715,8 +3771,8 @@ void Interpreter::callAssertFail(Function *F,
 //
 void Interpreter::callFunction(Function *F,
                                const std::vector<GenericValue> &ArgVals)
-{
-  if (F->getName().str() == "pthread_create")
+{ 
+  if (F->getName().str() == "pthread_create") 
   {
     callPthreadCreate(F, ArgVals);
     return;
@@ -3826,7 +3882,7 @@ void Interpreter::callFunction(Function *F,
   assert((ECStack()->empty() || ECStack()->back().Caller == nullptr ||
           ECStack()->back().Caller.arg_size() == ArgVals.size()) &&
          "Incorrect number of arguments passed into function call!");
-
+  
   if (F->getName().str().find("__VERIFIER_atomic_") == 0)
   {
     if (conf.dpor_algorithm == Configuration::OBSERVERS)
@@ -3843,12 +3899,12 @@ void Interpreter::callFunction(Function *F,
       AtomicFunctionCall = ECStack()->size();
     } // else we are already inside an atomic function call
   }
-
+  
   // Make a new stack frame... and fill it in.
   ECStack()->push_back(ExecutionContext());
   ExecutionContext &StackFrame = ECStack()->back();
   StackFrame.CurFunction = F;
-
+  
   // Special handling for external functions.
   if (F->isDeclaration())
   {
@@ -3874,16 +3930,17 @@ void Interpreter::callFunction(Function *F,
         return;
       }
     }
-
+    
     if (DryRun)
     {
       ECStack()->pop_back();
       return;
     }
-
+    
     GenericValue Result = callExternalFunction(F, ArgVals);
     // Simulate a 'ret' instruction of the appropriate type.
     popStackAndReturnValueToCaller(F->getReturnType(), Result);
+    
     return;
   }
 
@@ -4006,17 +4063,20 @@ bool Interpreter::isPthreadMutexLock(Instruction &I, GenericValue **ptr)
 // [rmnt] : Checks if I is a thread join instruction, and if the joining thread has not completed, returns true
 bool Interpreter::checkRefuse(Instruction &I)
 {
+  llvm::outs() << "in checkrefuse\n";
   {
     int tid;
     if (isPthreadJoin(I, &tid))
-    {
+    {llvm::outs() << "isPthreadJoin\n";
       if (0 <= tid && tid < int(Threads.size()) && tid != CurrentThread)
-      {
+      {llvm::outs() << "0 <= tid && tid < int(Threads.size()) && tid != CurrentThread\n";
         if (Threads[tid].ECStack.size() || Threads[tid].AssumeBlocked)
         {
           /* The awaited thread is still executing. */
+          llvm::outs() << "calling refuse schedule";
           TB.refuse_schedule();
           Threads[tid].AwaitingJoin.push_back(CurrentThread);
+          llvm::outs() << "done";
           return true;
         }
       }
@@ -4120,32 +4180,122 @@ Option<SymAddr> Interpreter::GetSymAddr(void *Ptr)
   return ret;
 }
 
+
+
 void Interpreter::run()
 {
   int aux;
   bool rerun = false;
+
+  if (conf.dpor_algorithm == Configuration::VIEW_EQ) {
+    bool doexecute = false;
+    int  event_type = -1; // [snj]: store=0, load=1, others=-1
+    while (rerun || TB.schedule(&CurrentThread, &event_type, &CurrentAlt, &doexecute)) {
+      assert(0 <= CurrentThread && CurrentThread < long(Threads.size()));
+      rerun = false;
+
+      llvm::outs() << "Schedule (" << CurrentThread << "," << event_type << ") ";
+      if (doexecute) {
+        DryRun = false;
+        ExecutionContext &SF = ECStack()->back(); // Current stack frame
+        Instruction &I = *SF.CurInst++;           // Increment before execute
+
+        llvm::outs() << "[" << CurrentThread << "/" << Threads.size() << "]Execute: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
+
+        if (isUnknownIntrinsic(I)) {
+          /* This instruction is intrinsic. It will be removed from the IR
+          * and replaced by some new sequence of instructions. Executing
+          * the intrinsic itself does not count as executing an
+          * instruction. The flag rerun indicates that the same process
+          * should be scheduled once more, so that a real instruction may
+          * be executed.
+          */
+          rerun = true; //[snj]: handle rerun in schedule
+        }
+        else if (checkRefuse(I)) {
+          assert(false);
+          if (!ECStack()->empty()) {
+            /* Revert without executing the next instruction. */
+            --SF.CurInst;
+          }
+          continue;
+        }
+
+        if (ECStack()->empty()) { // The thread has terminated
+          if (CurrentThread == 0 && AtExitHandlers.size())
+          {
+            callFunction(AtExitHandlers.back(), {});
+            AtExitHandlers.pop_back();
+          }
+          else
+          {
+            TB.mark_unavailable(CurrentThread);
+          }
+        }
+
+        if (event_type == -1) visit(I); // not store and not load
+        else if (event_type == 0) completeStoreInst(static_cast<llvm::StoreInst&>(I)); // store
+        else completeLoadInst(static_cast<llvm::LoadInst&>(I)); // load
+      }
+      else {
+        DryRun = true; //peaking not executing
+        ExecutionContext &SF = ECStack()->back(); // Current stack frame
+        Instruction &I = *SF.CurInst;             // No Increment, peak not execute
+
+        llvm::outs() << "[" << CurrentThread << "/" << Threads.size() << "]NO Execute: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
+
+        if (isUnknownIntrinsic(I)) {
+          /* This instruction is intrinsic. It will be removed from the IR
+          * and replaced by some new sequence of instructions. Executing
+          * the intrinsic itself does not count as executing an
+          * instruction. The flag rerun indicates that the same process
+          * should be scheduled once more, so that a real instruction may
+          * be executed.
+          */
+          rerun = true; //[snj]: handle rerun in schedule
+        }
+        else if (checkRefuse(I)) {
+          continue;
+        }
+
+      llvm::outs() << "1\n";
+        visit(I);
+      }          
+    }
+
+    CurrentThread = 0;
+    clearAllStacks();
+    return;
+  }
+  
+  // [snj]: NOT VIEW_EQ
   while (rerun || TB.schedule(&CurrentThread, &aux, &CurrentAlt, &DryRun))
   {
     assert(0 <= CurrentThread && CurrentThread < long(Threads.size()));
     rerun = false;
     if (0 <= aux)
     { 
-      assert(conf.dpor_algorithm != Configuration::VIEW_EQ);
       // Run some auxiliary thread
       runAux(CurrentThread, aux);
       continue;
     }
 
-    // std::cout << "snj: executing event\n";
     // Interpret a single instruction & increment the "PC".
     ExecutionContext &SF = ECStack()->back(); // Current stack frame
     Instruction &I = *SF.CurInst++;           // Increment before execute
 
-    // [rmnt] : Debugging -- [snj]: its not printing anything
-    // std::cout << "rmnt: Fetched current instruction : "
-    //           << "\n";
-    // I.print(llvm::outs(), true);
-    // std::cout << "\n";
+    // //[snj]: ATTEMPTING TO GET VALUE
+    // Value *Va = I.getOperand(0);
+    // if (llvm::ConstantInt* CI = dyn_cast<llvm::ConstantInt>(Va)) {
+    //   llvm::outs() << "[" << (index++) << "] Value of <";
+    //   I.print(llvm::outs(), true);
+    //   llvm::outs() << "> is " << (*CI);
+    // }
+    // else {
+    //   llvm::outs() << "[" << (index++) << "] Value of <";
+    //   I.print(llvm::outs(), true);
+    //   llvm::outs() << "> is <no value>";
+    // }
 
     if (isUnknownIntrinsic(I))
     {
@@ -4193,9 +4343,11 @@ void Interpreter::run()
 
     /* 
       Execute
-      [rmnt] : Acts as a wrapper function for executing different functions based on the type of instruction. Different functions defined in this file (e.g. VisitLoadInst). Detailed documentation at llvm/IR/InstVisitor.h : Line 35 
+      [rmnt] : Acts as a wrapper function for executing different functions 
+      based on the type of instruction. Different functions defined in this file 
+      (e.g. VisitLoadInst). Detailed documentation at llvm/IR/InstVisitor.h : Line 35 
     */
-    visit(I);
+    visit(I);    
     
     /* Atomic function? */
     if (0 <= AtomicFunctionCall)
