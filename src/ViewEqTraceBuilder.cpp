@@ -440,8 +440,8 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1,
   tauPrime.concatenate(this->suffix(e1));
   tauPrime.push_back(e2);
   ViewEqTraceBuilder::Sequence res = tauPrime.poPrefix(e2);
-  ViewEqTraceBuilder::Event event1 = (*threads)[e1.get_pid()][e1.get_index()];
-  ViewEqTraceBuilder::Event event2 = (*threads)[e2.get_pid()][e2.get_index()];
+  ViewEqTraceBuilder::Event event1 = threads->at(e1.get_pid())[e1.get_index()];
+  ViewEqTraceBuilder::Event event2 = threads->at(e2.get_pid())[e2.get_index()];
   if(event1.is_write()) res.push_back(e1);
   if(event2.is_write()) res.push_back(e2);
   if(event1.is_read()) res.push_back(e1);
@@ -484,14 +484,14 @@ ViewEqTraceBuilder::Sequence::join(Sequence &primary, Sequence &other, IID<IPid>
       }
     }
 
-    ViewEqTraceBuilder::Event ev = threads[e.get_pid()][e.get_index()];
+    ViewEqTraceBuilder::Event ev = threads->at(e.get_pid())[e.get_index()];
     if (ev.is_write()) { // algo 6-17
       if (!other.has(e)) { // e not in both primary and other [algo 6-12]
         IID<IPid> er;
         ViewEqTraceBuilder::sequence_iterator it;
         for (it = other.events.begin(); it != other.events.end(); it++) {
           er = *it;
-          ViewEqTraceBuilder::Event event_er = threads[er.get_pid()][er.get_index()];
+          ViewEqTraceBuilder::Event event_er = threads->at(er.get_pid())[er.get_index()];
           if (!event_er.is_read()) continue;
           if (primary.has(er)) continue;
           if (ev.same_object(event_er)) break; // found a read er that is not in primary s.t. obj(e) == obj(er)
