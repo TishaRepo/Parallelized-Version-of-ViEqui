@@ -3011,16 +3011,6 @@ GenericValue Interpreter::getOperandValue(Value *V, ExecutionContext &SF)
 void Interpreter::callPthreadCreate(Function *F,
                                     const std::vector<GenericValue> &ArgVals)
 {
-  if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ && DryRun) {
-    if (!TB.fence() || !TB.spawn())
-    {
-      abort();
-    }
-    DryRun = false;
-
-    return;
-  }
-
   // Return 0 (success)
   GenericValue Result;
   Result.IntVal = APInt(F->getReturnType()->getIntegerBitWidth(), 0);
@@ -3045,13 +3035,11 @@ void Interpreter::callPthreadCreate(Function *F,
     }
   }
 
-  if (conf.dpor_algorithm != Configuration::DPORAlgorithm::VIEW_EQ) {
-    // Memory fence
-    if (!TB.fence() || !TB.spawn())
-    {
-      abort();
-      return;
-    }
+  // Memory fence
+  if (!TB.fence() || !TB.spawn())
+  {
+    abort();
+    return;
   }
 
   // Add a new stack for the new thread
@@ -3079,27 +3067,15 @@ void Interpreter::callPthreadCreate(Function *F,
 
   // Return to caller
   CurrentThread = caller_thread;
-  llvm::outs() << "PthreadCreate created " << CurrentThread << "\n";
-}
+  }
 
 void Interpreter::callPthreadJoin(Function *F,
                                   const std::vector<GenericValue> &ArgVals)
 {
   int tid = pthread_t_to_tid(F->arg_begin()->getType(), ArgVals[0]);  
-  llvm::outs() << "in callPthreadJoin\n";
-  if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ && DryRun) {
-    if (!TB.fence() || !TB.join(tid))
-    {
-      abort();
-      return;
-    }
-    DryRun = false;
-    return;
-  }
-
+  
   if (tid < 0 || int(Threads.size()) <= tid || tid == CurrentThread)
   {
-      llvm::outs() << "tid < 0 || int(Threads.size()) <= tid || tid == CurrentThread - TRUE (tid=" << tid << ")\n";
     std::stringstream ss;
     ss << "Invalid thread ID in pthread_join: " << tid;
     if (tid == CurrentThread)
@@ -3111,13 +3087,10 @@ void Interpreter::callPthreadJoin(Function *F,
 
   assert(Threads[tid].ECStack.empty());
 
-  if (conf.dpor_algorithm != Configuration::DPORAlgorithm::VIEW_EQ) {
-      llvm::outs() << "calling TB fence and join\n";
-    if (!TB.fence() || !TB.join(tid))
-    {
-      abort();
-      return;
-    }
+  if (!TB.fence() || !TB.join(tid))
+  {
+    abort();
+    return;
   }
 
   // Forward return value
@@ -4063,20 +4036,17 @@ bool Interpreter::isPthreadMutexLock(Instruction &I, GenericValue **ptr)
 // [rmnt] : Checks if I is a thread join instruction, and if the joining thread has not completed, returns true
 bool Interpreter::checkRefuse(Instruction &I)
 {
-  llvm::outs() << "in checkrefuse\n";
   {
     int tid;
     if (isPthreadJoin(I, &tid))
-    {llvm::outs() << "isPthreadJoin tid=" << tid << "\n";
+    {
       if (0 <= tid && tid < int(Threads.size()) && tid != CurrentThread)
-      {llvm::outs() << "0 <= tid && tid < int(Threads.size()) && tid != CurrentThread\n";
+      {
         if (Threads[tid].ECStack.size() || Threads[tid].AssumeBlocked)
         {
           /* The awaited thread is still executing. */
-          llvm::outs() << "calling refuse schedule";
           TB.refuse_schedule();
           Threads[tid].AwaitingJoin.push_back(CurrentThread);
-          llvm::outs() << "done";
           return true;
         }
       }
@@ -4187,88 +4157,6 @@ void Interpreter::run()
   int aux;
   bool rerun = false;
 
-  if (conf.dpor_algorithm == Configuration::VIEW_EQ) {
-    bool doexecute = false;
-    int  event_type = -1; // [snj]: store=0, load=1, others=-1
-    while (rerun || TB.schedule(&CurrentThread, &event_type, &CurrentAlt, &doexecute)) {
-      assert(0 <= CurrentThread && CurrentThread < long(Threads.size()));
-      rerun = false;
-
-      llvm::outs() << "Schedule (" << CurrentThread << "," << event_type << ") ";
-      if (doexecute) {
-        DryRun = false;
-        ExecutionContext &SF = ECStack()->back(); // Current stack frame
-        Instruction &I = *SF.CurInst++;           // Increment before execute
-
-        llvm::outs() << "[" << CurrentThread << "/" << Threads.size() << "]Execute: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
-
-        if (isUnknownIntrinsic(I)) {
-          /* This instruction is intrinsic. It will be removed from the IR
-          * and replaced by some new sequence of instructions. Executing
-          * the intrinsic itself does not count as executing an
-          * instruction. The flag rerun indicates that the same process
-          * should be scheduled once more, so that a real instruction may
-          * be executed.
-          */
-          rerun = true; //[snj]: handle rerun in schedule
-        }
-        else if (checkRefuse(I)) {
-          assert(false);
-          if (!ECStack()->empty()) {
-            /* Revert without executing the next instruction. */
-            --SF.CurInst;
-          }
-          continue;
-        }
-
-        if (ECStack()->empty()) { // The thread has terminated
-          if (CurrentThread == 0 && AtExitHandlers.size())
-          {
-            callFunction(AtExitHandlers.back(), {});
-            AtExitHandlers.pop_back();
-          }
-          else
-          {
-            TB.mark_unavailable(CurrentThread);
-          }
-        }
-
-        if (event_type == -1) visit(I); // not store and not load
-        else if (event_type == 0) completeStoreInst(static_cast<llvm::StoreInst&>(I)); // store
-        else completeLoadInst(static_cast<llvm::LoadInst&>(I)); // load
-      }
-      else {
-        DryRun = true; //peaking not executing
-        ExecutionContext &SF = ECStack()->back(); // Current stack frame
-        Instruction &I = *SF.CurInst;             // No Increment, peak not execute
-
-        llvm::outs() << "[" << CurrentThread << "/" << Threads.size() << "]NO Execute: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
-
-        if (isUnknownIntrinsic(I)) {
-          /* This instruction is intrinsic. It will be removed from the IR
-          * and replaced by some new sequence of instructions. Executing
-          * the intrinsic itself does not count as executing an
-          * instruction. The flag rerun indicates that the same process
-          * should be scheduled once more, so that a real instruction may
-          * be executed.
-          */
-          rerun = true; //[snj]: handle rerun in schedule
-        }
-        else if (checkRefuse(I)) {
-          continue;
-        }
-
-      llvm::outs() << "1\n";
-        visit(I);
-      }          
-    }
-
-    CurrentThread = 0;
-    clearAllStacks();
-    return;
-  }
-  
-  // [snj]: NOT VIEW_EQ
   while (rerun || TB.schedule(&CurrentThread, &aux, &CurrentAlt, &DryRun))
   {
     assert(0 <= CurrentThread && CurrentThread < long(Threads.size()));
@@ -4341,13 +4229,20 @@ void Interpreter::run()
       continue;
     }
 
+    if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ) {
+      if (isa<LoadInst>(I)) completeLoadInst(static_cast<llvm::LoadInst&>(I));
+      else if (isa<StoreInst>(I)) completeStoreInst(static_cast<llvm::StoreInst&>(I));
+      else visit(I);
+    }
+    else {
     /* 
       Execute
-      [rmnt] : Acts as a wrapper function for executing different functions 
+      [rmnt] : Visit(I) acts as a wrapper function for executing different functions 
       based on the type of instruction. Different functions defined in this file 
       (e.g. VisitLoadInst). Detailed documentation at llvm/IR/InstVisitor.h : Line 35 
     */
-    visit(I);    
+      visit(I);
+    }
     
     /* Atomic function? */
     if (0 <= AtomicFunctionCall)
@@ -4381,6 +4276,16 @@ void Interpreter::run()
     { // Did dry run. Now back up.
       --ECStack()->back().CurInst;
       DryRunMem.clear();
+    }
+
+    // [snj]: check if the next instruction is a load or store
+    if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ && !ECStack()->empty()) {
+      ExecutionContext &SF = ECStack()->back(); // Current stack frame
+      Instruction &I = *SF.CurInst;
+
+      if (isa<LoadInst>(I) || isa<StoreInst>(I)) {
+        visit(I); // visitLoadInst, visitStoreInst modified to peek and enable event but not execute
+      }
     }
   }
 

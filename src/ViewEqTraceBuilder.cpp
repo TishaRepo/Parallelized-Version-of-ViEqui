@@ -25,51 +25,23 @@ ViewEqTraceBuilder::~ViewEqTraceBuilder() {
     [rmnt] : This function is meant to replace the schedule function used in Interpreter::run in Execution.cpp. It searches for an available real thread (we are storing thread numbers at even indices since some backend functions rely on that). Once it finds one we push its index (prefix_idx is a global index keeping track of the number of events we have executed) to the respective thread's event indices. We also create its event object. Now here we have some work left. What they do is insert this object into prefix. We have to figure out where the symbolic event member of the Event object is being filled up (its empty on initialisation) as that will get us to how they find the type of event. Also, we have to implement certain functions like mark_available, mark_unavailable, reset etc which are required for this to replace the interface of the current schedule function. There are also other functions like metadata() and fence() that we are not sure whether our implementation would need.
              We needed to keep the signature same to maintain legacy, even though we don't use either auxilliary threads, or dryruns, or alternate events in our algorithm.
 */
-bool ViewEqTraceBuilder::schedule(int *proc, int *type, int *alt, bool *doexecute)
+bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun)
 {
   // snj: For compatibility with existing design
+  *aux = -1;
   *alt = 0;
+  *DryRun = false;
   // // //
 
-  *type = -1; //[snj]: not load, not store, not spwan
-
-  if (!((*doexecute) || current_thread == -1)) { // [snj]: execute/enable previosuly peaked event
-    if (false) { //(current_event.is_read() || current_event.is_write()) {
-      // [snj]: enable current event to be used by algo
-      llvm::outs() << "thread" << current_thread << ": done performing setup\n";
-      threads[current_thread].performing_setup = false;
-      assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
-      // llvm::outs() << "adding (" << current_thread << "," << current_event.to_string() << ") to enabled";
-      Enabled.push_back(current_event.iid);
-      // llvm::outs() << " -- DONE\n";
-    }
-    else { llvm::outs() << "adding to exn seq\n";
-      // [snj]: record current event as next in execution sequence
-      execution_sequence.push_back(current_event.iid);
-      prefix_idx++;
-
-      // [snj]: execute current event from Interpreter::run() in Execution.cpp
-      *proc = current_thread;
-      *doexecute = true; // [snj]: complete the last peaked event, it is not stratigically important to the algo
-      return true;
-    }
-  }
-
-  // [snj]: peak next event
+  // [snj]: peak next read/write event / execute next non-read/write event
   // reverse loop to prioritize newly created threads
-  for (int i = threads.size()-1; i >=0 ; i--) {  // [snj: after x=0 in main, no thread available]
-    llvm::outs() << "threads.size()=" << threads.size() << "\n";
-    if (threads[i].available && threads[i].performing_setup) {   // && (conf.max_search_depth < 0 || threads[i].events.size() < conf.max_search_depth)){
-      // llvm::outs() << "thread[" << i << "] availabe and performing setup\n";
+  for (int i = threads.size()-1; i >=0 ; i--) {
+    if (threads[i].available && !threads[i].awaiting_load_store) {   // && (conf.max_search_depth < 0 || threads[i].events.size() < conf.max_search_depth)){
       current_thread = i;
       *proc = i;
-      *doexecute = false; // [snj]: peak event not execute
       return true;
     }
   }
-
-  // [rmnt] : When creating a new event, initialize sym_idx to 0
-  // sym_idx = 0;
 
   if (Enabled.empty()) {
     debug_print();
@@ -77,7 +49,6 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *type, int *alt, bool *doexecut
   }
 
   // [snj]: TODO algo goes here
-  llvm::outs() << "picking from enabled\n";
   IID<IPid> enabled_event = Enabled.front();
   Enabled.erase(Enabled.begin());
   current_thread = enabled_event.get_pid();
@@ -86,14 +57,13 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *type, int *alt, bool *doexecut
   assert(0 <= current_thread && current_thread < long(threads.size()));
 
   // [snj]: record current event as next in execution sequence
+  // TODO only read write in exn seq but need all or atleat tid + how to set read values
   execution_sequence.push_back(current_event.iid);
   prefix_idx++;
 
   // [snj]: execute current event from Interpreter::run() in Execution.cpp
-  threads[current_thread].performing_setup = true; // [snj]: next event after current may not be load or store
+  threads[current_thread].awaiting_load_store = false; // [snj]: next event after current may not be load or store
   *proc = current_thread;
-  *doexecute = true; // [snj]: complete the next algo selected event
-  *type = (current_event.is_write()) ? 0 : 1; // [snj]: if store then 1 if load then 0
   return true;
 }
 
@@ -122,32 +92,11 @@ void ViewEqTraceBuilder::metadata(const llvm::MDNode *md)
   current_event.md = md;
 }
 
-// // [rmnt]: TODO : Implement the notion of replay and associated functions
-// // [snj]: not used for READ and WRITE
 bool ViewEqTraceBuilder::record_symbolic(SymEv event)
 {
   llvm::outs() << "in record symbolic\n";
-  // if (!replay)
-  // {
-  //   assert(sym_idx == curev().symEvent.size());
-  //   /* New event */
-  //   curev().symEvent.push_back(event);
-  //   sym_idx++;
-  // }
-  // else
-  // {
-  //   /* Replay. SymEv::set() asserts that this is the same event as last time. */
-  //   assert(sym_idx < curev().symEvent.size());
-  //   SymEv &last = curev().symEvent[sym_idx++];
-  //   if (!last.is_compatible_with(event))
-  //   {
-  //     auto pid_str = [this](IPid p) { return threads[p].cpid.to_string(); };
-  //     nondeterminism_error("Event with effect " + last.to_string(pid_str) + " became " + event.to_string(pid_str) + " when replayed");
-  //     return false;
-  //   }
-  //   last = event;
-  // }
-  return true;
+  assert(false);
+  return false;
 }
 
 bool ViewEqTraceBuilder::reset() {
@@ -191,7 +140,6 @@ bool ViewEqTraceBuilder::full_memory_conflict() {return false;} //[snj]: TODO
 
 bool ViewEqTraceBuilder::spawn()
 {
-  llvm::outs() << "spawn\n";
   Event event(SymEv::Spawn(threads.size()));
   event.make_spawn();
 
@@ -200,24 +148,16 @@ bool ViewEqTraceBuilder::spawn()
   current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
   threads[current_thread].push_back(current_event);
 
-  // [snj]: add new thread that is being spawned
-  if (threads[threads.size()-1].spawn_event == -42) {
-    // [snj]: corresponding dummy thread spawned during peak
-    threads[threads.size()-1].spawn_event = -1; // [snj]: ready for execution
-    return true;
-  }
-
-  // [snj]: setup new (dummy) program thread
+  // [snj]: setup new program thread
   IPid parent_ipid = current_event.iid.get_pid();
   CPid child_cpid = CPS.spawn(threads[parent_ipid].cpid);
-  /* TODO: First event of thread is dummy */
+  /* Spwan event of thread is dummy */
   threads.push_back(Thread(child_cpid, -42));
 
   return true;
 }
 
 bool ViewEqTraceBuilder::join(int tgt_proc) {
-  llvm::outs() << "join\n";
   Event event(SymEv::Join(tgt_proc));
   event.make_join();
 
@@ -229,39 +169,48 @@ bool ViewEqTraceBuilder::join(int tgt_proc) {
 }
 
 bool ViewEqTraceBuilder::load(const SymAddrSize &ml) {
-  llvm::outs() << "load\n";
   Event event(SymEv::Load(ml));
   event.make_read();
 
   current_event = event;
   current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
   threads[current_thread].push_back(current_event);
+  threads[current_thread].awaiting_load_store = true;
+
+  assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
+  Enabled.push_back(current_event.iid);
 
   return true;
 }
 
 bool ViewEqTraceBuilder::store(const SymData &ml) {
   // [snj]: visitStoreInst in Execution.cpp lands in atomic_store not here
-  llvm::outs() << "store\n";
   Event event(SymEv::Store(ml));
   event.make_write();
 
   current_event = event;
   current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
   threads[current_thread].push_back(current_event);
+  threads[current_thread].awaiting_load_store = true;
+
+  assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
+  Enabled.push_back(current_event.iid);
 
   return true;
 }
 
 bool ViewEqTraceBuilder::atomic_store(const SymData &ml) {
   // [snj]: visitStoreInst in Execution.cpp lands here not in store
-  llvm::outs() << "at store\n";
   Event event(SymEv::Store(ml));
   event.make_write();
 
   current_event = event;
   current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
   threads[current_thread].push_back(current_event);
+  threads[current_thread].awaiting_load_store = true;
+
+  assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
+  Enabled.push_back(current_event.iid);
 
   return true;
 }

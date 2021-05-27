@@ -185,13 +185,13 @@ protected:
     {
     public:
         // [snj]: TODO is spawn event needed?
-        Thread(const CPid &cpid, int spawn_event) : cpid(cpid), spawn_event(spawn_event), available(true), performing_setup(true){};
-        Thread(const CPid &cpid) : cpid(cpid), available(true), performing_setup(true){};
+        Thread(const CPid &cpid, int spawn_event) : cpid(cpid), spawn_event(spawn_event), available(true), awaiting_load_store(false){};
+        Thread(const CPid &cpid) : cpid(cpid), available(true), awaiting_load_store(false){};
         CPid cpid;
         int spawn_event;
         bool available;
         std::vector<Event> events;
-        bool performing_setup;
+        bool awaiting_load_store;
 
         void push_back(Event event) {events.push_back(event);}
 
