@@ -1526,8 +1526,8 @@ void Interpreter::completeLoadInst(LoadInst &I)
 
   LoadValueFromMemory(Result, Ptr, I.getType());
   // [snj]: next 2 lines to check the value loaded from memory
-  // APInt a = Result.IntVal;
-  // llvm::outs() << "Loaded Value:"; a.print(llvm::outs(), true); llvm::outs() << "\n";
+  APInt a = Result.IntVal;
+  llvm::outs() << "Loaded Value:"; a.print(llvm::outs(), true); llvm::outs() << "\n";
   SetValue(&I, Result, SF);
 }
 
@@ -4067,7 +4067,7 @@ bool Interpreter::checkRefuse(Instruction &I)
   {
     int tid;
     if (isPthreadJoin(I, &tid))
-    {llvm::outs() << "isPthreadJoin\n";
+    {llvm::outs() << "isPthreadJoin tid=" << tid << "\n";
       if (0 <= tid && tid < int(Threads.size()) && tid != CurrentThread)
       {llvm::outs() << "0 <= tid && tid < int(Threads.size()) && tid != CurrentThread\n";
         if (Threads[tid].ECStack.size() || Threads[tid].AssumeBlocked)

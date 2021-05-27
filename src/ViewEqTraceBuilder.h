@@ -122,6 +122,8 @@ protected:
         // std::string   operator<<() {to_string();}
     };
 
+    class Thread;
+    
     class Sequence
     {
     private:
@@ -132,6 +134,7 @@ protected:
 
     public:
         std::vector<IID<IPid>> events;
+        std::vector<Thread> *threads;
 
         Sequence(){}
         Sequence(std::vector<IID<IPid>> &seq){events = seq;}
