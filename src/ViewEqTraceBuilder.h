@@ -137,7 +137,8 @@ protected:
         std::vector<Thread> *threads;
 
         Sequence(){}
-        Sequence(std::vector<IID<IPid>> &seq){events = seq;}
+        Sequence(std::vector<Thread>* t){threads = t;}
+        Sequence(std::vector<IID<IPid>> &seq, std::vector<Thread>* t){events = seq; threads = t;}
 
         bool empty() {return (size() == 0);}
         std::size_t size() const {return events.size();}
@@ -147,7 +148,7 @@ protected:
         IID<IPid> head() {return events.front();}
         Sequence tail() {
             std::vector<IID<IPid>> tl(events.begin()+1, events.end());
-            Sequence stl(tl);
+            Sequence stl(tl,threads);
             return stl;
         }
 
