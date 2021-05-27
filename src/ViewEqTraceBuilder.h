@@ -77,16 +77,16 @@ protected:
     typedef int IPid;
 
     class Sequence;
-    
+
     class Event
     {
     public:
         IID<IPid> iid;
         sym_ty symEvent;
         const llvm::MDNode *md;
-        // [snj]: value signifies the value read by a read event or written by a write event in the current 
+        // [snj]: value signifies the value read by a read event or written by a write event in the current
         // execution sequence, all value are initialized to 0 by default
-        int value;    
+        int value;
 
         Event() {}
         Event(const IID<IPid> &iid, sym_ty sym = {}) : iid(iid), symEvent(std::move(sym)), md(0){value = 0;};
@@ -114,45 +114,55 @@ protected:
     {
     private:
         // [snj]: required by Sequence::cmerge function
-        std::tuple<Sequence, Sequence, Sequence> join(Sequence &primary, Sequence &other, Event delim, Sequence &joined);
+        std::tuple<Sequence, Sequence, Sequence> join(Sequence &primary, Sequence &other, IID<IPid> delim, Sequence &joined);
         // [snj]: projects tuple projectsions on the thress sequqnces respectively
         void project(std::tuple<Sequence, Sequence, Sequence> &triple, Sequence &seq1, Sequence &seq2, Sequence &seq3);
 
     public:
-        std::vector<Event> events;
+        std::vector<IID<IPid>> events;
 
         Sequence(){}
-        Sequence(std::vector<Event> &seq){events = seq;}
+        Sequence(std::vector<IID<IPid>> &seq){events = seq;}
 
         bool empty() {return (size() == 0);}
         std::size_t size() const {return events.size();}
-        Event last() {return events.back();}
-        std::vector<Event>::iterator begin() {return events.begin();}
-        std::vector<Event>::iterator end() {return events.end();}
-        Event head() {return events.front();}
+        IID<IPid> last() {return events.back();}
+        std::vector<IID<IPid>>::iterator begin() {return events.begin();}
+        std::vector<IID<IPid>>::iterator end() {return events.end();}
+        IID<IPid> head() {return events.front();}
         Sequence tail() {
-            std::vector<Event> tl(events.begin()+1, events.end()); 
+            std::vector<IID<IPid>> tl(events.begin()+1, events.end());
             Sequence stl(tl);
             return stl;
         }
 
-        void push_back(Event event) {events.push_back(event);}
+        void push_back(IID<IPid> event) {events.push_back(event);}
         void pop_back() {events.pop_back();}
         void pop_front() {events.erase(events.begin());};
         void clear() {events.clear();}
-        bool has(Event event) {return std::find(events.begin(), events.end(), event) != events.end();} 
+        bool has(IID<IPid> event) {return std::find(events.begin(), events.end(), event) != events.end();}
 
         void concatenate(Sequence seq) {events.insert(events.end(), seq.events.begin(), seq.events.end());}
         bool hasRWpairs(Sequence &seq);
 
-        Event& operator[](std::size_t i) {return events[i];}
-        const Event& operator[](std::size_t i) const {return events[i];}
+        IID<IPid>& operator[](std::size_t i) {return events[i];}
+        const IID<IPid>& operator[](std::size_t i) const {return events[i];}
 
+        bool isPrefix(Sequence &seq);
+        Sequence prefix(IID<IPid> ev);
+        Sequence suffix(IID<IPid> ev);
+        Sequence suffix(Sequence &seq);
+        Sequence poPrefix(IID<IPid> ev);
+        Sequence commonPrefix(Sequence &seq);
+        bool conflicting(Sequence &other_seq);
+        Sequence backseq(IID<IPid> e1, IID<IPid> e2);
         // [snj]: consistent merge, merges 2 sequences such that all read events maitain their sources
         //          i.e, reads-from relation remain unchanged
         Sequence cmerge(Sequence &other_seq);
+
     };
-    typedef std::vector<Event>::iterator sequence_iterator;
+    typedef std::vector<IID<IPid>>::iterator sequence_iterator;
+
 
     class Thread
     {
