@@ -121,10 +121,11 @@ protected:
         bool operator!=(Event event);
         // std::string   operator<<() {to_string();}
     };
-
+    class Thread;
     class Sequence
     {
     private:
+        std::vector<Thread>* thrs;
         // [snj]: required by Sequence::cmerge function
         std::tuple<Sequence, Sequence, Sequence> join(Sequence &primary, Sequence &other, IID<IPid> delim, Sequence &joined);
         // [snj]: projects tuple projectsions on the thress sequqnces respectively
@@ -134,7 +135,7 @@ protected:
         std::vector<IID<IPid>> events;
 
         Sequence(){}
-        Sequence(std::vector<IID<IPid>> &seq){events = seq;}
+        Sequence(std::vector<IID<IPid>> &seq, std::vector<Thread>* t){events = seq; thrs = t;}
 
         bool empty() {return (size() == 0);}
         std::size_t size() const {return events.size();}
@@ -144,7 +145,7 @@ protected:
         IID<IPid> head() {return events.front();}
         Sequence tail() {
             std::vector<IID<IPid>> tl(events.begin()+1, events.end());
-            Sequence stl(tl);
+            Sequence stl(tl,thrs);
             return stl;
         }
 

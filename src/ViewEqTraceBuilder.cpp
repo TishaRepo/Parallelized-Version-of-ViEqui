@@ -6,7 +6,9 @@ ViewEqTraceBuilder::ViewEqTraceBuilder(const Configuration &conf) : TSOPSOTraceB
   current_thread = -1;
   prefix_idx = 0;
   performing_setup = true;
-
+  std::vector<IID<IPid>> evs;
+  Sequence s(evs,&threads);
+  execution_sequence = s;
   round  = 1; // [snj]: TODO temp remove eventually
 }
 
@@ -369,7 +371,7 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::prefix(IID<IPid> ev) 
   assert(this->has(ev));
   sequence_iterator it = find(begin(), end(), ev);
   std::vector<IID<IPid>> pre(begin(), it);
-  Sequence sprefix(pre);
+  Sequence sprefix(pre,thrs);
   return sprefix;
 }
 
@@ -377,14 +379,14 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::suffix(IID<IPid> ev) 
   assert(this->has(ev));
   sequence_iterator it = find(begin(), end(), ev);
   std::vector<IID<IPid>> suf(it+1, end());
-  Sequence ssuffix(suf);
+  Sequence ssuffix(suf,thrs);
   return ssuffix;
 }
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::suffix(ViewEqTraceBuilder::Sequence &seq) {
   sequence_iterator it = find(begin(), end(), *(seq.end()-1));
   std::vector<IID<IPid>> suf(it+1, end());
-  Sequence ssuffix(suf);
+  Sequence ssuffix(suf,thrs);
   return ssuffix;
 }
 
@@ -415,7 +417,7 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::commonPrefix(ViewEqTr
     if(events[i] != seq.events[i]) break;
   }
   std::vector<IID<IPid>> cPre(events.begin(), events.begin()+i );
-  Sequence comPrefix(cPre);
+  Sequence comPrefix(cPre,thrs);
   assert(comPrefix.isPrefix(*this) && comPrefix.isPrefix(seq));
   return comPrefix;
 }
@@ -427,17 +429,18 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix(IID<IPid> ev
   for(it = events.begin(); (*it) != ev; it++){
     if(it->get_pid() == ev.get_pid()) poPre.push_back(*it);
   }
-  Sequence spoPrefix(poPre);
+  Sequence spoPrefix(poPre,thrs);
   return spoPrefix;
 }
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1, IID<IPid> e2){
   assert(this->has(e1) && this->has(e2));
   std::vector<IID<IPid>> taupr{e1};
-  ViewEqTraceBuilder::Sequence tauPrime(taupr);
+  ViewEqTraceBuilder::Sequence tauPrime(taupr,thrs);
   tauPrime.concatenate(this->suffix(e1));
   tauPrime.push_back(e2);
   ViewEqTraceBuilder::Sequence res = tauPrime.poPrefix(e2);
+  std::vector<Thread> threads = *thrs;
   ViewEqTraceBuilder::Event event1 = threads[e1.get_pid()][e1.get_index()];
   ViewEqTraceBuilder::Event event2 = threads[e2.get_pid()][e2.get_index()];
   if(event1.is_write()) res.push_back(e1);
@@ -460,7 +463,7 @@ std::tuple<ViewEqTraceBuilder::Sequence, ViewEqTraceBuilder::Sequence, ViewEqTra
 ViewEqTraceBuilder::Sequence::join(Sequence &primary, Sequence &other, IID<IPid> delim, Sequence &joined)
 {
   typedef std::tuple<Sequence, Sequence, Sequence> return_type;
-
+  std::vector<Thread> threads = *thrs;
   if (primary.empty()) {
     joined.concatenate(other);
     primary.clear();
@@ -564,6 +567,7 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::cmerge(Sequence &othe
 bool ViewEqTraceBuilder::Sequence::hasRWpairs(Sequence &seq) {
   for (sequence_iterator it1 = (*this).events.begin(); it1 != (*this).events.end(); it1++) {
     for (sequence_iterator it2 = seq.events.begin(); it2 != seq.events.end(); it2++) {
+      std::vector<Thread> threads = *thrs;
       ViewEqTraceBuilder::Event e1 = threads[it1->get_pid()][it1->get_index()];
       ViewEqTraceBuilder::Event e2 = threads[it2->get_pid()][it2->get_index()];
       if (e1.same_object(e2)) {
