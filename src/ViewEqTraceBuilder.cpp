@@ -177,14 +177,24 @@ bool ViewEqTraceBuilder::join(int tgt_proc) {
 bool ViewEqTraceBuilder::load(const SymAddrSize &ml) {
   Event event(SymEv::Load(ml));
   event.make_read();
-
   current_event = event;
-  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
-  threads[current_thread].push_back(current_event);
-  threads[current_thread].awaiting_load_store = true;
+    
+  if (current_event.is_global()) {
+    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    threads[current_thread].push_back(current_event);
+    threads[current_thread].awaiting_load_store = true;
 
-  assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
-  Enabled.push_back(current_event.iid);
+    assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
+    Enabled.push_back(current_event.iid);
+  }
+  else {
+    threads[current_thread].pop_back();
+    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    threads[current_thread].push_back(current_event);
+    execution_sequence.pop_back();
+    execution_sequence.push_back(current_event.iid);
+  }
+
 
   return true;
 }
@@ -193,14 +203,23 @@ bool ViewEqTraceBuilder::store(const SymData &ml) {
   // [snj]: visitStoreInst in Execution.cpp lands in atomic_store not here
   Event event(SymEv::Store(ml));
   event.make_write();
-
   current_event = event;
-  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
-  threads[current_thread].push_back(current_event);
-  threads[current_thread].awaiting_load_store = true;
 
-  assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
-  Enabled.push_back(current_event.iid);
+  if (current_event.is_global()) {
+    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    threads[current_thread].push_back(current_event);
+    threads[current_thread].awaiting_load_store = true;
+
+    assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
+    Enabled.push_back(current_event.iid);
+  }
+  else {
+    threads[current_thread].pop_back();
+    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    threads[current_thread].push_back(current_event);
+    execution_sequence.pop_back();
+    execution_sequence.push_back(current_event.iid);
+  }
 
   return true;
 }
@@ -209,14 +228,23 @@ bool ViewEqTraceBuilder::atomic_store(const SymData &ml) {
   // [snj]: visitStoreInst in Execution.cpp lands here not in store
   Event event(SymEv::Store(ml));
   event.make_write();
-
   current_event = event;
-  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
-  threads[current_thread].push_back(current_event);
-  threads[current_thread].awaiting_load_store = true;
+    
+  if (current_event.is_global()) {
+    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    threads[current_thread].push_back(current_event);
+    threads[current_thread].awaiting_load_store = true;
 
-  assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
-  Enabled.push_back(current_event.iid);
+    assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
+    Enabled.push_back(current_event.iid);
+  }
+  else {
+    threads[current_thread].pop_back();
+    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    threads[current_thread].push_back(current_event);
+    execution_sequence.pop_back();
+    execution_sequence.push_back(current_event.iid);
+  }
 
   return true;
 }

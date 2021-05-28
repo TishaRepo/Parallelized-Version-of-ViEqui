@@ -100,6 +100,7 @@ protected:
         bool is_read() {return (sym_event().addr().addr.block.is_global() && type == READ);}
         /* is write of shared object */
         bool is_write() {return (sym_event().addr().addr.block.is_global() && type == WRITE);}
+        bool is_global() {return sym_event().addr().addr.block.is_global();}
         bool same_object(Event e);
         IID<IPid> get_iid() const {return iid;}
         int get_id() {return iid.get_index();}
@@ -194,6 +195,7 @@ protected:
         bool awaiting_load_store;
 
         void push_back(Event event) {events.push_back(event);}
+        void pop_back() {events.pop_back();}
 
         Event& operator[](std::size_t i) {return events[i];}
         const Event& operator[](std::size_t i) const {return events[i];}

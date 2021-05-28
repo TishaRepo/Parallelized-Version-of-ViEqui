@@ -4253,11 +4253,13 @@ void Interpreter::run()
     }
 
     if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ) {
-      if (isa<LoadInst>(I)) completeLoadInst(static_cast<llvm::LoadInst&>(I));
-      else if (isa<StoreInst>(I)) completeStoreInst(static_cast<llvm::StoreInst&>(I));
+      if (isGlobalLoad(I)) completeLoadInst(static_cast<llvm::LoadInst&>(I));
+      else if (isa<LoadInst>(I)) {visit(I); completeLoadInst(static_cast<llvm::LoadInst&>(I));}
+      else if (isGlobalStore(I)) completeStoreInst(static_cast<llvm::StoreInst&>(I));
+      else if (isa<StoreInst>(I)) {visit(I); completeStoreInst(static_cast<llvm::StoreInst&>(I));}
       else visit(I);
 
-      llvm::outs() << "[" << e++ << "]Executing: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
+      // llvm::outs() << "[" << e++ << "]Executing: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
     }
     else {
     /* 
@@ -4308,9 +4310,9 @@ void Interpreter::run()
       ExecutionContext &SF = ECStack()->back(); // Current stack frame
       Instruction &I = *SF.CurInst;
 
-      if (isa<LoadInst>(I) || isa<StoreInst>(I)) {
+      if (isGlobalLoad(I) || isGlobalStore(I)) {
         visit(I); // visitLoadInst, visitStoreInst modified to peek and enable event but not execute
-        llvm::outs() << "[" << p++ << "]Peeking  : "; I.print(llvm::outs(), true); llvm::outs() << "\n";
+        // llvm::outs() << "[" << p++ << "]Peeking  : "; I.print(llvm::outs(), true); llvm::outs() << "\n";
       }
     }
   }
