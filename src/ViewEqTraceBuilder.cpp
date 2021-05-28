@@ -37,6 +37,11 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun)
   // reverse loop to prioritize newly created threads
   for (int i = threads.size()-1; i >=0 ; i--) {
     if (threads[i].available && !threads[i].awaiting_load_store) {   // && (conf.max_search_depth < 0 || threads[i].events.size() < conf.max_search_depth)){
+      IID<IPid> iid = IID<IPid>(IPid(i), threads[i].events.size());
+      threads[i].push_back(no_load_store);
+      execution_sequence.push_back(iid);
+      prefix_idx++;
+
       current_thread = i;
       *proc = i;
       return true;
@@ -127,6 +132,7 @@ IID<CPid> ViewEqTraceBuilder::get_iid() const{
 }
 
 void ViewEqTraceBuilder::refuse_schedule() { //[snj]: TODO check if pop_back from exn_seq has to be done
+  execution_sequence.pop_back();
   mark_unavailable(current_thread);
 }
 

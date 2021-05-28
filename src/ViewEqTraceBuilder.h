@@ -199,9 +199,11 @@ protected:
         const Event& operator[](std::size_t i) const {return events[i];}
     };
 
-    // [rmnt]: Keeping a vector containing all the events which have been executed (and also the ongoing one).
-    // Meant to emulate the prefix without needing any WakeupTree functionality.
+    // [snj]: sequence of event ids
     Sequence execution_sequence;
+
+    // [snj]: dummy event 
+    Event no_load_store;
 
     std::vector<Thread>
         threads;

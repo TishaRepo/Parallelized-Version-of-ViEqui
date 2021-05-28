@@ -1526,8 +1526,8 @@ void Interpreter::completeLoadInst(LoadInst &I)
 
   LoadValueFromMemory(Result, Ptr, I.getType());
   // [snj]: next 2 lines to check the value loaded from memory
-  APInt a = Result.IntVal;
-  llvm::outs() << "Loaded Value:"; a.print(llvm::outs(), true); llvm::outs() << "\n";
+  // APInt a = Result.IntVal;
+  // llvm::outs() << "Loaded Value:"; a.print(llvm::outs(), true); llvm::outs() << "\n";
   SetValue(&I, Result, SF);
 }
 
@@ -1540,6 +1540,27 @@ void Interpreter::completeStoreInst(StoreInst &I)
   
   StoreValueToMemory(Val, Ptr, I.getOperand(0)->getType());
 }
+
+// [snj]: check if a load instruction accesses global variable
+bool Interpreter ::isGlobalLoad(Instruction &I) {
+  if (isa<LoadInst>(I)) {
+    if (GlobalVariable* GV = dyn_cast<GlobalVariable>(I.getOperand(0))) {
+      return true;
+    }   
+  }
+  return false;      
+}
+
+// [snj]: check if a store instruction accesses global variable
+bool Interpreter ::isGlobalStore(Instruction &I) {
+  if (isa<StoreInst>(I)) {
+    if (GlobalVariable* GV = dyn_cast<GlobalVariable>(I.getOperand(1))) {
+      return true;
+    }   
+  }
+  return false;      
+}
+
 
 void Interpreter::visitAtomicCmpXchgInst(AtomicCmpXchgInst &I)
 {
@@ -4157,6 +4178,8 @@ void Interpreter::run()
   int aux;
   bool rerun = false;
 
+  int p=0,e=0;
+
   while (rerun || TB.schedule(&CurrentThread, &aux, &CurrentAlt, &DryRun))
   {
     assert(0 <= CurrentThread && CurrentThread < long(Threads.size()));
@@ -4233,6 +4256,8 @@ void Interpreter::run()
       if (isa<LoadInst>(I)) completeLoadInst(static_cast<llvm::LoadInst&>(I));
       else if (isa<StoreInst>(I)) completeStoreInst(static_cast<llvm::StoreInst&>(I));
       else visit(I);
+
+      llvm::outs() << "[" << e++ << "]Executing: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
     }
     else {
     /* 
@@ -4285,6 +4310,7 @@ void Interpreter::run()
 
       if (isa<LoadInst>(I) || isa<StoreInst>(I)) {
         visit(I); // visitLoadInst, visitStoreInst modified to peek and enable event but not execute
+        llvm::outs() << "[" << p++ << "]Peeking  : "; I.print(llvm::outs(), true); llvm::outs() << "\n";
       }
     }
   }
