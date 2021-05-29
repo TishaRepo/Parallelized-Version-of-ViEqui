@@ -5,7 +5,6 @@ ViewEqTraceBuilder::ViewEqTraceBuilder(const Configuration &conf) : TSOPSOTraceB
   threads.push_back(Thread(CPid(), -1));
   current_thread = -1;
   prefix_idx = 0;
-  performing_setup = true;
   std::vector<IID<IPid>> evs;
   Sequence s(evs,&threads);
   execution_sequence = s;
@@ -16,7 +15,6 @@ ViewEqTraceBuilder::~ViewEqTraceBuilder() {
   threads.push_back(Thread(CPid(), -1));
   current_thread = -1;
   prefix_idx = 0;
-  performing_setup = true;
 
   round  = 1; // [snj]: TODO temp remove eventually
 }
@@ -111,7 +109,7 @@ bool ViewEqTraceBuilder::reset() {
   threads.push_back(Thread(CPid(), -1));
   // mutexes.clear();
   // cond_vars.clear();
-  mem.clear();
+  // mem.clear();
   // last_full_memory_conflict = -1;
   prefix_idx = -1;
   // dryrun = false;

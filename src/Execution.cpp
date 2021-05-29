@@ -1470,8 +1470,8 @@ void Interpreter::visitLoadInst(LoadInst &I)
     }
   }
 
-  // [snj]: stops reading to memory 
-  if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ) return;
+  // [snj]: stops global load from reading memory
+  if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ && isGlobalLoad(I)) return;
 
   if (DryRun && DryRunMem.size())
   {
@@ -1504,8 +1504,8 @@ void Interpreter::visitStoreInst(StoreInst &I)
     }
   }
 
-  // [snj]: stops writing to memory
-  if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ) return;
+  // [snj]: stops global store from writing to memory
+  if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ && isGlobalStore(I)) return;
 
   if (DryRun)
   {
@@ -4254,12 +4254,10 @@ void Interpreter::run()
 
     if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ) {
       if (isGlobalLoad(I)) completeLoadInst(static_cast<llvm::LoadInst&>(I));
-      else if (isa<LoadInst>(I)) {visit(I); completeLoadInst(static_cast<llvm::LoadInst&>(I));}
       else if (isGlobalStore(I)) completeStoreInst(static_cast<llvm::StoreInst&>(I));
-      else if (isa<StoreInst>(I)) {visit(I); completeStoreInst(static_cast<llvm::StoreInst&>(I));}
       else visit(I);
 
-      // llvm::outs() << "[" << e++ << "]Executing: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
+      llvm::outs() << "[" << e++ << "]Executing: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
     }
     else {
     /* 
@@ -4312,7 +4310,7 @@ void Interpreter::run()
 
       if (isGlobalLoad(I) || isGlobalStore(I)) {
         visit(I); // visitLoadInst, visitStoreInst modified to peek and enable event but not execute
-        // llvm::outs() << "[" << p++ << "]Peeking  : "; I.print(llvm::outs(), true); llvm::outs() << "\n";
+        llvm::outs() << "[" << p++ << "]Peeking  : "; I.print(llvm::outs(), true); llvm::outs() << "\n";
       }
     }
   }

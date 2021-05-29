@@ -270,7 +270,7 @@ protected:
     // list of (thread id, next event) pairs
     std::vector<IID<IPid>> Enabled;
 
-    std::unordered_map<SymAddr, 
+    // std::unordered_map<SymAddr, 
 };
 
 #endif
