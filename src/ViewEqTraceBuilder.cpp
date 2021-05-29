@@ -8,7 +8,7 @@ ViewEqTraceBuilder::ViewEqTraceBuilder(const Configuration &conf) : TSOPSOTraceB
   std::vector<IID<IPid>> evs;
   Sequence s(evs,&threads);
   execution_sequence = s;
-  round  = 1; // [snj]: TODO temp remove eventually
+  round  = 3; // [snj]: TODO temp remove eventually
 }
 
 ViewEqTraceBuilder::~ViewEqTraceBuilder() {
@@ -16,7 +16,7 @@ ViewEqTraceBuilder::~ViewEqTraceBuilder() {
   current_thread = -1;
   prefix_idx = 0;
 
-  round  = 1; // [snj]: TODO temp remove eventually
+  round  = 3; // [snj]: TODO temp remove eventually
 }
 
 bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun)
@@ -99,7 +99,7 @@ bool ViewEqTraceBuilder::record_symbolic(SymEv event)
 }
 
 bool ViewEqTraceBuilder::reset() {
-  if (round == 1) return false;
+  if (round == 0) return false;
   llvm::outs() << "reset round " << round << "\n";
   round--;
   execution_sequence.clear();
@@ -109,7 +109,7 @@ bool ViewEqTraceBuilder::reset() {
   threads.push_back(Thread(CPid(), -1));
   // mutexes.clear();
   // cond_vars.clear();
-  // mem.clear();
+  mem.clear();
   // last_full_memory_conflict = -1;
   prefix_idx = -1;
   // dryrun = false;
@@ -171,6 +171,7 @@ bool ViewEqTraceBuilder::join(int tgt_proc) {
 bool ViewEqTraceBuilder::load(const SymAddrSize &ml) {
   Event event(SymEv::Load(ml));
   event.make_read();
+  event.value = mem[event.object];
   current_event = event;
     
   if (current_event.is_global()) {
@@ -197,6 +198,7 @@ bool ViewEqTraceBuilder::store(const SymData &ml) {
   // [snj]: visitStoreInst in Execution.cpp lands in atomic_store not here
   Event event(SymEv::Store(ml));
   event.make_write();
+  mem[event.object] = event.value;
   current_event = event;
 
   if (current_event.is_global()) {
@@ -222,6 +224,7 @@ bool ViewEqTraceBuilder::atomic_store(const SymData &ml) {
   // [snj]: visitStoreInst in Execution.cpp lands here not in store
   Event event(SymEv::Store(ml));
   event.make_write();
+  mem[event.object] = event.value;
   current_event = event;
     
   if (current_event.is_global()) {
@@ -278,24 +281,24 @@ void ViewEqTraceBuilder::debug_print() const {
 } //[snj]: TODO
 
 bool ViewEqTraceBuilder::compare_exchange(const SymData &sd, const SymData::block_type expected, bool success)
-                                                    {llvm::outs() << "[snj]: cmp_exch being invoked!!"; assert(false); return false;}
-bool ViewEqTraceBuilder::sleepset_is_empty() const{llvm::outs() << "[snj]: sleepset_is_empty being invoked!!"; assert(false); return true;}
-bool ViewEqTraceBuilder::check_for_cycles(){llvm::outs() << "[snj]: check_for_cycles being invoked!!"; assert(false); return false;}
-bool ViewEqTraceBuilder::mutex_lock(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_lock being invoked!!"; assert(false); return true;}
-bool ViewEqTraceBuilder::mutex_lock_fail(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_lock_fail being invoked!!"; assert(false); return false;}
-bool ViewEqTraceBuilder::mutex_trylock(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_trylock being invoked!!"; assert(false); return false;}
-bool ViewEqTraceBuilder::mutex_unlock(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_unlock being invoked!!"; assert(false); return false;}
-bool ViewEqTraceBuilder::mutex_init(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_init being invoked!!"; assert(false); return false;}
-bool ViewEqTraceBuilder::mutex_destroy(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_ destroy being invoked!!"; assert(false); return false;}
-bool ViewEqTraceBuilder::cond_init(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_init being invoked!!"; assert(false); return false;}
-bool ViewEqTraceBuilder::cond_signal(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_signal being invoked!!"; assert(false); return false;}
-bool ViewEqTraceBuilder::cond_broadcast(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_broadcast being invoked!!"; assert(false); return false;}
+                                                    {llvm::outs() << "[snj]: cmp_exch being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::sleepset_is_empty() const{llvm::outs() << "[snj]: sleepset_is_empty being invoked!!\n"; assert(false); return true;}
+bool ViewEqTraceBuilder::check_for_cycles(){llvm::outs() << "[snj]: check_for_cycles being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::mutex_lock(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_lock being invoked!!\n"; assert(false); return true;}
+bool ViewEqTraceBuilder::mutex_lock_fail(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_lock_fail being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::mutex_trylock(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_trylock being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::mutex_unlock(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_unlock being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::mutex_init(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_init being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::mutex_destroy(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_ destroy being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::cond_init(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_init being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::cond_signal(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_signal being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::cond_broadcast(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_broadcast being invoked!!\n"; assert(false); return false;}
 bool ViewEqTraceBuilder::cond_wait(const SymAddrSize &cond_ml,
-                        const SymAddrSize &mutex_ml){llvm::outs() << "[snj]: cond_wait being invoked!!"; assert(false); return false;}
+                        const SymAddrSize &mutex_ml){llvm::outs() << "[snj]: cond_wait being invoked!!\n"; assert(false); return false;}
 bool ViewEqTraceBuilder::cond_awake(const SymAddrSize &cond_ml,
-                        const SymAddrSize &mutex_ml){llvm::outs() << "[snj]: cond_awake being invoked!!"; assert(false); return false;}
-int ViewEqTraceBuilder::cond_destroy(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_destroy being invoked!!"; assert(false); return false;}
-bool ViewEqTraceBuilder::register_alternatives(int alt_count){llvm::outs() << "[snj]: register_alternatives being invoked!!"; assert(false); return false;}
+                        const SymAddrSize &mutex_ml){llvm::outs() << "[snj]: cond_awake being invoked!!\n"; assert(false); return false;}
+int ViewEqTraceBuilder::cond_destroy(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_destroy being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::register_alternatives(int alt_count){llvm::outs() << "[snj]: register_alternatives being invoked!!\n"; assert(false); return false;}
 
 void ViewEqTraceBuilder::Event::make_spawn() {
   type = SPAWN;

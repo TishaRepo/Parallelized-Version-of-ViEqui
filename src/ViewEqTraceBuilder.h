@@ -2,6 +2,8 @@
 #ifndef __VIEW_EQ_TRACE_BUILDER_H__
 #define __VIEW_EQ_TRACE_BUILDER_H__
 
+#include <unordered_map>
+
 #include "TSOPSOTraceBuilder.h"
 #include "SymEv.h"
 
@@ -270,7 +272,8 @@ protected:
     // list of (thread id, next event) pairs
     std::vector<IID<IPid>> Enabled;
 
-    // std::unordered_map<SymAddr, 
+    // [snj]: memory map object to last stored value
+    std::unordered_map<unsigned, int> mem;
 };
 
 #endif
