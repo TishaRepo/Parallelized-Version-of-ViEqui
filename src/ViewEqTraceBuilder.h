@@ -212,61 +212,6 @@ protected:
     /* [rmnt]: The CPids of threads in the current execution. */
     CPidSystem CPS;
 
-   /* A ByteInfo object contains information about one byte in
-   * memory. In particular, it recalls which events have recently
-   * accessed that byte.
-   */
-    class ByteInfo
-    {
-    public:
-        ByteInfo() : last_update(-1), last_update_ml({SymMBlock::Global(0), 0}, 1){};
-        /* An index into prefix, to the latest update that accessed this
-     * byte. last_update == -1 if there has been no update to this
-     * byte.
-     */
-        int last_update; //[snj]: TODO might need, check
-        /* The complete memory location (possibly multiple bytes) that was
-     * accessed by the last update. Undefined if there has been no
-     * update to this byte.
-     */
-        SymAddrSize last_update_ml;
-        /* Set of events that updated this byte since it was last read.
-     *
-     * Either contains last_update or is empty.
-     */
-       // [snj]: don't need: VecSet<int> unordered_updates;
-        /* last_read[tid] is the index in prefix of the latest (visible)
-     * read of thread tid to this memory location, or -1 if thread tid
-     * has not read this memory location.
-     *
-     * The indexing counts real threads only, so e.g. last_read[1] is
-     * the last read of the second real thread.
-     *
-     * last_read_t is simply a wrapper around a vector, which expands
-     * the vector as necessary to accomodate accesses through
-     * operator[].
-     */
-
-        // [snj]: don't need: struct last_read_t
-        // {
-        //     std::vector<int> v;
-        //     int operator[](int i) const { return (i < int(v.size()) ? v[i] : -1); };
-        //     int &operator[](int i)
-        //     {
-        //         if (int(v.size()) <= i)
-        //         {
-        //             v.resize(i + 1, -1);
-        //         }
-        //         return v[i];
-        //     };
-        //     std::vector<int>::iterator begin() { return v.begin(); };
-        //     std::vector<int>::const_iterator begin() const { return v.begin(); };
-        //     std::vector<int>::iterator end() { return v.end(); };
-        //     std::vector<int>::const_iterator end() const { return v.end(); };
-        // } last_read;
-    };
-    std::map<SymAddr, ByteInfo> mem;
-
     class State
     {
         // index of sequence explored corresponding to current state
@@ -325,7 +270,7 @@ protected:
     // list of (thread id, next event) pairs
     std::vector<IID<IPid>> Enabled;
 
-    bool performing_setup;
+    std::unordered_map<SymAddr, 
 };
 
 #endif
