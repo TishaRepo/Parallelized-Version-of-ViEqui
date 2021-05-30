@@ -1470,6 +1470,9 @@ void Interpreter::visitLoadInst(LoadInst &I)
     }
   }
 
+  // [snj]: stops global load from reading memory
+  if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ && isGlobalLoad(I)) return;
+
   if (DryRun && DryRunMem.size())
   {
     DryRunLoadValueFromMemory(Result, Ptr, *Ptr_sas, I.getType());
@@ -1501,7 +1504,8 @@ void Interpreter::visitStoreInst(StoreInst &I)
     }
   }
 
-  if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ) return;
+  // [snj]: stops global store from writing to memory
+  if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ && isGlobalStore(I)) return;
 
   if (DryRun)
   {
@@ -1511,6 +1515,52 @@ void Interpreter::visitStoreInst(StoreInst &I)
 
   StoreValueToMemory(Val, Ptr, I.getOperand(0)->getType());
 }
+
+// [snj]: complete load for ViewEqTraceBuilder
+void Interpreter::completeLoadInst(LoadInst &I)
+{
+  ExecutionContext &SF = ECStack()->back();
+  GenericValue SRC = getOperandValue(I.getPointerOperand(), SF);
+  GenericValue *Ptr = (GenericValue *)GVTOP(SRC);
+  GenericValue Result;
+
+  LoadValueFromMemory(Result, Ptr, I.getType());
+  // [snj]: next 2 lines to check the value loaded from memory
+  // APInt a = Result.IntVal;
+  // llvm::outs() << "Loaded Value:"; a.print(llvm::outs(), true); llvm::outs() << "\n";
+  SetValue(&I, Result, SF);
+}
+
+// [snj]: complete store for ViewEqTraceBuilder
+void Interpreter::completeStoreInst(StoreInst &I)
+{
+  ExecutionContext &SF = ECStack()->back();
+  GenericValue Val = getOperandValue(I.getOperand(0), SF);
+  GenericValue *Ptr = (GenericValue *)GVTOP(getOperandValue(I.getPointerOperand(), SF));
+  
+  StoreValueToMemory(Val, Ptr, I.getOperand(0)->getType());
+}
+
+// [snj]: check if a load instruction accesses global variable
+bool Interpreter ::isGlobalLoad(Instruction &I) {
+  if (isa<LoadInst>(I)) {
+    if (GlobalVariable* GV = dyn_cast<GlobalVariable>(I.getOperand(0))) {
+      return true;
+    }   
+  }
+  return false;      
+}
+
+// [snj]: check if a store instruction accesses global variable
+bool Interpreter ::isGlobalStore(Instruction &I) {
+  if (isa<StoreInst>(I)) {
+    if (GlobalVariable* GV = dyn_cast<GlobalVariable>(I.getOperand(1))) {
+      return true;
+    }   
+  }
+  return false;      
+}
+
 
 void Interpreter::visitAtomicCmpXchgInst(AtomicCmpXchgInst &I)
 {
@@ -3038,13 +3088,13 @@ void Interpreter::callPthreadCreate(Function *F,
 
   // Return to caller
   CurrentThread = caller_thread;
-}
+  }
 
 void Interpreter::callPthreadJoin(Function *F,
                                   const std::vector<GenericValue> &ArgVals)
 {
-  int tid = pthread_t_to_tid(F->arg_begin()->getType(), ArgVals[0]);
-
+  int tid = pthread_t_to_tid(F->arg_begin()->getType(), ArgVals[0]);  
+  
   if (tid < 0 || int(Threads.size()) <= tid || tid == CurrentThread)
   {
     std::stringstream ss;
@@ -3715,8 +3765,8 @@ void Interpreter::callAssertFail(Function *F,
 //
 void Interpreter::callFunction(Function *F,
                                const std::vector<GenericValue> &ArgVals)
-{
-  if (F->getName().str() == "pthread_create")
+{ 
+  if (F->getName().str() == "pthread_create") 
   {
     callPthreadCreate(F, ArgVals);
     return;
@@ -3826,7 +3876,7 @@ void Interpreter::callFunction(Function *F,
   assert((ECStack()->empty() || ECStack()->back().Caller == nullptr ||
           ECStack()->back().Caller.arg_size() == ArgVals.size()) &&
          "Incorrect number of arguments passed into function call!");
-
+  
   if (F->getName().str().find("__VERIFIER_atomic_") == 0)
   {
     if (conf.dpor_algorithm == Configuration::OBSERVERS)
@@ -3843,12 +3893,12 @@ void Interpreter::callFunction(Function *F,
       AtomicFunctionCall = ECStack()->size();
     } // else we are already inside an atomic function call
   }
-
+  
   // Make a new stack frame... and fill it in.
   ECStack()->push_back(ExecutionContext());
   ExecutionContext &StackFrame = ECStack()->back();
   StackFrame.CurFunction = F;
-
+  
   // Special handling for external functions.
   if (F->isDeclaration())
   {
@@ -3874,16 +3924,17 @@ void Interpreter::callFunction(Function *F,
         return;
       }
     }
-
+    
     if (DryRun)
     {
       ECStack()->pop_back();
       return;
     }
-
+    
     GenericValue Result = callExternalFunction(F, ArgVals);
     // Simulate a 'ret' instruction of the appropriate type.
     popStackAndReturnValueToCaller(F->getReturnType(), Result);
+    
     return;
   }
 
@@ -4120,32 +4171,42 @@ Option<SymAddr> Interpreter::GetSymAddr(void *Ptr)
   return ret;
 }
 
+
+
 void Interpreter::run()
 {
   int aux;
   bool rerun = false;
+
+  int p=0,e=0;
+
   while (rerun || TB.schedule(&CurrentThread, &aux, &CurrentAlt, &DryRun))
   {
     assert(0 <= CurrentThread && CurrentThread < long(Threads.size()));
     rerun = false;
     if (0 <= aux)
     { 
-      assert(conf.dpor_algorithm != Configuration::VIEW_EQ);
       // Run some auxiliary thread
       runAux(CurrentThread, aux);
       continue;
     }
 
-    // std::cout << "snj: executing event\n";
     // Interpret a single instruction & increment the "PC".
     ExecutionContext &SF = ECStack()->back(); // Current stack frame
     Instruction &I = *SF.CurInst++;           // Increment before execute
 
-    // [rmnt] : Debugging -- [snj]: its not printing anything
-    // std::cout << "rmnt: Fetched current instruction : "
-    //           << "\n";
-    // I.print(llvm::outs(), true);
-    // std::cout << "\n";
+    // //[snj]: ATTEMPTING TO GET VALUE
+    // Value *Va = I.getOperand(0);
+    // if (llvm::ConstantInt* CI = dyn_cast<llvm::ConstantInt>(Va)) {
+    //   llvm::outs() << "[" << (index++) << "] Value of <";
+    //   I.print(llvm::outs(), true);
+    //   llvm::outs() << "> is " << (*CI);
+    // }
+    // else {
+    //   llvm::outs() << "[" << (index++) << "] Value of <";
+    //   I.print(llvm::outs(), true);
+    //   llvm::outs() << "> is <no value>";
+    // }
 
     if (isUnknownIntrinsic(I))
     {
@@ -4191,11 +4252,22 @@ void Interpreter::run()
       continue;
     }
 
+    if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ) {
+      if (isGlobalLoad(I)) completeLoadInst(static_cast<llvm::LoadInst&>(I));
+      else if (isGlobalStore(I)) completeStoreInst(static_cast<llvm::StoreInst&>(I));
+      else visit(I);
+
+      // llvm::outs() << "[" << e++ << "]Executing: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
+    }
+    else {
     /* 
       Execute
-      [rmnt] : Acts as a wrapper function for executing different functions based on the type of instruction. Different functions defined in this file (e.g. VisitLoadInst). Detailed documentation at llvm/IR/InstVisitor.h : Line 35 
+      [rmnt] : Visit(I) acts as a wrapper function for executing different functions 
+      based on the type of instruction. Different functions defined in this file 
+      (e.g. VisitLoadInst). Detailed documentation at llvm/IR/InstVisitor.h : Line 35 
     */
-    visit(I);
+      visit(I);
+    }
     
     /* Atomic function? */
     if (0 <= AtomicFunctionCall)
@@ -4229,6 +4301,17 @@ void Interpreter::run()
     { // Did dry run. Now back up.
       --ECStack()->back().CurInst;
       DryRunMem.clear();
+    }
+
+    // [snj]: check if the next instruction is a load or store
+    if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ && !ECStack()->empty()) {
+      ExecutionContext &SF = ECStack()->back(); // Current stack frame
+      Instruction &I = *SF.CurInst;
+
+      if (isGlobalLoad(I) || isGlobalStore(I)) {
+        visit(I); // visitLoadInst, visitStoreInst modified to peek and enable event but not execute
+        // llvm::outs() << "[" << p++ << "]Peeking  : "; I.print(llvm::outs(), true); llvm::outs() << "\n";
+      }
     }
   }
 

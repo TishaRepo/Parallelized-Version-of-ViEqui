@@ -2123,8 +2123,6 @@ void TSOTraceBuilder::compute_vclocks()
 
 bool TSOTraceBuilder::record_symbolic(SymEv event)
 {
-  llvm::outs() << "rmnt: Inside record_symbolic where we have a symbolic event \n";
-  llvm::outs() << event.to_string() << "\n";
   if (dryrun)
   {
     assert(prefix_idx + 1 < int(prefix.len()));
