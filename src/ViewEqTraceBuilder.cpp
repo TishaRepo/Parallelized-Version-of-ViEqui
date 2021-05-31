@@ -596,3 +596,73 @@ bool ViewEqTraceBuilder::Sequence::conflits_with(Sequence &other) {
 
   return false;
 }
+
+std::unordered_set<IID<IPid>> ViewEqTraceBuilder::unexploredInfluencers(ViewEqTraceBuilder::Event er, SOPFormula<IID<IPid>>& f){
+  assert(er.is_read());
+  std::unordered_set<IID<IPid>> ui;
+
+  for(int i = 0; i < Enabled.size(); i++){
+    Event e = threads[Enabled[i].get_pid()][Enabled[i].get_index()];
+    if(!er.same_object(e) || !e.is_write() ||  f.evaluate(er.iid, e.value)) continue;
+
+    ui.insert(e.iid);
+  }
+
+  return ui;
+}
+
+std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredInfluencers(ViewEqTraceBuilder::Event er, SOPFormula<IID<IPid>> &f){
+  std::unordered_set<IID<IPid>> ei;
+  std::unordered_set<int> values,forbidden_values;
+
+  unsigned o_id = er.object;
+  int pid = er.get_pid();
+
+  assert(visible[o_id].mpo[0].size() == 1);
+  assert(visible[o_id].mpo.size() == visible[o_id].visible_start.size() + 1);
+
+  if(visible[o_id].check_init_visible(pid)) {
+    IID<IPid> init = visible[o_id].mpo[0][0];
+    Event init_e = threads[init.get_pid()][init.get_index()];
+    assert(init_e.value == 0); 
+    std::unordered_map<IID<IPid>, int> valueEnv{{init, init_e.value}};
+    if(f.evaluate(valueEnv) != RESULT::TRUE ) ei.insert(mpo[0][0]);
+    else forbidden_values.insert(init_e.value);
+  }
+  for(int i = 0; i < visible[o_id].visible_start[pid - 1].size(); i++){
+      int j = visible[o_id].visible_start[pid - 1][i];
+      for( int k = j; k < visible[o_id].mpo[i + 1].size(); k++){
+          if(k == 0) continue;
+          IID<IPid> e_id = visible[o_id].mpo[i + 1][k - 1];
+        
+          Event e = threads[e_id.get_pid()][e_id.get_index()];
+          //repeated value || already checked forbidden value || unexplored event
+          if(values.find(e.value) != values.end() || forbidden_values.find(e.value) != forbidden_values.end() || Enabled[e.get_pid()] == e_id) continue;
+          
+          std::unordered_map<IID<IPid>, int> valueEnv{{e_id, e.value}};
+
+          if(f.evaluate(valueEnv) == RESULT::TRUE ) forbidden_values.insert(e.value);
+          else{
+            ei.insert(e_id);
+            values.insert(e.value);
+          }
+      }
+  }
+  return ei;
+}
+
+std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredWitnesses(ViewEqTraceBuilder::Event ew, SOPFormula<IID<IPid>> &f){
+  assert(ew.is_write());
+  assert(Enabled[ew.get_pid()] == ew.iid);
+  std::unordered_set<IID<IPid>> explored_witnesses;
+  //ask: not finding prefix
+  for(int i = 0; i < execution_sequence.size(); i++){
+    IID<IPid> er = execution_sequence[i];
+    Event e = threads[er.get_pid()][er.get_pid()];
+    
+    if(! er.same_object(ew) || ! er.is_read() || er.get_pid() == ew.get_pid() || (f.evaluate(er,ew.value))) continue;
+    
+    explored_witnesses.insert(er);
+  }
+  return explored_witnesses;
+}

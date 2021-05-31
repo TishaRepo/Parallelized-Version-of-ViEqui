@@ -4,6 +4,7 @@
 
 #include "TSOPSOTraceBuilder.h"
 #include "SymEv.h"
+#include "Visible.h"
 
 typedef llvm::SmallVector<SymEv, 1> sym_ty;
 
@@ -121,7 +122,11 @@ protected:
         bool operator!=(Event event);
         // std::string   operator<<() {to_string();}
     };
+
+    std::vector<Visible> visible;//
+
     class Thread;
+
     class Sequence
     {
     private:
@@ -319,6 +324,10 @@ protected:
     std::vector<IID<IPid>> Enabled;
 
     bool performing_setup;
+
+    std::unordered_set<IID<IPid>> unexploredInfluencers(Event er, SOPFormula<IID<IPid>>& f);
+    std::unordered_set<IID<IPid>> exploredInfluencers(Event er, SOPFormula<IID<IPid>> &f);
+    std::unordered_set<IID<IPid>> exploredWitnesses(Event ew, SOPFormula<IID<IPid>> &f);
 };
 
 #endif
