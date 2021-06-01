@@ -1,5 +1,7 @@
 #include "ViewEqTraceBuilder.h"
 
+typedef int IPid;
+
 ViewEqTraceBuilder::ViewEqTraceBuilder(const Configuration &conf) : TSOPSOTraceBuilder(conf)
 {
   threads.push_back(Thread(CPid(), -1));
@@ -48,6 +50,7 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun)
   }
 
   // [snj]: TODO algo goes here
+  std::pair<bool, std::pair<IID<IPid>,IID<IPid>>> RW = enabaled_RWpair();
   IID<IPid> enabled_event = Enabled.front();
   Enabled.erase(Enabled.begin());
   current_thread = enabled_event.get_pid();
@@ -82,6 +85,31 @@ bool ViewEqTraceBuilder::is_enabled(int thread_id) {
       return true;
   }
   return false;
+}
+
+std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> ViewEqTraceBuilder::enabaled_RWpair() {
+  for (auto i = Enabled.begin(); i != Enabled.end(); i++) {
+    for (auto j = i+1; j != Enabled.end(); j++) {
+      int tid1 = (*i).get_pid();
+      int tid2 = (*j).get_pid();
+
+      int eid1 = (*i).get_index();
+      int eid2 = (*j).get_index();
+
+      if (threads[tid1][eid1].same_object(threads[tid2][eid2])) {
+        if (threads[tid1][eid1].is_read() && threads[tid2][eid2].is_write())
+          return std::make_pair(true, std::make_pair((*i),(*j)));
+        if (threads[tid1][eid1].is_write() && threads[tid2][eid2].is_read())
+          return std::make_pair(true, std::make_pair((*j),(*i)));
+      }
+    }
+  }
+    
+  return std::make_pair(true, std::make_pair(dummy_id,dummy_id));
+}
+
+int ViewEqTraceBuilder::current_value(unsigned obj) {
+  return mem[obj];
 }
 
 void ViewEqTraceBuilder::metadata(const llvm::MDNode *md)
@@ -570,6 +598,41 @@ bool ViewEqTraceBuilder::Sequence::conflits_with(Sequence &other) {
         if ((*it12) == (*it22))
           return true;
     }
+  }
+
+  return false;
+}
+
+bool Lead::operator==(Lead l) {
+  if (constraint != l.constraint)
+    return false;
+
+  if (strat != l.strat)
+    return false;
+
+  return true;
+}
+
+void State::add_done(Sequence d) {
+  for (auto it = done.begin(); it != done.end(); it++) {
+    if (d == (*it))
+      return; // sequence alrready added
+    
+    if ((*it).size() > d.size())
+      done.insert(it, d); // sorted by length
+      return;
+  }
+
+  done.push_back(d);
+}
+
+bool State::is_done(Sequence seq) {
+  for (auto it = done.begin(); it != done.end(); it++) {
+    if (seq == (*it))
+      return true;
+
+    if ((*it).size() > seq.size())
+      return false;
   }
 
   return false;

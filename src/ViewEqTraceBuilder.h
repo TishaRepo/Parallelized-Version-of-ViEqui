@@ -6,39 +6,48 @@
 
 #include "TSOPSOTraceBuilder.h"
 #include "SymEv.h"
+#include "SOPFormula.h"
 
 typedef llvm::SmallVector<SymEv, 1> sym_ty;
 
 class ViewEqTraceBuilder : public TSOPSOTraceBuilder
 {
 public:
+    typedef int IPid;
+
     int round; //[snj]: TODO temporary
     ViewEqTraceBuilder(const Configuration &conf = Configuration::default_conf);
     virtual ~ViewEqTraceBuilder() override;
 
     virtual bool schedule(int *proc, int *type, int *alt, bool *doexecute) override;
     virtual void refuse_schedule() override;
+    
     virtual void metadata(const llvm::MDNode *md) override;
     virtual void mark_available(int proc, int aux = -1) override;
     virtual void mark_unavailable(int proc, int aux = -1) override;
             bool is_enabled(int thread_id);
+            std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> enabaled_RWpair();
+    
     virtual NODISCARD bool full_memory_conflict() override;
     virtual NODISCARD bool join(int tgt_proc) override;
     virtual NODISCARD bool spawn() override;
+    virtual NODISCARD bool store(const SymData &ml) override;
+    virtual NODISCARD bool atomic_store(const SymData &ml) override;
+    virtual NODISCARD bool load(const SymAddrSize &ml) override;
 
     virtual bool reset() override;
-    virtual IID<CPid> get_iid() const override;
     virtual void cancel_replay() override;
     virtual bool is_replaying() const override;
+
+    virtual IID<CPid> get_iid() const override;
     virtual Trace *get_trace() const override;
     virtual void debug_print() const override;
 
+    int current_value(unsigned obj);
+
     //[nau]: added virtual function definitions for the sake of compiling
     //[snj]: added some more to the list
-    virtual NODISCARD bool store(const SymData &ml) override;
-    virtual NODISCARD bool atomic_store(const SymData &ml) override;
     virtual NODISCARD bool compare_exchange(const SymData &sd, const SymData::block_type expected, bool success) override;
-    virtual NODISCARD bool load(const SymAddrSize &ml) override;
     virtual NODISCARD bool fence() override;
     virtual bool sleepset_is_empty() const override;
     virtual bool check_for_cycles() override;
@@ -73,7 +82,6 @@ public:
     bool NODISCARD record_symbolic(SymEv event);
 
 protected:
-    typedef int IPid;
 
     class Sequence;
 
@@ -203,11 +211,24 @@ protected:
         const Event& operator[](std::size_t i) const {return events[i];}
     };
 
+    class Lead {
+    public:
+        Sequence constraint;
+        Sequence start;
+        SOPFormula<unsigned> forbidden;
+
+        Lead(Sequence c, Sequence s, SOPFormula<unsigned> f) : constraint(c), start(s), forbidden(f){};
+        Lead(Sequence s) : start(s){};
+
+        bool operator==(Lead l);
+    };
+
     // [snj]: sequence of event ids
     Sequence execution_sequence;
 
     // [snj]: dummy event 
     Event no_load_store;
+    IID<IPid> dummy_id;
 
     std::vector<Thread>
         threads;
@@ -218,13 +239,14 @@ protected:
     {
         // index of sequence explored corresponding to current state
         int sequence_prefix;
-        // std::unordered_set leads;
-        // std::unordered_set done;
+        std::vector<Lead> leads;
+        std::vector<Sequence> done;
 
     public:
-        bool hasUnexploredEvents();
-        bool hasUnexploredRWpair();
-        std::pair<Event,Event> unexploredRWpair();
+        void add_done(Sequence d);
+        bool is_done(Sequence seq);
+
+        void add_lead(Lead l);
     };
 
     bool schedule(int *proc);
