@@ -51,7 +51,11 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun)
 
   // [snj]: TODO algo goes here
   std::pair<bool, std::pair<IID<IPid>,IID<IPid>>> RW = enabaled_RWpair();
+
   IID<IPid> enabled_event = Enabled.front();
+  if (RW.first == true) {
+    enabled_event = RW.second.first; // read event of RW pair
+  }
   Enabled.erase(Enabled.begin());
   current_thread = enabled_event.get_pid();
   current_event = threads[current_thread][enabled_event.get_index()];
@@ -87,7 +91,7 @@ bool ViewEqTraceBuilder::is_enabled(int thread_id) {
   return false;
 }
 
-std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> ViewEqTraceBuilder::enabaled_RWpair() {
+std::pair<bool, IID<IPid>> ViewEqTraceBuilder::enabaled_RWpair_read() {
   for (auto i = Enabled.begin(); i != Enabled.end(); i++) {
     for (auto j = i+1; j != Enabled.end(); j++) {
       int tid1 = (*i).get_pid();
@@ -97,10 +101,16 @@ std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> ViewEqTraceBuilder::enabaled_RW
       int eid2 = (*j).get_index();
 
       if (threads[tid1][eid1].same_object(threads[tid2][eid2])) {
-        if (threads[tid1][eid1].is_read() && threads[tid2][eid2].is_write())
-          return std::make_pair(true, std::make_pair((*i),(*j)));
-        if (threads[tid1][eid1].is_write() && threads[tid2][eid2].is_read())
-          return std::make_pair(true, std::make_pair((*j),(*i)));
+        if (threads[tid1][eid1].is_read() && threads[tid2][eid2].is_write()) {
+          std::pair<bool, IID<IPid>> retval = std::make_pair(true, (*i));
+          Enabled.erase(i);
+          return retval;
+        }
+        if (threads[tid1][eid1].is_write() && threads[tid2][eid2].is_read()) {
+          std::pair<bool, IID<IPid>> retval = std::make_pair(true, (*j));
+          Enabled.erase(j);
+          return retval;
+        }
       }
     }
   }
