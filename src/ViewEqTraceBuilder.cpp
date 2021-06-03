@@ -46,6 +46,9 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun)
 
   if (Enabled.empty()) {
     debug_print();
+    visible.clear();
+    last_write.clear();
+    mem.clear();
     return false; // [snj]: maximal trace explored
   }
 
@@ -681,7 +684,7 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredInfluencers(ViewEqTrac
   //for writes other than init
   for(int i = 0; i < visible[o_id].visible_start[pid - 1].size(); i++){
       int j = visible[o_id].visible_start[pid - 1][i];
-      for( int k = j; k - 1< visible[o_id].mpo[i + 1].size(); k++){
+      for( int k = j; k < visible[o_id].mpo[i + 1].size() + 1; k++){
           if(k == 0) continue;
           IID<IPid> e_id = visible[o_id].mpo[i + 1][k - 1];
 
