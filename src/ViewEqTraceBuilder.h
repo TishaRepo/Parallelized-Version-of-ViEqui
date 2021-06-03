@@ -22,14 +22,14 @@ public:
 
     virtual bool schedule(int *proc, int *type, int *alt, bool *doexecute) override;
     virtual void refuse_schedule() override;
-
+    
     virtual void metadata(const llvm::MDNode *md) override;
     virtual void mark_available(int proc, int aux = -1) override;
     virtual void mark_unavailable(int proc, int aux = -1) override;
             bool is_enabled(int thread_id);
     /* [snj]: if read & write of same object is enabled, return the read */
             std::pair<bool, IID<IPid>> enabaled_RWpair_read();
-
+    
     virtual NODISCARD bool full_memory_conflict() override;
     virtual NODISCARD bool join(int tgt_proc) override;
     virtual NODISCARD bool spawn() override;
@@ -107,6 +107,7 @@ protected:
         void make_read();
         void make_write();
         SymEv sym_event() const {return symEvent[0];}
+
         bool is_spawn() {return type == SPAWN;}
         /* is read of shared object */
         bool is_read() {return (symEvent.size()==1 && sym_event().addr().addr.block.is_global() && type == READ);}
@@ -138,7 +139,7 @@ protected:
     std::unordered_map<unsigned,Visible> visible;//vpo for each object, can be accessed by referencing index 'e.object'
 
     class Thread;
-
+    
     class Sequence
     {
     private:
@@ -230,7 +231,7 @@ protected:
     // [snj]: sequence of event ids
     Sequence execution_sequence;
 
-    // [snj]: dummy event
+    // [snj]: dummy event 
     Event no_load_store;
     IID<IPid> dummy_id;
 

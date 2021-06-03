@@ -50,7 +50,7 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun)
   }
 
   // [snj]: TODO algo goes here
-  std::pair<bool, std::pair<IID<IPid>,IID<IPid>>> RW = enabaled_RWpair();
+  std::pair<bool, IID<IPid>> RW = enabaled_RWpair_read();
 
   IID<IPid> enabled_event = Enabled.front();
   if (RW.first == true) {
@@ -61,31 +61,6 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun)
   current_event = threads[current_thread][enabled_event.get_index()];
   assert(current_event.is_write() || current_event.is_read());
   assert(0 <= current_thread && current_thread < long(threads.size()));
-
-  /*[nau]:if(current_event.is_write() && current_event.get_pid()!=0){
-    llvm::outs()<<"write event "<<current_thread<<" "<<enabled_event.get_index()<<"\n";
-    SOPFormula<IID<IPid>> a;
-    std::unordered_set<IID<IPid>> ew = exploredWitnesses(current_event, a);
-    for( auto it = ew.begin(); it!= ew.end(); it++){
-      llvm::outs()<<"ew "<<it->get_pid()<<" "<<it->get_index()<<"\n";
-    }
-  }
-
-  if(current_event.is_read()){
-     llvm::outs()<<"read event "<<current_thread<<" "<<enabled_event.get_index()<<"\n";
-    SOPFormula<IID<IPid>> a;
-    std::unordered_set<IID<IPid>> ui = unexploredInfluencers(current_event, a);
-    for( auto it = ui.begin(); it!= ui.end(); it++){
-      llvm::outs()<<"ui "<<it->get_pid()<<" "<<it->get_index()<<"\n";
-    }
-    std::unordered_set<IID<IPid>> ei = exploredInfluencers(current_event, a);
-        llvm::outs()<<"ei done\n";
-
-    for( auto it = ei.begin(); it!= ei.end(); it++){
-      llvm::outs()<<"ei "<<it->get_pid()<<" "<<it->get_index()<<"\n";
-    }
-    visible[current_event.object].execute_read(current_event.get_pid(), last_write[current_event.object]);
-  }*/
 
   // [snj]: record current event as next in execution sequence
   // TODO only read write in exn seq but need all or atleat tid + how to set read values
@@ -357,7 +332,7 @@ void ViewEqTraceBuilder::debug_print() const {
       llvm::outs() << "[" << i << "]: Heap Operation\n";
       continue;
     }
-    llvm::outs() << "[" << i << "]: " <<thread<<" "<<event.iid.get_index()<<" "<< event.to_string() << "\n";
+    llvm::outs() << "[" << i << "]: " << event.to_string() << "\n";
   }
 } //[snj]: TODO
 
@@ -746,17 +721,17 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredWitnesses(ViewEqTraceB
   return explored_witnesses;
 }
 
-bool Lead::operator==(Lead l) {
+bool ViewEqTraceBuilder::Lead::operator==(Lead l) {
   if (constraint != l.constraint)
     return false;
 
-  if (strat != l.strat)
+  if (start != l.start)
     return false;
 
   return true;
 }
 
-void State::add_done(Sequence d) {
+void ViewEqTraceBuilder::State::add_done(Sequence d) {  
   for (auto it = done.begin(); it != done.end(); it++) {
     if (d == (*it))
       return; // sequence alrready added
@@ -769,7 +744,7 @@ void State::add_done(Sequence d) {
   done.push_back(d);
 }
 
-bool State::is_done(Sequence seq) {
+bool ViewEqTraceBuilder::State::is_done(Sequence seq) {
   for (auto it = done.begin(); it != done.end(); it++) {
     if (seq == (*it))
       return true;

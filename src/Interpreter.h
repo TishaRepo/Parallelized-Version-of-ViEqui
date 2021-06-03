@@ -349,8 +349,10 @@ namespace llvm
     virtual void visitAllocaInst(AllocaInst &I);
     virtual void visitLoadInst(LoadInst &I);
             void completeLoadInst(LoadInst &I);
+            bool isGlobalLoad(Instruction &I);
     virtual void visitStoreInst(StoreInst &I);
             void completeStoreInst(StoreInst &I);
+            bool isGlobalStore(Instruction &I);
     virtual void visitGetElementPtrInst(GetElementPtrInst &I);
     virtual void visitPHINode(PHINode &PN)
     {
