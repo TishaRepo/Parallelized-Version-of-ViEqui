@@ -2,8 +2,11 @@
 #ifndef __VIEW_EQ_TRACE_BUILDER_H__
 #define __VIEW_EQ_TRACE_BUILDER_H__
 
+#include <unordered_map>
+
 #include "TSOPSOTraceBuilder.h"
 #include "SymEv.h"
+#include "SOPFormula.h"
 #include "Visible.h"
 
 typedef llvm::SmallVector<SymEv, 1> sym_ty;
@@ -34,10 +37,10 @@ public:
 
     //[nau]: added virtual function definitions for the sake of compiling
     //[snj]: added some more to the list
-    virtual NODISCARD bool store(const SymData &ml)  override;
-    virtual NODISCARD bool atomic_store(const SymData &ml)  override;
+    virtual NODISCARD bool store(const SymData &ml) override;
+    virtual NODISCARD bool atomic_store(const SymData &ml) override;
     virtual NODISCARD bool compare_exchange(const SymData &sd, const SymData::block_type expected, bool success) override;
-    virtual NODISCARD bool load(const SymAddrSize &ml)  override;
+    virtual NODISCARD bool load(const SymAddrSize &ml) override;
     virtual NODISCARD bool fence() override;
     virtual bool sleepset_is_empty() const override;
     virtual bool check_for_cycles() override;
@@ -51,9 +54,9 @@ public:
     virtual NODISCARD bool cond_signal(const SymAddrSize &ml) override;
     virtual NODISCARD bool cond_broadcast(const SymAddrSize &ml) override;
     virtual NODISCARD bool cond_wait(const SymAddrSize &cond_ml,
-                            const SymAddrSize &mutex_ml) override;
+                                     const SymAddrSize &mutex_ml) override;
     virtual NODISCARD bool cond_awake(const SymAddrSize &cond_ml,
-                            const SymAddrSize &mutex_ml) override;
+                                      const SymAddrSize &mutex_ml) override;
     virtual NODISCARD int cond_destroy(const SymAddrSize &ml) override;
     virtual NODISCARD bool register_alternatives(int alt_count) override;
     // [snj]: TODO check whether we can do without the above listed functions
@@ -96,11 +99,12 @@ protected:
         void make_read();
         void make_write();
         SymEv sym_event() const {return symEvent[0];}
-
+        bool is_spawn() {return type == SPAWN;}
         /* is read of shared object */
-        bool is_read() {return (sym_event().addr().addr.block.is_global() && type == READ);}
+        bool is_read() {return (symEvent.size()==1 && sym_event().addr().addr.block.is_global() && type == READ);}
         /* is write of shared object */
-        bool is_write() {return (sym_event().addr().addr.block.is_global() && type == WRITE);}
+        bool is_write() {return (symEvent.size()==1 && sym_event().addr().addr.block.is_global() && type == WRITE);}
+        bool is_global() {return (symEvent.size()==1 && sym_event().addr().addr.block.is_global());}
         bool same_object(Event e);
         IID<IPid> get_iid() const {return iid;}
         int get_id() {return iid.get_index();}
@@ -123,14 +127,13 @@ protected:
         // std::string   operator<<() {to_string();}
     };
 
-    std::vector<Visible> visible;//
+    std::unordered_map<unsigned,Visible> visible;//vpo for each object, can be accessed by referencing index 'e.object'
 
     class Thread;
 
     class Sequence
     {
     private:
-        std::vector<Thread>* thrs;
         // [snj]: required by Sequence::cmerge function
         std::tuple<Sequence, Sequence, Sequence> join(Sequence &primary, Sequence &other, IID<IPid> delim, Sequence &joined);
         // [snj]: projects tuple projectsions on the thress sequqnces respectively
@@ -138,9 +141,11 @@ protected:
 
     public:
         std::vector<IID<IPid>> events;
+        std::vector<Thread> *threads;
 
         Sequence(){}
-        Sequence(std::vector<IID<IPid>> &seq, std::vector<Thread>* t){events = seq; thrs = t;}
+        Sequence(std::vector<Thread>* t){threads = t;}
+        Sequence(std::vector<IID<IPid>> &seq, std::vector<Thread>* t){events = seq; threads = t;}
 
         bool empty() {return (size() == 0);}
         std::size_t size() const {return events.size();}
@@ -150,7 +155,7 @@ protected:
         IID<IPid> head() {return events.front();}
         Sequence tail() {
             std::vector<IID<IPid>> tl(events.begin()+1, events.end());
-            Sequence stl(tl,thrs);
+            Sequence stl(tl,threads);
             return stl;
         }
 
@@ -160,7 +165,7 @@ protected:
         void clear() {events.clear();}
         bool has(IID<IPid> event) {return std::find(events.begin(), events.end(), event) != events.end();}
 
-        void concatenate(Sequence seq) {events.insert(events.end(), seq.events.begin(), seq.events.end());}
+        void concatenate(Sequence seq) { events.insert(events.end(), seq.events.begin(), seq.events.end()); }
         bool hasRWpairs(Sequence &seq);
         bool conflits_with(Sequence &seq);
 
@@ -187,83 +192,31 @@ protected:
     {
     public:
         // [snj]: TODO is spawn event needed?
-        Thread(const CPid &cpid, int spawn_event) : cpid(cpid), spawn_event(spawn_event), available(true), performing_setup(true){};
-        Thread(const CPid &cpid) : cpid(cpid), available(true), performing_setup(true){};
+        Thread(const CPid &cpid, int spawn_event) : cpid(cpid), spawn_event(spawn_event), available(true), awaiting_load_store(false){};
+        Thread(const CPid &cpid) : cpid(cpid), available(true), awaiting_load_store(false){};
         CPid cpid;
         int spawn_event;
         bool available;
         std::vector<Event> events;
-        bool performing_setup;
+        bool awaiting_load_store;
 
         void push_back(Event event) {events.push_back(event);}
+        void pop_back() {events.pop_back();}
 
         Event& operator[](std::size_t i) {return events[i];}
         const Event& operator[](std::size_t i) const {return events[i];}
     };
 
-    // [rmnt]: Keeping a vector containing all the events which have been executed (and also the ongoing one).
-    // Meant to emulate the prefix without needing any WakeupTree functionality.
+    // [snj]: sequence of event ids
     Sequence execution_sequence;
+
+    // [snj]: dummy event
+    Event no_load_store;
 
     std::vector<Thread>
         threads;
     /* [rmnt]: The CPids of threads in the current execution. */
     CPidSystem CPS;
-
-   /* A ByteInfo object contains information about one byte in
-   * memory. In particular, it recalls which events have recently
-   * accessed that byte.
-   */
-    class ByteInfo
-    {
-    public:
-        ByteInfo() : last_update(-1), last_update_ml({SymMBlock::Global(0), 0}, 1){};
-        /* An index into prefix, to the latest update that accessed this
-     * byte. last_update == -1 if there has been no update to this
-     * byte.
-     */
-        int last_update; //[snj]: TODO might need, check
-        /* The complete memory location (possibly multiple bytes) that was
-     * accessed by the last update. Undefined if there has been no
-     * update to this byte.
-     */
-        SymAddrSize last_update_ml;
-        /* Set of events that updated this byte since it was last read.
-     *
-     * Either contains last_update or is empty.
-     */
-       // [snj]: don't need: VecSet<int> unordered_updates;
-        /* last_read[tid] is the index in prefix of the latest (visible)
-     * read of thread tid to this memory location, or -1 if thread tid
-     * has not read this memory location.
-     *
-     * The indexing counts real threads only, so e.g. last_read[1] is
-     * the last read of the second real thread.
-     *
-     * last_read_t is simply a wrapper around a vector, which expands
-     * the vector as necessary to accomodate accesses through
-     * operator[].
-     */
-
-        // [snj]: don't need: struct last_read_t
-        // {
-        //     std::vector<int> v;
-        //     int operator[](int i) const { return (i < int(v.size()) ? v[i] : -1); };
-        //     int &operator[](int i)
-        //     {
-        //         if (int(v.size()) <= i)
-        //         {
-        //             v.resize(i + 1, -1);
-        //         }
-        //         return v[i];
-        //     };
-        //     std::vector<int>::iterator begin() { return v.begin(); };
-        //     std::vector<int>::const_iterator begin() const { return v.begin(); };
-        //     std::vector<int>::iterator end() { return v.end(); };
-        //     std::vector<int>::const_iterator end() const { return v.end(); };
-        // } last_read;
-    };
-    std::map<SymAddr, ByteInfo> mem;
 
     class State
     {
@@ -323,11 +276,13 @@ protected:
     // list of (thread id, next event) pairs
     std::vector<IID<IPid>> Enabled;
 
-    bool performing_setup;
-
+    // [snj]: memory map object to last stored value
+    std::unordered_map<unsigned, int> mem;
+    std::unordered_map<unsigned, IID<IPid>> last_write;
     std::unordered_set<IID<IPid>> unexploredInfluencers(Event er, SOPFormula<IID<IPid>>& f);
     std::unordered_set<IID<IPid>> exploredInfluencers(Event er, SOPFormula<IID<IPid>> &f);
     std::unordered_set<IID<IPid>> exploredWitnesses(Event ew, SOPFormula<IID<IPid>> &f);
+
 };
 
 #endif

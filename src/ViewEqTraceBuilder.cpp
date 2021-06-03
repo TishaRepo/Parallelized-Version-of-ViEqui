@@ -5,71 +5,42 @@ ViewEqTraceBuilder::ViewEqTraceBuilder(const Configuration &conf) : TSOPSOTraceB
   threads.push_back(Thread(CPid(), -1));
   current_thread = -1;
   prefix_idx = 0;
-  performing_setup = true;
   std::vector<IID<IPid>> evs;
   Sequence s(evs,&threads);
   execution_sequence = s;
-  round  = 1; // [snj]: TODO temp remove eventually
+  round  = 3; // [snj]: TODO temp remove eventually
 }
 
 ViewEqTraceBuilder::~ViewEqTraceBuilder() {
   threads.push_back(Thread(CPid(), -1));
   current_thread = -1;
   prefix_idx = 0;
-  performing_setup = true;
 
-  round  = 1; // [snj]: TODO temp remove eventually
+  round  = 3; // [snj]: TODO temp remove eventually
 }
 
-/*
-    [rmnt] : This function is meant to replace the schedule function used in Interpreter::run in Execution.cpp. It searches for an available real thread (we are storing thread numbers at even indices since some backend functions rely on that). Once it finds one we push its index (prefix_idx is a global index keeping track of the number of events we have executed) to the respective thread's event indices. We also create its event object. Now here we have some work left. What they do is insert this object into prefix. We have to figure out where the symbolic event member of the Event object is being filled up (its empty on initialisation) as that will get us to how they find the type of event. Also, we have to implement certain functions like mark_available, mark_unavailable, reset etc which are required for this to replace the interface of the current schedule function. There are also other functions like metadata() and fence() that we are not sure whether our implementation would need.
-             We needed to keep the signature same to maintain legacy, even though we don't use either auxilliary threads, or dryruns, or alternate events in our algorithm.
-*/
-bool ViewEqTraceBuilder::schedule(int *proc, int *type, int *alt, bool *doexecute)
+bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun)
 {
   // snj: For compatibility with existing design
+  *aux = -1;
   *alt = 0;
+  *DryRun = false;
   // // //
 
-  *type = -1; //[snj]: not load, not store, not spwan
-
-  if (!((*doexecute) || current_thread == -1)) { // [snj]: execute/enable previosuly peaked event
-    if (current_event.is_read() || current_event.is_write()) {
-      // [snj]: enable current event to be used by algo
-      llvm::outs() << "thread" << current_thread << ": done performing setup\n";
-      threads[current_thread].performing_setup = false;
-      assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
-      // llvm::outs() << "adding (" << current_thread << "," << current_event.to_string() << ") to enabled";
-      Enabled.push_back(current_event.iid);
-      // llvm::outs() << " -- DONE\n";
-    }
-    else { llvm::outs() << "adding to exn seq\n";
-      // [snj]: record current event as next in execution sequence
-      execution_sequence.push_back(current_event.iid);
+  // [snj]: peak next read/write event / execute next non-read/write event
+  // reverse loop to prioritize newly created threads
+  for (int i = threads.size()-1; i >=0 ; i--) {
+    if (threads[i].available && !threads[i].awaiting_load_store) {   // && (conf.max_search_depth < 0 || threads[i].events.size() < conf.max_search_depth)){
+      IID<IPid> iid = IID<IPid>(IPid(i), threads[i].events.size());
+      threads[i].push_back(no_load_store);
+      execution_sequence.push_back(iid);
       prefix_idx++;
 
-      // [snj]: execute current event from Interpreter::run() in Execution.cpp
-      *proc = current_thread;
-      *doexecute = true; // [snj]: complete the last peaked event, it is not stratigically important to the algo
-      return true;
-    }
-  }
-
-  // [snj]: peak next event
-  // reverse loop to prioritize newly created threads
-  for (int i = threads.size()-1; i >=0 ; i--) {  // [snj: after x=0 in main, no thread available]
-    llvm::outs() << "threads.size()=" << threads.size() << "\n";
-    if (threads[i].available && threads[i].performing_setup) {   // && (conf.max_search_depth < 0 || threads[i].events.size() < conf.max_search_depth)){
-      // llvm::outs() << "thread[" << i << "] availabe and performing setup\n";
       current_thread = i;
       *proc = i;
-      *doexecute = false; // [snj]: peak event not execute
       return true;
     }
   }
-
-  // [rmnt] : When creating a new event, initialize sym_idx to 0
-  // sym_idx = 0;
 
   if (Enabled.empty()) {
     debug_print();
@@ -77,7 +48,6 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *type, int *alt, bool *doexecut
   }
 
   // [snj]: TODO algo goes here
-  llvm::outs() << "picking from enabled\n";
   IID<IPid> enabled_event = Enabled.front();
   Enabled.erase(Enabled.begin());
   current_thread = enabled_event.get_pid();
@@ -85,15 +55,39 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *type, int *alt, bool *doexecut
   assert(current_event.is_write() || current_event.is_read());
   assert(0 <= current_thread && current_thread < long(threads.size()));
 
+  /*[nau]:if(current_event.is_write() && current_event.get_pid()!=0){
+    llvm::outs()<<"write event "<<current_thread<<" "<<enabled_event.get_index()<<"\n";
+    SOPFormula<IID<IPid>> a;
+    std::unordered_set<IID<IPid>> ew = exploredWitnesses(current_event, a);
+    for( auto it = ew.begin(); it!= ew.end(); it++){
+      llvm::outs()<<"ew "<<it->get_pid()<<" "<<it->get_index()<<"\n";
+    }
+  }
+
+  if(current_event.is_read()){
+     llvm::outs()<<"read event "<<current_thread<<" "<<enabled_event.get_index()<<"\n";
+    SOPFormula<IID<IPid>> a;
+    std::unordered_set<IID<IPid>> ui = unexploredInfluencers(current_event, a);
+    for( auto it = ui.begin(); it!= ui.end(); it++){
+      llvm::outs()<<"ui "<<it->get_pid()<<" "<<it->get_index()<<"\n";
+    }
+    std::unordered_set<IID<IPid>> ei = exploredInfluencers(current_event, a);
+        llvm::outs()<<"ei done\n";
+
+    for( auto it = ei.begin(); it!= ei.end(); it++){
+      llvm::outs()<<"ei "<<it->get_pid()<<" "<<it->get_index()<<"\n";
+    }
+    visible[current_event.object].execute_read(current_event.get_pid(), last_write[current_event.object]);
+  }*/
+
   // [snj]: record current event as next in execution sequence
+  // TODO only read write in exn seq but need all or atleat tid + how to set read values
   execution_sequence.push_back(current_event.iid);
   prefix_idx++;
 
   // [snj]: execute current event from Interpreter::run() in Execution.cpp
-  threads[current_thread].performing_setup = true; // [snj]: next event after current may not be load or store
+  threads[current_thread].awaiting_load_store = false; // [snj]: next event after current may not be load or store
   *proc = current_thread;
-  *doexecute = true; // [snj]: complete the next algo selected event
-  *type = (current_event.is_write()) ? 0 : 1; // [snj]: if store then 1 if load then 0
   return true;
 }
 
@@ -122,36 +116,15 @@ void ViewEqTraceBuilder::metadata(const llvm::MDNode *md)
   current_event.md = md;
 }
 
-// // [rmnt]: TODO : Implement the notion of replay and associated functions
-// // [snj]: not used for READ and WRITE
 bool ViewEqTraceBuilder::record_symbolic(SymEv event)
 {
   llvm::outs() << "in record symbolic\n";
-  // if (!replay)
-  // {
-  //   assert(sym_idx == curev().symEvent.size());
-  //   /* New event */
-  //   curev().symEvent.push_back(event);
-  //   sym_idx++;
-  // }
-  // else
-  // {
-  //   /* Replay. SymEv::set() asserts that this is the same event as last time. */
-  //   assert(sym_idx < curev().symEvent.size());
-  //   SymEv &last = curev().symEvent[sym_idx++];
-  //   if (!last.is_compatible_with(event))
-  //   {
-  //     auto pid_str = [this](IPid p) { return threads[p].cpid.to_string(); };
-  //     nondeterminism_error("Event with effect " + last.to_string(pid_str) + " became " + event.to_string(pid_str) + " when replayed");
-  //     return false;
-  //   }
-  //   last = event;
-  // }
-  return true;
+  assert(false);
+  return false;
 }
 
 bool ViewEqTraceBuilder::reset() {
-  if (round == 1) return false;
+  if (round == 0) return false;
   llvm::outs() << "reset round " << round << "\n";
   round--;
   execution_sequence.clear();
@@ -178,6 +151,7 @@ IID<CPid> ViewEqTraceBuilder::get_iid() const{
 }
 
 void ViewEqTraceBuilder::refuse_schedule() { //[snj]: TODO check if pop_back from exn_seq has to be done
+  execution_sequence.pop_back();
   mark_unavailable(current_thread);
 }
 
@@ -191,7 +165,6 @@ bool ViewEqTraceBuilder::full_memory_conflict() {return false;} //[snj]: TODO
 
 bool ViewEqTraceBuilder::spawn()
 {
-  llvm::outs() << "spawn\n";
   Event event(SymEv::Spawn(threads.size()));
   event.make_spawn();
 
@@ -200,24 +173,19 @@ bool ViewEqTraceBuilder::spawn()
   current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
   threads[current_thread].push_back(current_event);
 
-  // [snj]: add new thread that is being spawned
-  if (threads[threads.size()-1].spawn_event == -42) {
-    // [snj]: corresponding dummy thread spawned during peak
-    threads[threads.size()-1].spawn_event = -1; // [snj]: ready for execution
-    return true;
-  }
-
-  // [snj]: setup new (dummy) program thread
+  // [snj]: setup new program thread
   IPid parent_ipid = current_event.iid.get_pid();
   CPid child_cpid = CPS.spawn(threads[parent_ipid].cpid);
-  /* TODO: First event of thread is dummy */
+  /* Spwan event of thread is dummy */
   threads.push_back(Thread(child_cpid, -42));
 
+  for( auto it = visible.begin(); it != visible.end(); it++){
+    (it->second).add_thread();
+  }
   return true;
 }
 
 bool ViewEqTraceBuilder::join(int tgt_proc) {
-  llvm::outs() << "join\n";
   Event event(SymEv::Join(tgt_proc));
   event.make_join();
 
@@ -229,39 +197,94 @@ bool ViewEqTraceBuilder::join(int tgt_proc) {
 }
 
 bool ViewEqTraceBuilder::load(const SymAddrSize &ml) {
-  llvm::outs() << "load\n";
   Event event(SymEv::Load(ml));
   event.make_read();
-
+  event.value = mem[event.object];
   current_event = event;
-  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
-  threads[current_thread].push_back(current_event);
+
+  if (current_event.is_global()) {
+    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    threads[current_thread].push_back(current_event);
+    threads[current_thread].awaiting_load_store = true;
+
+    assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
+    Enabled.push_back(current_event.iid);
+  }
+  else {
+    threads[current_thread].pop_back();
+    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    threads[current_thread].push_back(current_event);
+    execution_sequence.pop_back();
+    execution_sequence.push_back(current_event.iid);
+  }
+
 
   return true;
 }
 
 bool ViewEqTraceBuilder::store(const SymData &ml) {
   // [snj]: visitStoreInst in Execution.cpp lands in atomic_store not here
-  llvm::outs() << "store\n";
   Event event(SymEv::Store(ml));
   event.make_write();
-
+  mem[event.object] = event.value;
   current_event = event;
-  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
-  threads[current_thread].push_back(current_event);
+
+  if (current_event.is_global()) {
+    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    threads[current_thread].push_back(current_event);
+    threads[current_thread].awaiting_load_store = true;
+    last_write[event.object] = current_event.iid;
+
+    assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
+    Enabled.push_back(current_event.iid);
+    if(current_thread == 0){
+      Visible vis(current_event.object, current_event.iid);
+      visible.insert({current_event.object, vis});
+    }
+    else
+      visible[current_event.object].add_enabled_write(current_event.iid);
+  }
+  else {
+    threads[current_thread].pop_back();
+    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    threads[current_thread].push_back(current_event);
+    execution_sequence.pop_back();
+    execution_sequence.push_back(current_event.iid);
+  }
 
   return true;
 }
 
 bool ViewEqTraceBuilder::atomic_store(const SymData &ml) {
   // [snj]: visitStoreInst in Execution.cpp lands here not in store
-  llvm::outs() << "at store\n";
   Event event(SymEv::Store(ml));
   event.make_write();
-
+  mem[event.object] = event.value;
   current_event = event;
-  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
-  threads[current_thread].push_back(current_event);
+
+  if (current_event.is_global()) {
+    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    threads[current_thread].push_back(current_event);
+    threads[current_thread].awaiting_load_store = true;
+    last_write[event.object] = current_event.iid;
+
+    assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
+    Enabled.push_back(current_event.iid);
+
+    if(current_thread == 0){
+      Visible vis(current_event.object, current_event.iid);
+      visible.insert({current_event.object, vis});
+    }
+    else
+      visible[current_event.object].add_enabled_write(current_event.iid);
+  }
+  else {
+    threads[current_thread].pop_back();
+    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    threads[current_thread].push_back(current_event);
+    execution_sequence.pop_back();
+    execution_sequence.push_back(current_event.iid);
+  }
 
   return true;
 }
@@ -296,29 +319,29 @@ void ViewEqTraceBuilder::debug_print() const {
       llvm::outs() << "[" << i << "]: Heap Operation\n";
       continue;
     }
-    llvm::outs() << "[" << i << "]: " << event.to_string() << "\n";
+    llvm::outs() << "[" << i << "]: " <<thread<<" "<<event.iid.get_index()<<" "<< event.to_string() << "\n";
   }
 } //[snj]: TODO
 
 bool ViewEqTraceBuilder::compare_exchange(const SymData &sd, const SymData::block_type expected, bool success)
-                                                    {llvm::outs() << "[snj]: cmp_exch being invoked!!"; assert(false); return false;}
-bool ViewEqTraceBuilder::sleepset_is_empty() const{llvm::outs() << "[snj]: sleepset_is_empty being invoked!!"; assert(false); return true;}
-bool ViewEqTraceBuilder::check_for_cycles(){llvm::outs() << "[snj]: check_for_cycles being invoked!!"; assert(false); return false;}
-bool ViewEqTraceBuilder::mutex_lock(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_lock being invoked!!"; assert(false); return true;}
-bool ViewEqTraceBuilder::mutex_lock_fail(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_lock_fail being invoked!!"; assert(false); return false;}
-bool ViewEqTraceBuilder::mutex_trylock(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_trylock being invoked!!"; assert(false); return false;}
-bool ViewEqTraceBuilder::mutex_unlock(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_unlock being invoked!!"; assert(false); return false;}
-bool ViewEqTraceBuilder::mutex_init(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_init being invoked!!"; assert(false); return false;}
-bool ViewEqTraceBuilder::mutex_destroy(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_ destroy being invoked!!"; assert(false); return false;}
-bool ViewEqTraceBuilder::cond_init(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_init being invoked!!"; assert(false); return false;}
-bool ViewEqTraceBuilder::cond_signal(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_signal being invoked!!"; assert(false); return false;}
-bool ViewEqTraceBuilder::cond_broadcast(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_broadcast being invoked!!"; assert(false); return false;}
+                                                    {llvm::outs() << "[snj]: cmp_exch being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::sleepset_is_empty() const{llvm::outs() << "[snj]: sleepset_is_empty being invoked!!\n"; assert(false); return true;}
+bool ViewEqTraceBuilder::check_for_cycles(){llvm::outs() << "[snj]: check_for_cycles being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::mutex_lock(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_lock being invoked!!\n"; assert(false); return true;}
+bool ViewEqTraceBuilder::mutex_lock_fail(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_lock_fail being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::mutex_trylock(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_trylock being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::mutex_unlock(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_unlock being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::mutex_init(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_init being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::mutex_destroy(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_ destroy being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::cond_init(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_init being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::cond_signal(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_signal being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::cond_broadcast(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_broadcast being invoked!!\n"; assert(false); return false;}
 bool ViewEqTraceBuilder::cond_wait(const SymAddrSize &cond_ml,
-                        const SymAddrSize &mutex_ml){llvm::outs() << "[snj]: cond_wait being invoked!!"; assert(false); return false;}
+                        const SymAddrSize &mutex_ml){llvm::outs() << "[snj]: cond_wait being invoked!!\n"; assert(false); return false;}
 bool ViewEqTraceBuilder::cond_awake(const SymAddrSize &cond_ml,
-                        const SymAddrSize &mutex_ml){llvm::outs() << "[snj]: cond_awake being invoked!!"; assert(false); return false;}
-int ViewEqTraceBuilder::cond_destroy(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_destroy being invoked!!"; assert(false); return false;}
-bool ViewEqTraceBuilder::register_alternatives(int alt_count){llvm::outs() << "[snj]: register_alternatives being invoked!!"; assert(false); return false;}
+                        const SymAddrSize &mutex_ml){llvm::outs() << "[snj]: cond_awake being invoked!!\n"; assert(false); return false;}
+int ViewEqTraceBuilder::cond_destroy(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_destroy being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::register_alternatives(int alt_count){llvm::outs() << "[snj]: register_alternatives being invoked!!\n"; assert(false); return false;}
 
 void ViewEqTraceBuilder::Event::make_spawn() {
   type = SPAWN;
@@ -371,7 +394,7 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::prefix(IID<IPid> ev) 
   assert(this->has(ev));
   sequence_iterator it = find(begin(), end(), ev);
   std::vector<IID<IPid>> pre(begin(), it);
-  Sequence sprefix(pre,thrs);
+  Sequence sprefix(pre, threads);
   return sprefix;
 }
 
@@ -379,14 +402,14 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::suffix(IID<IPid> ev) 
   assert(this->has(ev));
   sequence_iterator it = find(begin(), end(), ev);
   std::vector<IID<IPid>> suf(it+1, end());
-  Sequence ssuffix(suf,thrs);
+  Sequence ssuffix(suf, threads);
   return ssuffix;
 }
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::suffix(ViewEqTraceBuilder::Sequence &seq) {
   sequence_iterator it = find(begin(), end(), *(seq.end()-1));
   std::vector<IID<IPid>> suf(it+1, end());
-  Sequence ssuffix(suf,thrs);
+  Sequence ssuffix(suf, threads);
   return ssuffix;
 }
 
@@ -417,7 +440,7 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::commonPrefix(ViewEqTr
     if(events[i] != seq.events[i]) break;
   }
   std::vector<IID<IPid>> cPre(events.begin(), events.begin()+i );
-  Sequence comPrefix(cPre,thrs);
+  Sequence comPrefix(cPre, threads);
   assert(comPrefix.isPrefix(*this) && comPrefix.isPrefix(seq));
   return comPrefix;
 }
@@ -429,20 +452,19 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix(IID<IPid> ev
   for(it = events.begin(); (*it) != ev; it++){
     if(it->get_pid() == ev.get_pid()) poPre.push_back(*it);
   }
-  Sequence spoPrefix(poPre,thrs);
+  Sequence spoPrefix(poPre, threads);
   return spoPrefix;
 }
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1, IID<IPid> e2){
   assert(this->has(e1) && this->has(e2));
   std::vector<IID<IPid>> taupr{e1};
-  ViewEqTraceBuilder::Sequence tauPrime(taupr,thrs);
+  ViewEqTraceBuilder::Sequence tauPrime(taupr, threads);
   tauPrime.concatenate(this->suffix(e1));
   tauPrime.push_back(e2);
   ViewEqTraceBuilder::Sequence res = tauPrime.poPrefix(e2);
-  std::vector<Thread> threads = *thrs;
-  ViewEqTraceBuilder::Event event1 = threads[e1.get_pid()][e1.get_index()];
-  ViewEqTraceBuilder::Event event2 = threads[e2.get_pid()][e2.get_index()];
+  ViewEqTraceBuilder::Event event1 = threads->at(e1.get_pid())[e1.get_index()];
+  ViewEqTraceBuilder::Event event2 = threads->at(e2.get_pid())[e2.get_index()];
   if(event1.is_write()) res.push_back(e1);
   if(event2.is_write()) res.push_back(e2);
   if(event1.is_read()) res.push_back(e1);
@@ -463,7 +485,7 @@ std::tuple<ViewEqTraceBuilder::Sequence, ViewEqTraceBuilder::Sequence, ViewEqTra
 ViewEqTraceBuilder::Sequence::join(Sequence &primary, Sequence &other, IID<IPid> delim, Sequence &joined)
 {
   typedef std::tuple<Sequence, Sequence, Sequence> return_type;
-  std::vector<Thread> threads = *thrs;
+  // std::vector<Thread> threads = *threads;
   if (primary.empty()) {
     joined.concatenate(other);
     primary.clear();
@@ -485,14 +507,14 @@ ViewEqTraceBuilder::Sequence::join(Sequence &primary, Sequence &other, IID<IPid>
       }
     }
 
-    ViewEqTraceBuilder::Event ev = threads[e.get_pid()][e.get_index()];
+    ViewEqTraceBuilder::Event ev = threads->at(e.get_pid())[e.get_index()];
     if (ev.is_write()) { // algo 6-17
       if (!other.has(e)) { // e not in both primary and other [algo 6-12]
         IID<IPid> er;
         ViewEqTraceBuilder::sequence_iterator it;
         for (it = other.events.begin(); it != other.events.end(); it++) {
           er = *it;
-          ViewEqTraceBuilder::Event event_er = threads[er.get_pid()][er.get_index()];
+          ViewEqTraceBuilder::Event event_er = threads->at(er.get_pid())[er.get_index()];
           if (!event_er.is_read()) continue;
           if (primary.has(er)) continue;
           if (ev.same_object(event_er)) break; // found a read er that is not in primary s.t. obj(e) == obj(er)
@@ -567,9 +589,8 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::cmerge(Sequence &othe
 bool ViewEqTraceBuilder::Sequence::hasRWpairs(Sequence &seq) {
   for (sequence_iterator it1 = (*this).events.begin(); it1 != (*this).events.end(); it1++) {
     for (sequence_iterator it2 = seq.events.begin(); it2 != seq.events.end(); it2++) {
-      std::vector<Thread> threads = *thrs;
-      ViewEqTraceBuilder::Event e1 = threads[it1->get_pid()][it1->get_index()];
-      ViewEqTraceBuilder::Event e2 = threads[it2->get_pid()][it2->get_index()];
+      ViewEqTraceBuilder::Event e1 = (*threads)[it1->get_pid()][it1->get_index()];
+      ViewEqTraceBuilder::Event e2 = (*threads)[it2->get_pid()][it2->get_index()];
       if (e1.same_object(e2)) {
         if (e1.is_read() && e2.is_write()) return true;
         if (e1.is_write() && e2.is_read()) return true;
@@ -600,12 +621,21 @@ bool ViewEqTraceBuilder::Sequence::conflits_with(Sequence &other) {
 std::unordered_set<IID<IPid>> ViewEqTraceBuilder::unexploredInfluencers(ViewEqTraceBuilder::Event er, SOPFormula<IID<IPid>>& f){
   assert(er.is_read());
   std::unordered_set<IID<IPid>> ui;
+  std::unordered_set<int> values,forbidden_values;
 
   for(int i = 0; i < Enabled.size(); i++){
     Event e = threads[Enabled[i].get_pid()][Enabled[i].get_index()];
-    if(!er.same_object(e) || !e.is_write() ||  f.evaluate(er.iid, e.value)) continue;
+    //[nau]:not a write event or not same object or already taken value or already checked forbidden value
+    if(!e.is_write() || !er.same_object(e) || values.find(e.value) != values.end() || forbidden_values.find(e.value) != forbidden_values.end()) continue;
 
+    //check if value forbidden for er
+    std::unordered_map<IID<IPid>, int> valueEnv{{er.iid, e.value}};
+    if(f.evaluate(valueEnv)== RESULT::TRUE) {
+      forbidden_values.insert(e.value);
+      continue;
+    }
     ui.insert(e.iid);
+    values.insert(e.value);
   }
 
   return ui;
@@ -618,27 +648,34 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredInfluencers(ViewEqTrac
   unsigned o_id = er.object;
   int pid = er.get_pid();
 
-  assert(visible[o_id].mpo[0].size() == 1);
+  assert(pid > 0);
+  auto it = visible.find(o_id);
+  assert(it!= visible.end());
+  assert(visible[o_id].mpo[0].size() == 1); //only the init event in first row
   assert(visible[o_id].mpo.size() == visible[o_id].visible_start.size() + 1);
 
+  //[nau]: check if init event is visible to er
   if(visible[o_id].check_init_visible(pid)) {
+
     IID<IPid> init = visible[o_id].mpo[0][0];
     Event init_e = threads[init.get_pid()][init.get_index()];
-    assert(init_e.value == 0); 
+    assert(init_e.value == 0);
     std::unordered_map<IID<IPid>, int> valueEnv{{init, init_e.value}};
-    if(f.evaluate(valueEnv) != RESULT::TRUE ) ei.insert(mpo[0][0]);
+    if(f.evaluate(valueEnv) != RESULT::TRUE ) ei.insert(visible[o_id].mpo[0][0]);
     else forbidden_values.insert(init_e.value);
   }
+
+  //for writes other than init
   for(int i = 0; i < visible[o_id].visible_start[pid - 1].size(); i++){
       int j = visible[o_id].visible_start[pid - 1][i];
-      for( int k = j; k < visible[o_id].mpo[i + 1].size(); k++){
+      for( int k = j; k - 1< visible[o_id].mpo[i + 1].size(); k++){
           if(k == 0) continue;
           IID<IPid> e_id = visible[o_id].mpo[i + 1][k - 1];
-        
+
           Event e = threads[e_id.get_pid()][e_id.get_index()];
           //repeated value || already checked forbidden value || unexplored event
-          if(values.find(e.value) != values.end() || forbidden_values.find(e.value) != forbidden_values.end() || Enabled[e.get_pid()] == e_id) continue;
-          
+          if(values.find(e.value) != values.end() || forbidden_values.find(e.value) != forbidden_values.end() || find(Enabled.begin(), Enabled.end(), e_id) != Enabled.end() ) continue;
+
           std::unordered_map<IID<IPid>, int> valueEnv{{e_id, e.value}};
 
           if(f.evaluate(valueEnv) == RESULT::TRUE ) forbidden_values.insert(e.value);
@@ -653,16 +690,20 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredInfluencers(ViewEqTrac
 
 std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredWitnesses(ViewEqTraceBuilder::Event ew, SOPFormula<IID<IPid>> &f){
   assert(ew.is_write());
-  assert(Enabled[ew.get_pid()] == ew.iid);
+  //assert(find(Enabled.begin(), Enabled.end(), ew.iid) != Enabled.end() );
   std::unordered_set<IID<IPid>> explored_witnesses;
-  //ask: not finding prefix
+  //llvm::outs()<<"in ew\n";
   for(int i = 0; i < execution_sequence.size(); i++){
     IID<IPid> er = execution_sequence[i];
-    Event e = threads[er.get_pid()][er.get_pid()];
-    
-    if(! er.same_object(ew) || ! er.is_read() || er.get_pid() == ew.get_pid() || (f.evaluate(er,ew.value))) continue;
-    
-    explored_witnesses.insert(er);
+    Event e = threads[er.get_pid()][er.get_index()];
+    //llvm::outs()<<"in ew1\n";
+    //[nau]:not a read or not the same object or poprefix of the write event or ew forbidden for this read
+    if(! e.is_read() || ! e.same_object(ew) || e.get_pid() == ew.get_pid() ) continue;
+
+    std::unordered_map<IID<IPid>, int> valueEnv{{er, ew.value}};
+    if(f.evaluate(valueEnv) != RESULT::TRUE)
+      explored_witnesses.insert(er);
   }
+  //llvm::outs()<<"in ew2\n";
   return explored_witnesses;
 }

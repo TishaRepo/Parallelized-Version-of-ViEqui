@@ -45,6 +45,7 @@ libnidhugg_a_SOURCES = \
   TSOInterpreter.cpp TSOInterpreter.h \
   TSOPSOTraceBuilder.h \
   TSOTraceBuilder.cpp TSOTraceBuilder.h \
+  Visible.cpp Visible.h\
   ViewEqTraceBuilder.cpp ViewEqTraceBuilder.h \
   RFSCUnfoldingTree.cpp RFSCUnfoldingTree.h \
   RFSCDecisionTree.cpp RFSCDecisionTree.h \
