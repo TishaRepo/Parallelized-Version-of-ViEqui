@@ -26,7 +26,8 @@ public:
     virtual void mark_available(int proc, int aux = -1) override;
     virtual void mark_unavailable(int proc, int aux = -1) override;
             bool is_enabled(int thread_id);
-            std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> enabaled_RWpair();
+    /* [snj]: if read & write of same object is enabled, return the read */
+            std::pair<bool, IID<IPid>> enabaled_RWpair_read();
     
     virtual NODISCARD bool full_memory_conflict() override;
     virtual NODISCARD bool join(int tgt_proc) override;
