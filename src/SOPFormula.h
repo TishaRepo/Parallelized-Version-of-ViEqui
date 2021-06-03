@@ -1,3 +1,6 @@
+#ifndef __SOP_FORMLA_H__
+#define __SOP_FORMULA_H__
+
 #include <forward_list>
 #include <cstdint>
 #include <unordered_map>
@@ -344,3 +347,5 @@ public:
         return true;
     }
 };
+
+#endif
