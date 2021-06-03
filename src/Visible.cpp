@@ -40,8 +40,12 @@ void Visible::add_enabled_write(IID<IPid> ew){
 
 void Visible::execute_read(unsigned er_proc_id,IID<IPid> new_low){
     assert(er_proc_id > 0);
-    if( low_iid == new_low ) //if last executed write is same as last observed write
-        return;
+    if( low_iid == new_low ){ //if last executed write is same as last observed write
+        if(visible_start[er_proc_id - 1][low_mid.get_pid() - 1] < low_mid.get_index() )
+        visible_start[er_proc_id - 1][low_mid.get_pid() - 1] = low_mid.get_index();
+          return;
+    } 
+      
 
     assert(new_low.get_pid() > 0);
 
