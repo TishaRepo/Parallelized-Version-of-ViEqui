@@ -180,6 +180,8 @@ protected:
 
         IID<IPid>& operator[](std::size_t i) {return events[i];}
         const IID<IPid>& operator[](std::size_t i) const {return events[i];}
+        bool operator==(Sequence seq) {return (events == seq.events);}
+        bool operator!=(Sequence seq) {return (events != seq.events);}
 
         bool isPrefix(Sequence &seq);
         Sequence prefix(IID<IPid> ev);

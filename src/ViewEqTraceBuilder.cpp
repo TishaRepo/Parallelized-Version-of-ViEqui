@@ -50,12 +50,12 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun)
   }
 
   // [snj]: TODO algo goes here
-  std::pair<bool, IID<IPid>> RW = enabaled_RWpair_read();
+  // std::pair<bool, IID<IPid>> RW = enabaled_RWpair_read();
 
   IID<IPid> enabled_event = Enabled.front();
-  if (RW.first == true) {
-    enabled_event = RW.second.first; // read event of RW pair
-  }
+  // if (RW.first == true) {
+  //   enabled_event = RW.second.first; // read event of RW pair
+  // }
   Enabled.erase(Enabled.begin());
   current_thread = enabled_event.get_pid();
   current_event = threads[current_thread][enabled_event.get_index()];
@@ -115,7 +115,7 @@ std::pair<bool, IID<IPid>> ViewEqTraceBuilder::enabaled_RWpair_read() {
     }
   }
 
-  return std::make_pair(true, std::make_pair(dummy_id,dummy_id));
+  return std::make_pair(true, dummy_id);
 }
 
 int ViewEqTraceBuilder::current_value(unsigned obj) {
