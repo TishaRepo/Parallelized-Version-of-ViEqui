@@ -13,6 +13,13 @@ typedef llvm::SmallVector<SymEv, 1> sym_ty;
 
 class ViewEqTraceBuilder : public TSOPSOTraceBuilder
 {
+protected:
+    class Event;
+    class Thread;
+    class Sequence;
+    class Lead;
+    class State;
+
 public:
     typedef int IPid;
 
@@ -46,6 +53,15 @@ public:
     virtual void debug_print() const override;
 
     int current_value(unsigned obj);
+    std::unordered_set<IID<IPid>> unexploredInfluencers(Event er, SOPFormula<IID<IPid>>& f);
+    std::unordered_set<IID<IPid>> exploredInfluencers(Event er, SOPFormula<IID<IPid>> &f);
+    std::unordered_set<IID<IPid>> exploredWitnesses(Event ew, SOPFormula<IID<IPid>> &f);
+    
+    void update_leads(Event event, SOPFormula<IID<IPid>>& forbidden);
+    void forward_analysis(Event event, SOPFormula<IID<IPid>>& forbidden);
+    void backward_analysis_read(Event event, SOPFormula<IID<IPid>>& forbidden, std::unordered_map<int, std::vector<Lead>>& L);
+    void backward_analysis_write(Event event, SOPFormula<IID<IPid>>& forbidden, std::unordered_map<int, std::vector<Lead>>& L);
+    void backward_analysis(Event event, SOPFormula<IID<IPid>>& forbidden);
 
     //[nau]: added virtual function definitions for the sake of compiling
     //[snj]: added some more to the list
@@ -84,8 +100,6 @@ public:
     bool NODISCARD record_symbolic(SymEv event);
 
 protected:
-
-    class Sequence;
 
     class Event
     {
@@ -136,9 +150,7 @@ protected:
         // std::string   operator<<() {to_string();}
     };
 
-    std::unordered_map<unsigned,Visible> visible;//vpo for each object, can be accessed by referencing index 'e.object'
-
-    class Thread;
+    typedef std::vector<IID<IPid>>::iterator sequence_iterator;
     
     class Sequence
     {
@@ -155,6 +167,7 @@ protected:
         Sequence(){}
         Sequence(std::vector<Thread>* t){threads = t;}
         Sequence(std::vector<IID<IPid>> &seq, std::vector<Thread>* t){events = seq; threads = t;}
+        Sequence(std::unordered_set<IID<IPid>> a) {events.insert(events.begin(), a.begin(), a.end());}
 
         bool empty() {return (size() == 0);}
         std::size_t size() const {return events.size();}
@@ -169,10 +182,14 @@ protected:
         }
 
         void push_back(IID<IPid> event) {events.push_back(event);}
-        void pop_back() {events.pop_back();}
+        void push_front(IID<IPid> event) {events.insert(events.begin(), event);}
+        void pop_back() {events.pop_back();} 
         void pop_front() {events.erase(events.begin());};
+        void erase(IID<IPid> event) {events.erase(events.begin() + indexof(event));}
         void clear() {events.clear();}
         bool has(IID<IPid> event) {return std::find(events.begin(), events.end(), event) != events.end();}
+        int  indexof(IID<IPid> event) {return (std::find(events.begin(), events.end(), event) - events.begin());}
+        sequence_iterator find(IID<IPid> event) {return std::find(events.begin(), events.end(), event);}
 
         void concatenate(Sequence seq) { events.insert(events.end(), seq.events.begin(), seq.events.end()); }
         bool hasRWpairs(Sequence &seq);
@@ -182,12 +199,13 @@ protected:
         const IID<IPid>& operator[](std::size_t i) const {return events[i];}
         bool operator==(Sequence seq) {return (events == seq.events);}
         bool operator!=(Sequence seq) {return (events != seq.events);}
+        Sequence operator+(Sequence &other_seq) {return cmerge(other_seq);}
 
         bool isPrefix(Sequence &seq);
         Sequence prefix(IID<IPid> ev);
         Sequence suffix(IID<IPid> ev);
         Sequence suffix(Sequence &seq);
-        Sequence poPrefix(IID<IPid> ev);
+        Sequence poPrefix(IID<IPid> ev, sequence_iterator end);
         Sequence commonPrefix(Sequence &seq);
         bool conflicting(Sequence &other_seq);
         Sequence backseq(IID<IPid> e1, IID<IPid> e2);
@@ -196,7 +214,7 @@ protected:
         Sequence cmerge(Sequence &other_seq);
 
     };
-    typedef std::vector<IID<IPid>>::iterator sequence_iterator;
+    Sequence empty_sequence;
 
 
     class Thread
@@ -222,45 +240,41 @@ protected:
     public:
         Sequence constraint;
         Sequence start;
-        SOPFormula<unsigned> forbidden;
+        SOPFormula<IID<IPid>> forbidden;
 
-        Lead(Sequence c, Sequence s, SOPFormula<unsigned> f) : constraint(c), start(s), forbidden(f){};
+        Lead() {}
+        Lead(Sequence c, Sequence s, SOPFormula<IID<IPid>> f) : constraint(c), start(s), forbidden(f){};
         Lead(Sequence s) : start(s){};
 
         bool operator==(Lead l);
     };
 
-    // [snj]: sequence of event ids
-    Sequence execution_sequence;
-
-    // [snj]: dummy event 
+    /* [snj]: dummy event */
     Event no_load_store;
     IID<IPid> dummy_id;
 
-    std::vector<Thread>
-        threads;
     /* [rmnt]: The CPids of threads in the current execution. */
     CPidSystem CPS;
 
     class State
     {
+    public:
         // index of sequence explored corresponding to current state
         int sequence_prefix;
         std::vector<Lead> leads;
         std::vector<Sequence> done;
+        SOPFormula<IID<IPid>> forbidden;
+        Lead alpha;
+        Sequence alpha_sequence;
 
-    public:
+        State() {}
+        State(int i, Lead a, SOPFormula<IID<IPid>> f) {sequence_prefix = i; alpha = a; forbidden = f; alpha_sequence = alpha.start + alpha.constraint;};
+
         void add_done(Sequence d);
         bool is_done(Sequence seq);
 
         void add_lead(Lead l);
-    };
-
-    bool schedule(int *proc);
-
-    IPid ipid(int proc, int aux) const
-    {
-        return proc;
+        void consistent_join(std::vector<Lead>& L);
     };
 
     /* The index into prefix corresponding to the last event that was
@@ -291,6 +305,12 @@ protected:
     /* The latest value passed to this->metadata(). */
     const llvm::MDNode *last_md;
 
+    /* [snj]: program threads (has vector of events) */
+    std::vector<Thread> threads;
+
+    /* [snj]: executions states of current trace */
+    std::vector<State> states;
+
     /* [snj]: Thread id of the thr(current event) */
     int current_thread;
 
@@ -303,11 +323,21 @@ protected:
 
     // [snj]: memory map object to last stored value
     std::unordered_map<unsigned, int> mem;
-    std::unordered_map<unsigned, IID<IPid>> last_write;
-    std::unordered_set<IID<IPid>> unexploredInfluencers(Event er, SOPFormula<IID<IPid>>& f);
-    std::unordered_set<IID<IPid>> exploredInfluencers(Event er, SOPFormula<IID<IPid>> &f);
-    std::unordered_set<IID<IPid>> exploredWitnesses(Event ew, SOPFormula<IID<IPid>> &f);
 
+    std::unordered_map<unsigned, IID<IPid>> last_write; // object x event to perform latest write 
+
+    std::unordered_map<unsigned,Visible> visible;//vpo for each object, can be accessed by referencing index 'e.object'
+
+    /* [snj]: sequence of event ids representing the current trace prefix */
+    Sequence execution_sequence;
+
+    /* [snj]: sequence of events to explore from current state */
+    Sequence to_explore;
+
+    /* [snj]: forbidden values for the current trace */
+    SOPFormula<IID<IPid>> forbidden;
+
+    /* [snj]:  */
 };
 
 #endif

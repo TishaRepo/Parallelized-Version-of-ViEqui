@@ -21,12 +21,15 @@ template <class T>
 class ProductTerm
 {
 private:
-    std::unordered_map<T, int> objToVal;
+    std::unordered_map<T, int> objectToVal;
     bool initPhase = true;
 
 public:
     std::unordered_set<T> objects;
     RESULT result = RESULT::INIT;
+
+    ProductTerm(){}
+    ProductTerm(std::pair<T, int> p) {addConstraint(p.first, p.second);}
 
     void addConstraint(T var, int val)
     {
@@ -35,10 +38,10 @@ public:
         initPhase = false;
         result = RESULT::DEPENDENT;
         assert(objects.find(var) == objects.end());
-        assert(objToVal.find(var) == objToVal.end());
+        assert(objectToVal.find(var) == objectToVal.end());
 
         objects.insert(var);
-        objToVal.insert({var, val});
+        objectToVal.insert({var, val});
         assert(sanity());
     }
 
@@ -62,10 +65,10 @@ public:
             auto got = valueEnv.find(*i);
             if (got != valueEnv.end())
             {
-                if (objToVal.at(*i) != got->second)
+                if (objectToVal.at(*i) != got->second)
                 {
                     objects.clear();
-                    objToVal.clear();
+                    objectToVal.clear();
                     result = RESULT::FALSE;
                     assert(sanity());
                     return result;
@@ -85,7 +88,7 @@ public:
         if (!isDependent)
         {
             objects.clear();
-            objToVal.clear();
+            objectToVal.clear();
             result = RESULT::TRUE;
             assert(sanity());
             return result;
@@ -95,13 +98,13 @@ public:
         // [rmnt]: Clean up true vars
         for (auto j = trueVars.begin(); j != trueVars.end(); j++)
         {
-            objToVal.erase(*j);
+            objectToVal.erase(*j);
             objects.erase(*j);
         }
-        // objToVal.erase(std::remove_if(objToVal.begin(), objToVal.end(), [trueVars]({T var, uint8_t val}){
+        // objectToVal.erase(std::remove_if(objectToVal.begin(), objectToVal.end(), [trueVars]({T var, uint8_t val}){
         //                    return (trueVars.find(var) != trueVars.end());
         //                }),
-        //                objToVal.end());
+        //                objectToVal.end());
         // objects.erase(std::remove_if(objects.begin(), objects.end(), [trueVars]({T var, uint8_t val}){
         //                   return (trueVars.find(var) != trueVars.end());
         //               }),
@@ -111,14 +114,33 @@ public:
         return result;
     }
 
+    bool is_term_of_object(T object) {
+        if (!unit()) return false;
+        if (objectToVal.begin()->first != object) return false;
+        return true;
+    }
+
+    bool unit() {
+        return (objectToVal.size() == 1);
+    }
+
+    bool in(std::pair<T,int> term) {
+        for (auto it = objectToVal.begin(); it != objectToVal.end(); it++) {
+            if (it->first == term.first && it->second == term.second) 
+                return true;
+        }
+
+        return false;
+    }
+
     bool sanity()
     {
         /* [rmnt]: Checking for various invariants that must be maintained
                    1. For every variable, we must have a corresponding value.
                    2. If the term has no free variables, it has either not been initialized yet (so result is INIT) or it must not have a DEPENDENT result. Conversely, if it doesn't have a dependent result, it must not have any redundant free variables.
-                   3. Size of objects = Size of objToVal. Combined with 1, ensures one to one mapping between objToVal keys and objects
+                   3. Size of objects = Size of objectToVal. Combined with 1, ensures one to one mapping between objectToVal keys and objects
         */
-        if (objects.size() != objToVal.size())
+        if (objects.size() != objectToVal.size())
         {
             return false;
         }
@@ -146,7 +168,7 @@ public:
 
         for (auto i = objects.begin(); i != objects.end(); i++)
         {
-            if (objToVal.find(*i) == objToVal.end())
+            if (objectToVal.find(*i) == objectToVal.end())
             {
                 return false;
             }
@@ -160,7 +182,7 @@ public:
         {
             for (auto i = t1.objects.begin(); i != t1.objects.end(); i++)
             {
-                if (t1.objToVal.at(*i) != t2.objToVal.at(*i))
+                if (t1.objectToVal.at(*i) != t2.objectToVal.at(*i))
                 {
                     return false;
                 }
@@ -179,6 +201,13 @@ public:
     std::forward_list<ProductTerm<T>> terms;
     RESULT result = RESULT::INIT;
     bool initPhase = true;
+
+    SOPFormula() {}
+
+    SOPFormula(std::pair<T, int> t) {
+        ProductTerm<T> pt(t);
+        addTerm(pt);
+    };
 
     ~SOPFormula()
     {
@@ -287,15 +316,46 @@ public:
         return result;
     }
 
-    friend SOPFormula operator+(const SOPFormula &f1, const SOPFormula &f2)
-    {
-        SOPFormula f;
-        f = f1;
-        for (auto j = f2.terms.begjn(); j != f2.terms.end(); j++)
-        {
-            f.addTerm(*j);
+    std::pair<bool, ProductTerm<T>> term_of_object(T object) {
+        for (auto it = terms.begin(); it != terms.end(); it++) {
+            if (it->is_term_of_object(object))
+                return std::make_pair(true, (*it));
         }
-        return f;
+
+        ProductTerm<T> dummy;
+        return std::make_pair(false, dummy);
+    }
+
+    bool in(std::pair<T, int> term) {
+        for (auto it = terms.begin(); it != terms.end(); it++) {
+            if (it->unit() && it->in(term))
+                return true;
+        }
+
+        return false;
+    }
+
+    friend void operator||(SOPFormula &f1, SOPFormula &f2)
+    {
+        for (auto j = f2.terms.begin(); j != f2.terms.end(); j++)
+        {
+            f1.addTerm(*j);
+        }
+    }
+
+    friend void operator||(SOPFormula &f1, std::pair<T, int> t) {
+        ProductTerm<T> pt(t);
+        f1.addTerm(pt);
+    }
+
+    friend void operator||(SOPFormula &f1, ProductTerm<T> term) {
+        f1.addTerm(term);
+    }
+
+    void operator=(SOPFormula f) {
+        terms = f.terms;
+        result = f.result;
+        initPhase = f.initPhase;
     }
 
     bool sanity()

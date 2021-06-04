@@ -10,7 +10,7 @@ ViewEqTraceBuilder::ViewEqTraceBuilder(const Configuration &conf) : TSOPSOTraceB
   std::vector<IID<IPid>> evs;
   Sequence s(evs,&threads);
   execution_sequence = s;
-  round  = 3; // [snj]: TODO temp remove eventually
+  round  = 1; // [snj]: TODO temp remove eventually
 }
 
 ViewEqTraceBuilder::~ViewEqTraceBuilder() {
@@ -18,7 +18,7 @@ ViewEqTraceBuilder::~ViewEqTraceBuilder() {
   current_thread = -1;
   prefix_idx = 0;
 
-  round  = 3; // [snj]: TODO temp remove eventually
+  round  = 1; // [snj]: TODO temp remove eventually
 }
 
 bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun)
@@ -46,20 +46,23 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun)
 
   if (Enabled.empty()) {
     debug_print();
-    visible.clear();
-    last_write.clear();
-    mem.clear();
     return false; // [snj]: maximal trace explored
   }
 
-  // [snj]: TODO algo goes here
-  // std::pair<bool, IID<IPid>> RW = enabaled_RWpair_read();
+  // [snj]: Explore Algo function
+  // read of an enabled read-write pair
+  std::pair<bool, IID<IPid>> enabled_read_of_RW = enabaled_RWpair_read();
 
-  IID<IPid> enabled_event = Enabled.front();
-  // if (RW.first == true) {
-  //   enabled_event = RW.second.first; // read event of RW pair
-  // }
-  Enabled.erase(Enabled.begin());
+  IID<IPid> enabled_event; // next event for execution
+  if (enabled_read_of_RW.first == true) {
+    llvm::outs() << "found read of RW\n";
+    enabled_event = enabled_read_of_RW.second; // read event of RW pair (event removed from enabled)
+  }
+  else { //no read of RW-pair available in enabled
+    enabled_event = Enabled.front(); // pick any event from enabled
+    Enabled.erase(Enabled.begin());
+  }
+  
   current_thread = enabled_event.get_pid();
   current_event = threads[current_thread][enabled_event.get_index()];
   assert(current_event.is_write() || current_event.is_read());
@@ -74,6 +77,112 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun)
   threads[current_thread].awaiting_load_store = false; // [snj]: next event after current may not be load or store
   *proc = current_thread;
   return true;
+}
+
+void ViewEqTraceBuilder::forward_analysis(Event event, SOPFormula<IID<IPid>>& forbidden) {
+  Sequence ui(unexploredInfluencers(event, forbidden));
+
+  SOPFormula<IID<IPid>> fui_all(std::make_pair(event.iid, mem[event.object]));
+  for (auto it = ui.begin(); it != ui.end(); it++) {
+    fui_all || std::make_pair(event.iid, threads[(*it).get_pid()][(*it).get_index()].value);
+  }
+
+  fui_all || forbidden;
+  ui.push_front(event.iid);
+  std::vector<Lead> L{Lead(empty_sequence, ui, fui_all)};\
+
+  for (auto it =ui.begin(); it != ui.end(); it++) {
+    Sequence start = ui;
+    start.erase((*it));
+    start.push_front(event.iid);
+    start.push_front((*it));
+
+    SOPFormula<IID<IPid>> fui(std::make_pair(event.iid, mem[event.object]));
+    for (auto it2 = ui.begin(); it2 != ui.end(); it2++) {
+      if (it2 != it)
+        fui || std::make_pair(event.iid, threads[(*it2).get_pid()][(*it2).get_index()].value);
+    }
+
+    fui || forbidden;
+    Lead l(empty_sequence, start, fui);
+    L.push_back(l);
+  }
+
+  states[prefix_idx].consistent_join(L); // add leads at current state
+}
+
+void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula<IID<IPid>>& forbidden, std::unordered_map<int, std::vector<Lead>>& L) {
+  std::unordered_set<IID<IPid>> ui = unexploredInfluencers(event, forbidden);
+  std::unordered_set<IID<IPid>> ei = exploredInfluencers(event, forbidden);
+
+  SOPFormula<IID<IPid>> fui = (std::make_pair(event.iid, mem[event.object]));
+  for (auto it = ui.begin(); it != ui.end(); it++) {
+    fui || std::make_pair(event.iid, threads[(*it).get_pid()][(*it).get_index()].value);
+  }
+
+  for (auto it = ei.begin(); it != ei.end(); it++) {
+    if (threads[(*it).get_pid()][(*it).get_index()].value == mem[event.object]) 
+      continue;
+
+    int event_index = execution_sequence.indexof(event.iid);
+    
+    SOPFormula<IID<IPid>> inF;
+    for (auto it = states[event_index].alpha.start.begin(); it != states[event_index].alpha.start.end(); it++) {
+      std::pair<bool, ProductTerm<IID<IPid>>> forbidden_term_of_event = states[event_index].alpha.forbidden.term_of_object((*it));
+      if (forbidden_term_of_event.first) {
+        inF || forbidden_term_of_event.second;
+      }
+    }
+
+    inF || fui;
+    L[event_index].push_back(Lead(states[event_index].alpha_sequence, execution_sequence.backseq((*it), event.iid), inF));
+  }
+}
+
+void ViewEqTraceBuilder::backward_analysis_write(Event event, SOPFormula<IID<IPid>>& forbidden, std::unordered_map<int, std::vector<Lead>>& L) {
+  std::unordered_set<IID<IPid>> ew = exploredWitnesses(event, forbidden);
+
+  for (auto it = ew.begin(); it != ew.end(); it++) {
+    int it_val = threads[(*it).get_pid()][(*it).get_index()].value;
+    if (it_val == event.value)
+      continue;
+
+    int event_index = execution_sequence.indexof(event.iid);
+    
+    SOPFormula<IID<IPid>> inF;
+    for (auto it = states[event_index].alpha.start.begin(); it != states[event_index].alpha.start.end(); it++) {
+      std::pair<bool, ProductTerm<IID<IPid>>> forbidden_term_of_event = states[event_index].alpha.forbidden.term_of_object((*it));
+      if (forbidden_term_of_event.first) {
+        inF || forbidden_term_of_event.second;
+      }
+    }
+    (inF || std::make_pair((*it),it_val));
+    L[event_index].push_back(Lead(states[event_index].alpha_sequence, execution_sequence.backseq((*it), event.iid), inF));
+  }
+}
+
+void ViewEqTraceBuilder::backward_analysis(Event event, SOPFormula<IID<IPid>>& forbidden) {
+  std::unordered_map<int, std::vector<Lead>> L; // map of execution index -> leads to be added at state[execution index]
+
+  if (event.is_read()) {
+    backward_analysis_read(event, forbidden, L);
+  }
+  else if (event.is_write())  {
+    backward_analysis_write(event, forbidden, L);
+  }
+
+  for (auto it = L.begin(); it != L.end(); it++) {
+    states[it->first].consistent_join(it->second); // consistent join at respective execution prefix
+  }
+}
+
+void ViewEqTraceBuilder::update_leads(Event event, SOPFormula<IID<IPid>>& forbidden) {
+  assert(event.is_read() || event.is_write());
+
+  if (event.is_read()) 
+    forward_analysis(event, forbidden); // add leads at current state
+
+  backward_analysis(event, forbidden); // add leads at previous states
 }
 
 void ViewEqTraceBuilder::mark_available(int proc, int aux)
@@ -118,7 +227,7 @@ std::pair<bool, IID<IPid>> ViewEqTraceBuilder::enabaled_RWpair_read() {
     }
   }
 
-  return std::make_pair(true, dummy_id);
+  return std::make_pair(false, dummy_id);
 }
 
 int ViewEqTraceBuilder::current_value(unsigned obj) {
@@ -151,6 +260,8 @@ bool ViewEqTraceBuilder::reset() {
   // mutexes.clear();
   // cond_vars.clear();
   mem.clear();
+  visible.clear();
+  last_write.clear();
   // last_full_memory_conflict = -1;
   prefix_idx = -1;
   // dryrun = false;
@@ -403,12 +514,13 @@ std::string ViewEqTraceBuilder::Event::type_to_string() const {
 }
 
 std::string ViewEqTraceBuilder::Event::to_string() const {
-  return (sym_event().to_string() + " *** (" + type_to_string() + "(" + std::to_string(object) + "," + std::to_string(value) + "))");
+  // return (sym_event().to_string() + " *** (" + type_to_string() + "(" + std::to_string(object) + "," + std::to_string(value) + "))");
+  return ("(" + type_to_string() + "(" + std::to_string(object) + "," + std::to_string(value) + "))");
 }
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::prefix(IID<IPid> ev) {
   assert(this->has(ev));
-  sequence_iterator it = find(begin(), end(), ev);
+  sequence_iterator it = find(ev);
   std::vector<IID<IPid>> pre(begin(), it);
   Sequence sprefix(pre, threads);
   return sprefix;
@@ -416,14 +528,14 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::prefix(IID<IPid> ev) 
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::suffix(IID<IPid> ev) {
   assert(this->has(ev));
-  sequence_iterator it = find(begin(), end(), ev);
+  sequence_iterator it = find(ev);
   std::vector<IID<IPid>> suf(it+1, end());
   Sequence ssuffix(suf, threads);
   return ssuffix;
 }
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::suffix(ViewEqTraceBuilder::Sequence &seq) {
-  sequence_iterator it = find(begin(), end(), *(seq.end()-1));
+  sequence_iterator it = find(*(seq.end()-1));
   std::vector<IID<IPid>> suf(it+1, end());
   Sequence ssuffix(suf, threads);
   return ssuffix;
@@ -433,8 +545,8 @@ bool ViewEqTraceBuilder::Sequence::conflicting(ViewEqTraceBuilder::Sequence &oth
   for(int i = 0; i < events.size(); i++){
     for(int j = i + 1; j < events.size() ; j++){
       if(other_seq.has(events[i]) && other_seq.has(events[j])){
-        sequence_iterator it1 = find(other_seq.begin(),other_seq.end(),events[i]);
-        sequence_iterator it2 = find(other_seq.begin(),other_seq.end(),events[j]);
+        sequence_iterator it1 = other_seq.find(events[i]);
+        sequence_iterator it2 = other_seq.find(events[j]);
         if ((it1 - it2) > 0) return true;
 
       }
@@ -461,13 +573,16 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::commonPrefix(ViewEqTr
   return comPrefix;
 }
 
-ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix(IID<IPid> ev){
-  assert(this->has(ev));
+ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix(IID<IPid> ev, sequence_iterator end){
+  assert(has(ev));
   sequence_iterator it;
   std::vector<IID<IPid>> poPre;
-  for(it = events.begin(); (*it) != ev; it++){
-    if(it->get_pid() == ev.get_pid()) poPre.push_back(*it);
+  
+  for(it = events.begin(); it != end && it != events.end(); it++){
+    if(it->get_pid() == ev.get_pid()) 
+      poPre.push_back(*it);
   }
+  
   Sequence spoPrefix(poPre, threads);
   return spoPrefix;
 }
@@ -475,18 +590,18 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix(IID<IPid> ev
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1, IID<IPid> e2){
   assert(this->has(e1) && this->has(e2));
   std::vector<IID<IPid>> taupr{e1};
-  ViewEqTraceBuilder::Sequence tauPrime(taupr, threads);
-  tauPrime.concatenate(this->suffix(e1));
-  tauPrime.push_back(e2);
-  ViewEqTraceBuilder::Sequence res = tauPrime.poPrefix(e2);
+  
+  ViewEqTraceBuilder::Sequence po_pre = poPrefix(e2, find(e2));
   ViewEqTraceBuilder::Event event1 = threads->at(e1.get_pid())[e1.get_index()];
   ViewEqTraceBuilder::Event event2 = threads->at(e2.get_pid())[e2.get_index()];
-  if(event1.is_write()) res.push_back(e1);
-  if(event2.is_write()) res.push_back(e2);
-  if(event1.is_read()) res.push_back(e1);
-  if(event2.is_read()) res.push_back(e2);
 
-  return res;
+  // [snj]: po prefix followed by write of {e1,e2} followed by read of {e1,e2}
+  if(event1.is_write()) po_pre.push_back(e1);
+  if(event2.is_write()) po_pre.push_back(e2);
+  if(event1.is_read()) po_pre.push_back(e1);
+  if(event2.is_read()) po_pre.push_back(e2);
+
+  return po_pre;
 }
 
 
@@ -621,7 +736,7 @@ bool ViewEqTraceBuilder::Sequence::hasRWpairs(Sequence &seq) {
 bool ViewEqTraceBuilder::Sequence::conflits_with(Sequence &other) {
   Sequence current = (*this);
   for (sequence_iterator it1 = current.begin(); it1 != current.end(); it1++) {
-    sequence_iterator it2 = find(other.begin(),other.end(),(*it1));
+    sequence_iterator it2 = other.find((*it1));
     if (it2 == other.end()) continue; // event not in other
 
     for (sequence_iterator it12 = current.begin(); it12 != it1; it12++) {
