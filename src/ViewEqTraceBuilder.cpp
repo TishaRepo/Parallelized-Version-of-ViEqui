@@ -62,12 +62,19 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun)
     enabled_event = Enabled.front(); // pick any event from enabled
     Enabled.erase(Enabled.begin());
   }
-  
+
   current_thread = enabled_event.get_pid();
   current_event = threads[current_thread][enabled_event.get_index()];
   assert(current_event.is_write() || current_event.is_read());
   assert(0 <= current_thread && current_thread < long(threads.size()));
 
+  //update last_write
+  if(current_event.is_write()){
+    last_write[current_event.object] = current_event.iid;
+    mem[current_event.object] = current_event.value;
+  }
+  //update vpo when read is done
+  if(current_event.is_read()) visible[current_event.object].execute_read(current_event.get_pid(), last_write[current_event.object]);
   // [snj]: record current event as next in execution sequence
   // TODO only read write in exn seq but need all or atleat tid + how to set read values
   execution_sequence.push_back(current_event.iid);
@@ -121,11 +128,11 @@ void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula<IID<IPid
   }
 
   for (auto it = ei.begin(); it != ei.end(); it++) {
-    if (threads[(*it).get_pid()][(*it).get_index()].value == mem[event.object]) 
+    if (threads[(*it).get_pid()][(*it).get_index()].value == mem[event.object])
       continue;
 
     int event_index = execution_sequence.indexof(event.iid);
-    
+
     SOPFormula<IID<IPid>> inF;
     for (auto it = states[event_index].alpha.start.begin(); it != states[event_index].alpha.start.end(); it++) {
       std::pair<bool, ProductTerm<IID<IPid>>> forbidden_term_of_event = states[event_index].alpha.forbidden.term_of_object((*it));
@@ -148,7 +155,7 @@ void ViewEqTraceBuilder::backward_analysis_write(Event event, SOPFormula<IID<IPi
       continue;
 
     int event_index = execution_sequence.indexof(event.iid);
-    
+
     SOPFormula<IID<IPid>> inF;
     for (auto it = states[event_index].alpha.start.begin(); it != states[event_index].alpha.start.end(); it++) {
       std::pair<bool, ProductTerm<IID<IPid>>> forbidden_term_of_event = states[event_index].alpha.forbidden.term_of_object((*it));
@@ -179,7 +186,7 @@ void ViewEqTraceBuilder::backward_analysis(Event event, SOPFormula<IID<IPid>>& f
 void ViewEqTraceBuilder::update_leads(Event event, SOPFormula<IID<IPid>>& forbidden) {
   assert(event.is_read() || event.is_write());
 
-  if (event.is_read()) 
+  if (event.is_read())
     forward_analysis(event, forbidden); // add leads at current state
 
   backward_analysis(event, forbidden); // add leads at previous states
@@ -353,19 +360,17 @@ bool ViewEqTraceBuilder::store(const SymData &ml) {
   // [snj]: visitStoreInst in Execution.cpp lands in atomic_store not here
   Event event(SymEv::Store(ml));
   event.make_write();
-  mem[event.object] = event.value;
   current_event = event;
 
   if (current_event.is_global()) {
     current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
     threads[current_thread].push_back(current_event);
     threads[current_thread].awaiting_load_store = true;
-    last_write[event.object] = current_event.iid;
 
     assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
     Enabled.push_back(current_event.iid);
     if(current_thread == 0){
-      Visible vis(current_event.object, current_event.iid);
+      Visible vis(current_event.iid);
       visible.insert({current_event.object, vis});
     }
     else
@@ -386,20 +391,18 @@ bool ViewEqTraceBuilder::atomic_store(const SymData &ml) {
   // [snj]: visitStoreInst in Execution.cpp lands here not in store
   Event event(SymEv::Store(ml));
   event.make_write();
-  mem[event.object] = event.value;
   current_event = event;
 
   if (current_event.is_global()) {
     current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
     threads[current_thread].push_back(current_event);
     threads[current_thread].awaiting_load_store = true;
-    last_write[event.object] = current_event.iid;
 
     assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
     Enabled.push_back(current_event.iid);
 
     if(current_thread == 0){
-      Visible vis(current_event.object, current_event.iid);
+      Visible vis( current_event.iid);
       visible.insert({current_event.object, vis});
     }
     else
@@ -577,12 +580,12 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix(IID<IPid> ev
   assert(has(ev));
   sequence_iterator it;
   std::vector<IID<IPid>> poPre;
-  
+
   for(it = events.begin(); it != end && it != events.end(); it++){
-    if(it->get_pid() == ev.get_pid()) 
+    if(it->get_pid() == ev.get_pid())
       poPre.push_back(*it);
   }
-  
+
   Sequence spoPrefix(poPre, threads);
   return spoPrefix;
 }
@@ -590,7 +593,7 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix(IID<IPid> ev
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1, IID<IPid> e2){
   assert(this->has(e1) && this->has(e2));
   std::vector<IID<IPid>> taupr{e1};
-  
+
   ViewEqTraceBuilder::Sequence po_pre = poPrefix(e2, find(e2));
   ViewEqTraceBuilder::Event event1 = threads->at(e1.get_pid())[e1.get_index()];
   ViewEqTraceBuilder::Event event2 = threads->at(e2.get_pid())[e2.get_index()];
@@ -849,7 +852,7 @@ bool ViewEqTraceBuilder::Lead::operator==(Lead l) {
   return true;
 }
 
-void ViewEqTraceBuilder::State::add_done(Sequence d) {  
+void ViewEqTraceBuilder::State::add_done(Sequence d) {
   for (auto it = done.begin(); it != done.end(); it++) {
     if (d == (*it))
       return; // sequence alrready added
