@@ -133,6 +133,23 @@ public:
         return false;
     }
 
+    std::string to_string() {
+        int size = objectToVal.size();
+        int cnt = 0;
+        std::string s = "(";
+
+        auto it = objectToVal.begin();
+        for (; it != objectToVal.end(); it++, cnt++) {
+            if (cnt == size-1) break;
+            s = s + "[" + std::to_string(it->first.get_pid()) + ":" + std::to_string(it->first.get_index()) + "]";
+            s = s + "(" + std::to_string(it->second) + ") ^ ";
+        }
+
+        s = s + "[" + std::to_string(it->first.get_pid()) + ":" + std::to_string(it->first.get_index()) + "]";
+        s = s + "(" + std::to_string(it->second) + "))";
+        return s;
+    }
+
     bool sanity()
     {
         /* [rmnt]: Checking for various invariants that must be maintained
@@ -356,6 +373,23 @@ public:
         terms = f.terms;
         result = f.result;
         initPhase = f.initPhase;
+    }
+
+    std::string to_string() {
+        if (result == RESULT::INIT || result == RESULT::FALSE) return "-";
+        if (result == RESULT::TRUE) return "TRUE";
+
+        std::string s = "(";
+
+        auto it = terms.begin();
+        for (; it != terms.end(); it++) {
+            auto it1 = it; it1++;
+            if (it1 == terms.end()) break;
+            s = s + it->to_string() + " v ";
+        }
+
+        s = s + it->to_string() + ")";
+        return s;
     }
 
     bool sanity()

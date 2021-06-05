@@ -44,6 +44,7 @@ public:
     virtual NODISCARD bool atomic_store(const SymData &ml) override;
     virtual NODISCARD bool load(const SymAddrSize &ml) override;
 
+            bool exists_non_memory_access(int * proc);
     virtual bool reset() override;
     virtual void cancel_replay() override;
     virtual bool is_replaying() const override;
@@ -132,6 +133,8 @@ protected:
         IID<IPid> get_iid() const {return iid;}
         int get_id() {return iid.get_index();}
         IPid get_pid() {return iid.get_pid();}
+        int get_id() const {return iid.get_index();}
+        IPid get_pid() const {return iid.get_pid();}
 
 
         std::vector<Event> unexploredInfluencers(Sequence &seq);
@@ -200,6 +203,7 @@ protected:
         bool operator==(Sequence seq) {return (events == seq.events);}
         bool operator!=(Sequence seq) {return (events != seq.events);}
         Sequence operator+(Sequence &other_seq) {return cmerge(other_seq);}
+        std::ostream &operator<<(std::ostream &os){return os << to_string();}
 
         bool isPrefix(Sequence &seq);
         Sequence prefix(IID<IPid> ev);
@@ -212,6 +216,8 @@ protected:
         // [snj]: consistent merge, merges 2 sequences such that all read events maitain their sources
         //          i.e, reads-from relation remain unchanged
         Sequence cmerge(Sequence &other_seq);
+
+        std::string to_string();
 
     };
     Sequence empty_sequence;
@@ -246,7 +252,10 @@ protected:
         Lead(Sequence c, Sequence s, SOPFormula<IID<IPid>> f) : constraint(c), start(s), forbidden(f){};
         Lead(Sequence s) : start(s){};
 
+        std::string to_string();
+
         bool operator==(Lead l);
+        std::ostream &operator<<(std::ostream &os){return os << to_string();}
     };
 
     /* [snj]: dummy event */
@@ -268,13 +277,16 @@ protected:
         Sequence alpha_sequence;
 
         State() {}
-        State(int i, Lead a, SOPFormula<IID<IPid>> f) {sequence_prefix = i; alpha = a; forbidden = f; alpha_sequence = alpha.start + alpha.constraint;};
+        State(int prefix_idx) : sequence_prefix(prefix_idx) {};
+        // State(int i, Lead a, SOPFormula<IID<IPid>> f) {sequence_prefix = i; alpha = a; forbidden = f; alpha_sequence = alpha.start + alpha.constraint;};
 
         void add_done(Sequence d);
         bool is_done(Sequence seq);
 
         void add_lead(Lead l);
         void consistent_join(std::vector<Lead>& L);
+
+        std::ostream & print_leads();
     };
 
     /* The index into prefix corresponding to the last event that was

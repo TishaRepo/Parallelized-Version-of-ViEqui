@@ -30,6 +30,48 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun)
   // // //
 
   // [snj]: peak next read/write event / execute next non-read/write event
+  if (exists_non_memory_access(proc))
+    return true;
+
+  if (Enabled.empty()) {
+    debug_print();
+    return false; // [snj]: maximal trace explored
+  }
+
+  // [snj]: Explore Algo function
+  // read of an enabled read-write pair
+  std::pair<bool, IID<IPid>> enabled_read_of_RW = enabaled_RWpair_read();
+
+  IID<IPid> enabled_event; // next event for execution
+  if (enabled_read_of_RW.first == true) {
+    enabled_event = enabled_read_of_RW.second; // read event of RW pair (event removed from enabled)
+  }
+  else { //no read of RW-pair available in enabled
+    enabled_event = Enabled.front(); // pick any event from enabled
+    Enabled.erase(Enabled.begin());
+  }
+  
+  current_thread = enabled_event.get_pid();
+  current_event = threads[current_thread][enabled_event.get_index()];
+  assert(current_event.is_write() || current_event.is_read());
+  assert(0 <= current_thread && current_thread < long(threads.size()));
+
+  State state(prefix_idx);
+  update_leads(current_event, forbidden);
+
+
+  // [snj]: record current event as next in execution sequence
+  // TODO only read write in exn seq but need all or atleat tid + how to set read values
+  execution_sequence.push_back(current_event.iid);
+  prefix_idx++;
+
+  // [snj]: execute current event from Interpreter::run() in Execution.cpp
+  threads[current_thread].awaiting_load_store = false; // [snj]: next event after current may not be load or store
+  *proc = current_thread;
+  return true;
+}
+
+bool ViewEqTraceBuilder::exists_non_memory_access(int *proc) {
   // reverse loop to prioritize newly created threads
   for (int i = threads.size()-1; i >=0 ; i--) {
     if (threads[i].available && !threads[i].awaiting_load_store) {   // && (conf.max_search_depth < 0 || threads[i].events.size() < conf.max_search_depth)){
@@ -44,39 +86,7 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun)
     }
   }
 
-  if (Enabled.empty()) {
-    debug_print();
-    return false; // [snj]: maximal trace explored
-  }
-
-  // [snj]: Explore Algo function
-  // read of an enabled read-write pair
-  std::pair<bool, IID<IPid>> enabled_read_of_RW = enabaled_RWpair_read();
-
-  IID<IPid> enabled_event; // next event for execution
-  if (enabled_read_of_RW.first == true) {
-    llvm::outs() << "found read of RW\n";
-    enabled_event = enabled_read_of_RW.second; // read event of RW pair (event removed from enabled)
-  }
-  else { //no read of RW-pair available in enabled
-    enabled_event = Enabled.front(); // pick any event from enabled
-    Enabled.erase(Enabled.begin());
-  }
-  
-  current_thread = enabled_event.get_pid();
-  current_event = threads[current_thread][enabled_event.get_index()];
-  assert(current_event.is_write() || current_event.is_read());
-  assert(0 <= current_thread && current_thread < long(threads.size()));
-
-  // [snj]: record current event as next in execution sequence
-  // TODO only read write in exn seq but need all or atleat tid + how to set read values
-  execution_sequence.push_back(current_event.iid);
-  prefix_idx++;
-
-  // [snj]: execute current event from Interpreter::run() in Execution.cpp
-  threads[current_thread].awaiting_load_store = false; // [snj]: next event after current may not be load or store
-  *proc = current_thread;
-  return true;
+  return false;
 }
 
 void ViewEqTraceBuilder::forward_analysis(Event event, SOPFormula<IID<IPid>>& forbidden) {
@@ -515,7 +525,7 @@ std::string ViewEqTraceBuilder::Event::type_to_string() const {
 
 std::string ViewEqTraceBuilder::Event::to_string() const {
   // return (sym_event().to_string() + " *** (" + type_to_string() + "(" + std::to_string(object) + "," + std::to_string(value) + "))");
-  return ("(" + type_to_string() + "(" + std::to_string(object) + "," + std::to_string(value) + "))");
+  return ("[" + std::to_string(get_pid()) + ":" + std::to_string(get_id()) + "] (" + type_to_string() + "(" + std::to_string(object) + "," + std::to_string(value) + "))");
 }
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::prefix(IID<IPid> ev) {
@@ -749,6 +759,17 @@ bool ViewEqTraceBuilder::Sequence::conflits_with(Sequence &other) {
   return false;
 }
 
+std::string ViewEqTraceBuilder::Sequence::to_string() {
+  std::string s = "<";
+  for (auto ev : events) {
+    if (ev == last()) break;
+    s = s + "(" + std::to_string(ev.get_pid()) + ":" + std::to_string(ev.get_index()) +"), ";
+  }
+
+  s = s + "(" + std::to_string(last().get_pid()) + ":" + std::to_string(last().get_index()) + ")>";
+  return s;
+}
+
 std::unordered_set<IID<IPid>> ViewEqTraceBuilder::unexploredInfluencers(ViewEqTraceBuilder::Event er, SOPFormula<IID<IPid>>& f){
   assert(er.is_read());
   std::unordered_set<IID<IPid>> ui;
@@ -849,6 +870,10 @@ bool ViewEqTraceBuilder::Lead::operator==(Lead l) {
   return true;
 }
 
+std::string ViewEqTraceBuilder::Lead::to_string() {
+  return ("(" + constraint.to_string() + ", " + start.to_string() + ", " + forbidden.to_string() + ")");
+}
+
 void ViewEqTraceBuilder::State::add_done(Sequence d) {  
   for (auto it = done.begin(); it != done.end(); it++) {
     if (d == (*it))
@@ -872,4 +897,13 @@ bool ViewEqTraceBuilder::State::is_done(Sequence seq) {
   }
 
   return false;
+}
+
+
+void ViewEqTraceBuilder::State::consistent_join(std::vector<Lead>& L) {}
+
+std::ostream & ViewEqTraceBuilder::State::print_leads() {
+  for (auto l : leads) {
+
+  }
 }
