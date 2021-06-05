@@ -905,8 +905,11 @@ bool ViewEqTraceBuilder::State::is_done(Sequence seq) {
 
 void ViewEqTraceBuilder::State::consistent_join(std::vector<Lead>& L) {}
 
-std::ostream & ViewEqTraceBuilder::State::print_leads() {
+std::ostream & ViewEqTraceBuilder::State::print_leads(std::ostream &os) {
+  std::string s = "State[" + std::to_string(sequence_prefix) + "] leads:\n";
   for (auto l : leads) {
-
+    s = s + l.to_string() + ",\n";
   }
+
+  return os << s;
 }

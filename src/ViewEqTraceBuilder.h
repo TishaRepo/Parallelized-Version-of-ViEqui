@@ -286,7 +286,7 @@ protected:
         void add_lead(Lead l);
         void consistent_join(std::vector<Lead>& L);
 
-        std::ostream & print_leads();
+        std::ostream & print_leads(std::ostream &os);
     };
 
     /* The index into prefix corresponding to the last event that was
