@@ -180,6 +180,8 @@ protected:
         Sequence(IID<IPid>& e, std::vector<Thread>* t) {events.push_back(e); threads = t;}
         Sequence(std::unordered_set<IID<IPid>> a, std::vector<Thread>* t) {events.insert(events.begin(), a.begin(), a.end()); threads = t;}
 
+        void update_threads(std::vector<Thread>* t) {threads = t;}
+
         bool empty() {return (size() == 0);}
         std::size_t size() const {return events.size();}
         IID<IPid> last() {return events.back();}

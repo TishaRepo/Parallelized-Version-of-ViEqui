@@ -8,6 +8,7 @@ ViewEqTraceBuilder::ViewEqTraceBuilder(const Configuration &conf) : TSOPSOTraceB
   current_thread = -1;
   current_state = -1;
   prefix_idx = 0;
+  execution_sequence.update_threads(&threads);
   // std::vector<IID<IPid>> evs;
   // Sequence s(threads);
   // execution_sequence = s;
@@ -19,6 +20,7 @@ ViewEqTraceBuilder::~ViewEqTraceBuilder() {
   current_thread = -1;
   current_state = -1;
   prefix_idx = 0;
+  execution_sequence.update_threads(&threads);
 
   round  = 1; // [snj]: TODO temp remove eventually
 }
@@ -123,8 +125,10 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun)
     // [snj]: record current event as next in execution sequence
     execution_sequence.push_back(current_event.iid);
     prefix_state.push_back(current_state);
+    llvm::outs() << "pushed: " << current_state << " at prefix_state[" << execution_sequence.indexof(current_event.iid) << "]\n";
     prefix_idx++;
-    llvm::outs() << "pushed to execution, settinf proc and returning \n";
+    llvm::outs() << "pushed to execution, prefix_state[" << (prefix_state.size()-1) << "]=" << current_state << " \n";
+    llvm::outs() << "setting proc and returning \n";
     // [snj]: execute current event from Interpreter::run() in Execution.cpp
     threads[current_thread].awaiting_load_store = false; // [snj]: next event after current may not be load or store
     *proc = current_thread;
@@ -207,7 +211,7 @@ void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula<IID<IPid
 
   SOPFormula<IID<IPid>> fui = (std::make_pair(event.iid, mem[event.object]));
   for (auto it = ui.begin(); it != ui.end(); it++) {
-    fui || std::make_pair(event.iid, threads[(*it).get_pid()][(*it).get_index()].value);
+    fui || std::make_pair(event.iid, get_event((*it)).value);
   }
 
   for (auto it = ei.begin(); it != ei.end(); it++) {
@@ -215,6 +219,7 @@ void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula<IID<IPid
       continue;
 
     int event_index = prefix_state[execution_sequence.indexof((*it))];
+    llvm::outs() << "event_index of " << get_event(*it).to_string() << " is es=" << execution_sequence.indexof((*it))  << ", st=" << event_index << "\n";
 
     SOPFormula<IID<IPid>> inF;
     for (auto it = states[event_index].alpha.start.begin(); it != states[event_index].alpha.start.end(); it++) {
@@ -225,8 +230,13 @@ void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula<IID<IPid
     }
 
     inF || fui;
+    llvm::outs() << "pushing to L\n";
+    Sequence bs = execution_sequence.backseq((*it), event.iid);
+    llvm::outs() << "got backseq " << bs.to_string() << "\n";
     L[event_index].push_back(Lead(states[event_index].alpha_sequence, execution_sequence.backseq((*it), event.iid), inF));
+    llvm::outs() << "pushed\n";
   }
+  llvm::outs() << "leaving ei\n";
 }
 
 void ViewEqTraceBuilder::backward_analysis_write(Event event, SOPFormula<IID<IPid>>& forbidden, std::unordered_map<int, std::vector<Lead>>& L) {
@@ -390,6 +400,7 @@ IID<CPid> ViewEqTraceBuilder::get_iid() const{
 
 void ViewEqTraceBuilder::refuse_schedule() { //[snj]: TODO check if pop_back from exn_seq has to be done
   execution_sequence.pop_back();
+  prefix_state.pop_back();
   mark_unavailable(current_thread);
 }
 
@@ -454,7 +465,6 @@ bool ViewEqTraceBuilder::load(const SymAddrSize &ml) {
     threads[current_thread].push_back(current_event);
     execution_sequence.pop_back();
     execution_sequence.push_back(current_event.iid);
-    prefix_state.push_back(-1);
   }
 
 
@@ -487,7 +497,6 @@ bool ViewEqTraceBuilder::store(const SymData &ml) {
     threads[current_thread].push_back(current_event);
     execution_sequence.pop_back();
     execution_sequence.push_back(current_event.iid);
-    prefix_state.push_back(-1);
   }
 
   return true;
@@ -520,7 +529,6 @@ bool ViewEqTraceBuilder::atomic_store(const SymData &ml) {
     threads[current_thread].push_back(current_event);
     execution_sequence.pop_back();
     execution_sequence.push_back(current_event.iid);
-    prefix_state.push_back(-1);
   }
 
   return true;
@@ -700,11 +708,12 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix(IID<IPid> ev
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1, IID<IPid> e2){
   assert(this->has(e1) && this->has(e2));
-  std::vector<IID<IPid>> taupr{e1};
-
+  llvm::outs() << "in backseq\n";
   ViewEqTraceBuilder::Sequence po_pre = poPrefix(e2, find(e2));
-  ViewEqTraceBuilder::Event event1 = threads->at(e1.get_pid())[e1.get_index()];
-  ViewEqTraceBuilder::Event event2 = threads->at(e2.get_pid())[e2.get_index()];
+  llvm::outs() << "got popre=" << po_pre.to_string() << "\n";
+  llvm::outs() << "threads.size=" << (*threads).size() << "\n";
+  Event event1 = threads->at(e1.get_pid())[e1.get_index()];
+  Event event2 = threads->at(e2.get_pid())[e2.get_index()];
 
   // [snj]: po prefix followed by write of {e1,e2} followed by read of {e1,e2}
   if(event1.is_write()) po_pre.push_back(e1);
@@ -712,6 +721,7 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1,
   if(event1.is_read()) po_pre.push_back(e1);
   if(event2.is_read()) po_pre.push_back(e2);
 
+  llvm::outs() << "returning backseq=" << po_pre.to_string() << "\n";
   return po_pre;
 }
 
@@ -908,20 +918,18 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::unexploredInfluencers(Event er
 std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredInfluencers(Event er, SOPFormula<IID<IPid>> &f){
   std::unordered_set<IID<IPid>> ei;
   std::unordered_set<int> values, forbidden_values;
-  llvm::outs() << "entered exploredInfluencers with er=" <<er.to_string() << " and f=" << f.to_string() << "\n";
-
+  
   unsigned o_id = er.object;
   int pid = er.get_pid();
-  llvm::outs() << "before asserts\n";
+  
   assert(pid > 0);
   auto it = visible.find(o_id);
   assert(it!= visible.end());
   assert(visible[o_id].mpo[0].size() == 1); //only the init event in first row
   assert(visible[o_id].mpo.size() == visible[o_id].visible_start.size() + 1);
-  llvm::outs() << "after asserts\n";
+  
   //[nau]: check if init event is visible to er
   if(visible[o_id].check_init_visible(pid)) {
-    llvm::outs() << "init visible \n";
     IID<IPid> initid = visible[o_id].mpo[0][0];
     Event init = get_event(initid);
     assert(init.value == 0);
@@ -929,7 +937,7 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredInfluencers(Event er, 
     if(f.check_evaluation(valueEnv) != RESULT::TRUE ) ei.insert(visible[o_id].mpo[0][0]);
     else forbidden_values.insert(init.value);
   }
-
+  
   //for writes other than init
   for(int i = 0; i < visible[o_id].visible_start[pid - 1].size(); i++){
       int j = visible[o_id].visible_start[pid - 1][i];
@@ -937,7 +945,7 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredInfluencers(Event er, 
           if(k == 0) continue;
           IID<IPid> e_id = visible[o_id].mpo[i + 1][k - 1];
 
-          Event e = threads[e_id.get_pid()][e_id.get_index()];
+          Event e = get_event(e_id);
           //repeated value || already checked forbidden value || unexplored event
           if(values.find(e.value) != values.end() || forbidden_values.find(e.value) != forbidden_values.end() || find(Enabled.begin(), Enabled.end(), e_id) != Enabled.end() ) continue;
 
@@ -950,6 +958,7 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredInfluencers(Event er, 
           }
       }
   }
+  
   return ei;
 }
 

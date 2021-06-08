@@ -66,12 +66,11 @@ bool Visible::check_init_visible(int pid){
     assert(pid > 0);
     if(pid - 1 >= init_visible.size()) {llvm::outs()<<init_visible.size()<<"sizenotok\n"; assert(false);}
     if(! init_visible[pid - 1]) {return false;}
-
+    
     //if a thread has moved on from 0, it means init is striked out
     for(int i = 0; init_visible[pid - 1] && i < visible_start[pid - 1].size(); i++){
       if(visible_start[pid - 1][i] != 0) init_visible[pid - 1] = false;
     }
-
 
     return init_visible[pid - 1];
 }
