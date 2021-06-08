@@ -64,7 +64,7 @@ void Visible::execute_read(unsigned er_proc_id,IID<IPid> new_low){
 
 bool Visible::check_init_visible(int pid){
     assert(pid > 0);
-    if(pid - 1 >= init_visible.size()) llvm::outs()<<init_visible.size()<<"sizenotok\n";
+    if(pid - 1 >= init_visible.size()) {llvm::outs()<<init_visible.size()<<"sizenotok\n"; assert(false);}
     if(! init_visible[pid - 1]) {return false;}
 
     //if a thread has moved on from 0, it means init is striked out

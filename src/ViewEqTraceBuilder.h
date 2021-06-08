@@ -49,6 +49,8 @@ public:
     virtual bool is_replaying() const override;
 
     virtual IID<CPid> get_iid() const override;
+            Event get_event(IID<IPid> event_id) {return threads[event_id.get_pid()][event_id.get_index()];}
+
     virtual Trace *get_trace() const override;
     virtual void debug_print() const override;
 
@@ -57,6 +59,7 @@ public:
     std::unordered_set<IID<IPid>> exploredInfluencers(Event er, SOPFormula<IID<IPid>> &f);
     std::unordered_set<IID<IPid>> exploredWitnesses(Event ew, SOPFormula<IID<IPid>> &f);
     
+    void update_leads(IID<IPid> event_id, SOPFormula<IID<IPid>>& forbidden) {update_leads(get_event(event_id), forbidden);}
     void update_leads(Event event, SOPFormula<IID<IPid>>& forbidden);
     void update_done(IID<IPid> ev);
 
@@ -360,6 +363,9 @@ protected:
     std::unordered_map<unsigned, IID<IPid>> last_write; // object x event to perform latest write 
 
     std::unordered_map<unsigned,Visible> visible;//vpo for each object, can be accessed by referencing index 'e.object'
+
+    /* [snj]: state corresponding to execution sequence prefix */
+    std::vector<int> prefix_state;
 
     /* [snj]: sequence of event ids representing the current trace prefix */
     Sequence execution_sequence;

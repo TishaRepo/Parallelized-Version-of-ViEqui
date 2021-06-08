@@ -45,6 +45,61 @@ public:
         assert(sanity());
     }
 
+    RESULT check_evaluation(std::unordered_map<T, int> valueEnv)
+    {
+        // [rmnt]: Evaluating an unitialized term is meaningless
+        assert(sanity());
+        assert(result != RESULT::INIT);
+        assert(!initPhase);
+
+        RESULT ret_result = result;
+
+        if (objects.empty())
+        {
+            assert(ret_result == RESULT::TRUE || ret_result == RESULT::FALSE);
+            assert(sanity());
+            return ret_result;
+        }
+
+        bool isDependent = false;
+        std::unordered_set<T> trueVars;
+        for (auto i = objects.begin(); i != objects.end(); i++)
+        {
+            auto got = valueEnv.find(*i);
+            if (got != valueEnv.end())
+            {
+                if (objectToVal.at(*i) != got->second)
+                {
+                    ret_result = RESULT::FALSE;
+                    assert(sanity());
+                    return ret_result;
+                }
+                else
+                {
+                    trueVars.insert(*i);
+                }
+            }
+            else
+            {
+                ret_result = RESULT::DEPENDENT;
+                isDependent = true;
+            }
+        }
+
+        if (!isDependent)
+        {
+            ret_result = RESULT::TRUE;
+            assert(sanity());
+            return ret_result;
+        }
+
+        assert(ret_result == RESULT::DEPENDENT);
+        // [rmnt]: Clean up true vars
+
+        assert(sanity());
+        return ret_result;
+    }
+
     RESULT evaluate(std::unordered_map<T, int> valueEnv)
     {
         // [rmnt]: Evaluating an unitialized term is meaningless
@@ -333,6 +388,50 @@ public:
         return result;
     }
 
+    RESULT check_evaluation(std::unordered_map<T, int> valueEnv)
+    {
+        RESULT ret_result = result;
+        assert(sanity());
+        // [rmnt]: Evaluating an unitialized formula is meaningless
+        assert(ret_result != RESULT::INIT);
+        assert(!initPhase);
+        if (terms.empty())
+        {
+            assert(ret_result == RESULT::TRUE || ret_result == RESULT::FALSE);
+            assert(sanity());
+            return ret_result;
+        }
+
+        bool isDependent = false;
+        for (auto i = terms.begin(); i != terms.end(); i++)
+        {
+            RESULT ans = i->check_evaluation(valueEnv);
+            if (ans == RESULT::TRUE)
+            {
+                ret_result = RESULT::TRUE;
+                assert(sanity());
+                return RESULT::TRUE;
+            }
+            else if (ans == RESULT::DEPENDENT)
+            {
+                ret_result = RESULT::DEPENDENT;
+                isDependent = true;
+            }
+        }
+
+        if (!isDependent)
+        {
+            ret_result = RESULT::FALSE;
+            assert(sanity());
+            return ret_result;
+        }
+
+        assert(ret_result == RESULT::DEPENDENT);
+        assert(sanity());
+
+        return ret_result;
+    }
+
     std::pair<bool, ProductTerm<T>> term_of_object(T object) {
         for (auto it = terms.begin(); it != terms.end(); it++) {
             if (it->is_term_of_object(object))
@@ -375,7 +474,7 @@ public:
         initPhase = f.initPhase;
     }
 
-    void clear() {terms.clear();}
+    void clear() {terms.clear(); result = RESULT::INIT;}
 
     std::string to_string() {
         if (result == RESULT::INIT || result == RESULT::FALSE) return "-";
