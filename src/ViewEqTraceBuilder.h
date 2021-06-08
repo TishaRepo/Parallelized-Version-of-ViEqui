@@ -44,7 +44,6 @@ public:
     virtual NODISCARD bool atomic_store(const SymData &ml) override;
     virtual NODISCARD bool load(const SymAddrSize &ml) override;
 
-            bool exists_non_memory_access(int * proc);
     virtual bool reset() override;
     virtual void cancel_replay() override;
     virtual bool is_replaying() const override;
@@ -59,10 +58,15 @@ public:
     std::unordered_set<IID<IPid>> exploredWitnesses(Event ew, SOPFormula<IID<IPid>> &f);
     
     void update_leads(Event event, SOPFormula<IID<IPid>>& forbidden);
+    void update_done(IID<IPid> ev);
+
     void forward_analysis(Event event, SOPFormula<IID<IPid>>& forbidden);
     void backward_analysis_read(Event event, SOPFormula<IID<IPid>>& forbidden, std::unordered_map<int, std::vector<Lead>>& L);
     void backward_analysis_write(Event event, SOPFormula<IID<IPid>>& forbidden, std::unordered_map<int, std::vector<Lead>>& L);
     void backward_analysis(Event event, SOPFormula<IID<IPid>>& forbidden);
+
+    bool exists_non_memory_access(int * proc);
+    void analyse_unexplored_influenecers(IID<IPid> read_event);
 
     //[nau]: added virtual function definitions for the sake of compiling
     //[snj]: added some more to the list
@@ -167,10 +171,11 @@ protected:
         std::vector<IID<IPid>> events;
         std::vector<Thread> *threads;
 
-        Sequence(){}
+        Sequence(){assert(false);}
         Sequence(std::vector<Thread>* t){threads = t;}
         Sequence(std::vector<IID<IPid>> &seq, std::vector<Thread>* t){events = seq; threads = t;}
-        Sequence(std::unordered_set<IID<IPid>> a) {events.insert(events.begin(), a.begin(), a.end());}
+        Sequence(IID<IPid>& e, std::vector<Thread>* t) {events.push_back(e); threads = t;}
+        Sequence(std::unordered_set<IID<IPid>> a, std::vector<Thread>* t) {events.insert(events.begin(), a.begin(), a.end()); threads = t;}
 
         bool empty() {return (size() == 0);}
         std::size_t size() const {return events.size();}
@@ -205,14 +210,14 @@ protected:
         Sequence operator+(Sequence &other_seq) {return cmerge(other_seq);}
         std::ostream &operator<<(std::ostream &os){return os << to_string();}
 
-        bool isPrefix(Sequence &seq);
-        Sequence prefix(IID<IPid> ev);
-        Sequence suffix(IID<IPid> ev);
-        Sequence suffix(Sequence &seq);
-        Sequence poPrefix(IID<IPid> ev, sequence_iterator end);
-        Sequence commonPrefix(Sequence &seq);
-        bool conflicting(Sequence &other_seq);
-        Sequence backseq(IID<IPid> e1, IID<IPid> e2);
+        bool isPrefix(Sequence &seq); // if this is prefix of seq
+        Sequence prefix(IID<IPid> ev); // prefix of this upto (but not including) ev
+        Sequence suffix(IID<IPid> ev); // suffix of this after (not including) ev
+        Sequence suffix(Sequence &seq); // suffix of this after prefix seq
+        Sequence poPrefix(IID<IPid> ev, sequence_iterator end); // program ordered prefix upto end of ev in this
+        Sequence commonPrefix(Sequence &seq);  // prefix of this and seq that is common
+        bool conflicting(Sequence &other_seq); // has events in this and other that occur in reverse order
+        Sequence backseq(IID<IPid> e1, IID<IPid> e2); // poprefix(e1).(write out of e1, e2).(read out of e1, e2)
         // [snj]: consistent merge, merges 2 sequences such that all read events maitain their sources
         //          i.e, reads-from relation remain unchanged
         Sequence cmerge(Sequence &other_seq);
@@ -247,10 +252,19 @@ protected:
         Sequence constraint;
         Sequence start;
         SOPFormula<IID<IPid>> forbidden;
+        Sequence merge;
 
         Lead() {}
-        Lead(Sequence c, Sequence s, SOPFormula<IID<IPid>> f) : constraint(c), start(s), forbidden(f){};
-        Lead(Sequence s) : start(s){};
+        Lead(Sequence c, Sequence s, SOPFormula<IID<IPid>> f) {
+            constraint = c; start = s; forbidden = f;
+            merge = s;
+            merge.cmerge(c);
+        }
+        Lead(Sequence s, SOPFormula<IID<IPid>> f) {
+            start = s; forbidden = f;
+            merge = s;
+        }
+        Lead(Sequence s) { start = s; merge = s; }
 
         std::string to_string();
 
@@ -282,8 +296,12 @@ protected:
 
         void add_done(Sequence d);
         bool is_done(Sequence seq);
+        void update_alpha(Lead l) {alpha = l; alpha_sequence = l.start; alpha_sequence.cmerge(l.constraint);}
 
-        void add_lead(Lead l);
+        bool has_unexplored_leads();
+        std::vector<Lead> unexplored_leads();
+        Lead next_unexplored_lead();
+        void consistent_join(Lead& l);
         void consistent_join(std::vector<Lead>& L);
 
         std::ostream & print_leads(std::ostream &os);
@@ -329,6 +347,9 @@ protected:
     /* [snj]: current event */
     Event current_event;
 
+    /* [snj]: current state (for read and write - no state for other events) */
+    int current_state;
+
     /* [snj]: set of enabled events ie next events of each thread */
     // list of (thread id, next event) pairs
     std::vector<IID<IPid>> Enabled;
@@ -349,7 +370,8 @@ protected:
     /* [snj]: forbidden values for the current trace */
     SOPFormula<IID<IPid>> forbidden;
 
-    /* [snj]:  */
+    /* [snj]: sequences already explored after the current trace prefix */
+    std::vector<Sequence> done;
 };
 
 #endif

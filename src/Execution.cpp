@@ -4257,7 +4257,7 @@ void Interpreter::run()
       else if (isGlobalStore(I)) completeStoreInst(static_cast<llvm::StoreInst&>(I));
       else visit(I);
 
-      // llvm::outs() << "[" << e++ << "]Executing: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
+      llvm::outs() << "[" << e++ << "]Executing: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
     }
     else {
     /* 
@@ -4310,7 +4310,7 @@ void Interpreter::run()
 
       if (isGlobalLoad(I) || isGlobalStore(I)) {
         visit(I); // visitLoadInst, visitStoreInst modified to peek and enable event but not execute
-        // llvm::outs() << "[" << p++ << "]Peeking  : "; I.print(llvm::outs(), true); llvm::outs() << "\n";
+        llvm::outs() << "[" << p++ << "]Peeking  : "; I.print(llvm::outs(), true); llvm::outs() << "\n";
       }
     }
   }

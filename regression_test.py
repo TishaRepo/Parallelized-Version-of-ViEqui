@@ -38,26 +38,36 @@ for test_file in test_files:
     (test_traces, test_isviolation) = test_results[test_index]
 
     os.system('clang -c -emit-llvm -S -o executable_file.ll ' + test_path + test_file)
-    process = subprocess.Popen([current_path + 'src/nidhugg', '--sc', current_path + 'executable_file.ll'], stdout=subprocess.PIPE)
-    stdout = process.communicate()[0]
+    process = subprocess.Popen([current_path + 'src/nidhugg', '--sc', '--view' , current_path + 'executable_file.ll'], stdout=subprocess.PIPE, bufsize=1, universal_newlines=True)
+    sout = process.stdout.readlines() # process.communicate()[0]
     os.system('rm ' + current_path + 'executable_file.ll')
 
+    run_fail = True
     count_fail = False
     violation_status_fail = False
 
-    for line in stdout:
+    # for line in sout:
+    #     print line
+    # print "-- stdout --"
+
+    for line in sout:
         if line.startswith('Trace count:'):
             out_traces = int(line[len('Trace count: '):])
             if (out_traces != test_traces):
                 count_fail =True
 
         elif line.startswith('No errors'):
+            run_fail = False
             if (test_isviolation != 'N'):
                 violation_status_fail = True
 
         elif line.startswith('Error detected'):
+            run_fail = False
             if (test_isviolation != 'Y'):
                 violation_status_fail = True
+
+    if (run_fail):
+        print str(test_index) + ' failed to complete run'
 
     if (count_fail and violation_status_fail):
         failed_tests = (test_file, 'Traces count mismatch (expected=' + test_traces + ' found=' + out_traces + ') & violation status mismatch (expected=' + test_isviolation + ')')
@@ -68,7 +78,7 @@ for test_file in test_files:
 
     tests_completed = tests_completed + 1
 
-assert(tests_completed == len(test_files))
+# assert(tests_completed == len(test_files))
 
 print ('No. of tests run = ' + str(tests_completed))
 print ('No. of tests failed = ' + str(len(failed_tests)))

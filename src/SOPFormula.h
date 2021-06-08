@@ -375,6 +375,8 @@ public:
         initPhase = f.initPhase;
     }
 
+    void clear() {terms.clear();}
+
     std::string to_string() {
         if (result == RESULT::INIT || result == RESULT::FALSE) return "-";
         if (result == RESULT::TRUE) return "TRUE";
