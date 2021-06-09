@@ -28,7 +28,10 @@ public:
     virtual ~ViewEqTraceBuilder() override;
 
     virtual bool schedule(int *proc, int *type, int *alt, bool *doexecute) override;
+            void replay_schedule(int *proc);
     virtual void refuse_schedule() override;
+            void replay_memory_access(int next_replay_thread, IID<IPid> next_replay_event);
+            void replay_non_memory_access(int next_replay_thread, IID<IPid> next_replay_event);
     
     virtual void metadata(const llvm::MDNode *md) override;
     virtual void mark_available(int proc, int aux = -1) override;
@@ -48,6 +51,7 @@ public:
     virtual bool reset() override;
     virtual void cancel_replay() override;
     virtual bool is_replaying() const override;
+            bool at_replay_point();
 
     virtual IID<CPid> get_iid() const override;
             Event get_event(IID<IPid> event_id) {return threads[event_id.get_pid()][event_id.get_index()];}
@@ -71,8 +75,8 @@ public:
 
     bool exists_non_memory_access(int * proc);
     void make_new_state();
-    IID<IPid> compute_next_event();
-    void execute_next_lead(IID<IPid> next_event);
+    void compute_next_event();
+    void execute_next_lead();
 
     void analyse_unexplored_influenecers(IID<IPid> read_event);
 
@@ -204,6 +208,7 @@ protected:
         void pop_back() {events.pop_back();} 
         void pop_front() {events.erase(events.begin());};
         void erase(IID<IPid> event) {events.erase(events.begin() + indexof(event));}
+        void erase(sequence_iterator begin, sequence_iterator end) {events.erase(begin, end);}
         void clear() {events.clear();}
         bool has(IID<IPid> event) {return std::find(events.begin(), events.end(), event) != events.end();}
         int  indexof(IID<IPid> event) {return (std::find(events.begin(), events.end(), event) - events.begin());}

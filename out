@@ -1,0 +1,165 @@
+[0]Executing:   %3 = alloca i32, align 4
+[1]Executing:   %4 = alloca i32, align 4
+[2]Executing:   %5 = alloca i8**, align 8
+[3]Executing:   %6 = alloca i64, align 8
+[4]Executing:   %7 = alloca i64, align 8
+[5]Executing:   store i32 0, i32* %3, align 4
+[6]Executing:   store i32 %0, i32* %4, align 4
+[7]Executing:   store i8** %1, i8*** %5, align 8
+[0]Peeking  :   store i32 0, i32* @x, align 4
+exploring R or W (forbidden=-)
+to_explore empty
+has unexplored leads
+unexplored leads:
+returning unexp leads
+lead: (<>, <(0:8)>, -)
+set current thread=0 and event 
+pref_idx=9
+[8]Executing:   store i32 0, i32* @x, align 4
+[9]Executing:   %8 = call i32 @pthread_create(i64* %6, %union.pthread_attr_t* null, i8* (i8*)* @t0, i8* null) #3
+[10]Executing:   %2 = alloca i8*, align 8
+[11]Executing:   store i8* %0, i8** %2, align 8
+[1]Peeking  :   store i32 1, i32* @x, align 4
+[12]Executing:   %9 = call i32 @pthread_create(i64* %7, %union.pthread_attr_t* null, i8* (i8*)* @t1, i8* null) #3
+[13]Executing:   %2 = alloca i8*, align 8
+[14]Executing:   %3 = alloca i32, align 4
+[15]Executing:   store i8* %0, i8** %2, align 8
+[2]Peeking  :   %4 = load i32, i32* @x, align 4
+[16]Executing:   %10 = load i64, i64* %6, align 8
+refuse schedule call 1
+refuse schedule
+[17]Refusing(0):   %11 = call i32 @pthread_join(i64 %10, i8** null)
+exploring R or W (forbidden=-)
+to_explore empty
+has unexplored leads
+unexplored leads:
+returning unexp leads
+lead: (<>, <(2:3), (1:2)>, (([2:3](1)) v ([2:3](0))))
+lead: (<>, <(1:2), (2:3)>, (([2:3](0))))
+set current thread=2 and event 
+pref_idx=18
+[17]Executing:   %4 = load i32, i32* @x, align 4
+[18]Executing:   store i32 %4, i32* %3, align 4
+[19]Executing:   ret i8* null
+exploring R or W (forbidden=(([2:3](1)) v ([2:3](0))))
+to_explore =<(1:2)>
+has unexplored leads
+unexplored leads:
+returning unexp leads
+lead: (<>, <(1:2)>, (([2:3](1)) v ([2:3](0))))
+set current thread=1 and event 
+pref_idx=21
+[20]Executing:   store i32 1, i32* @x, align 4
+[21]Executing:   ret i8* null
+[22]Executing:   %11 = call i32 @pthread_join(i64 %10, i8** null)
+[23]Executing:   %12 = load i64, i64* %7, align 8
+[24]Executing:   %13 = call i32 @pthread_join(i64 %12, i8** null)
+[25]Executing:   ret i32 0
+Debug_print: execution_sequence.size()=26
+[0]: --
+[1]: --
+[2]: --
+[3]: --
+[4]: --
+[5]: Stack Operation
+[6]: Stack Operation
+[7]: Stack Operation
+[8]: [0:8] (Write(1,0))
+[9]: --
+[10]: --
+[11]: Stack Operation
+[12]: --
+[13]: --
+[14]: --
+[15]: Stack Operation
+[16]: Stack Operation
+[17]: [2:3] (Read(1,0))
+[18]: Stack Operation
+[19]: --
+[20]: [1:2] (Write(1,1))
+[21]: --
+[22]: --
+[23]: Stack Operation
+[24]: --
+[25]: --
+[snj]: sleepset_is_empty being invoked!!
+reset round 1
+
+RESETTING replaying till 16 (st:1)
+trimmed ex seq size=18, prefix_state size=18, states size=2
+REPLAYING: [0]Executing:   %3 = alloca i32, align 4
+REPLAYING: [1]Executing:   %4 = alloca i32, align 4
+REPLAYING: [2]Executing:   %5 = alloca i8**, align 8
+REPLAYING: [3]Executing:   %6 = alloca i64, align 8
+REPLAYING: [4]Executing:   %7 = alloca i64, align 8
+REPLAYING: [5]Executing:   store i32 0, i32* %3, align 4
+REPLAYING: [6]Executing:   store i32 %0, i32* %4, align 4
+REPLAYING: [7]Executing:   store i8** %1, i8*** %5, align 8
+[0]Peeking  :   store i32 0, i32* @x, align 4
+REPLAYING: [8]Executing:   store i32 0, i32* @x, align 4
+REPLAYING: [9]Executing:   %8 = call i32 @pthread_create(i64* %6, %union.pthread_attr_t* null, i8* (i8*)* @t0, i8* null) #3
+REPLAYING: [10]Executing:   %2 = alloca i8*, align 8
+REPLAYING: [11]Executing:   store i8* %0, i8** %2, align 8
+[1]Peeking  :   store i32 1, i32* @x, align 4
+REPLAYING: [12]Executing:   %9 = call i32 @pthread_create(i64* %7, %union.pthread_attr_t* null, i8* (i8*)* @t1, i8* null) #3
+REPLAYING: [13]Executing:   %2 = alloca i8*, align 8
+REPLAYING: [14]Executing:   %3 = alloca i32, align 4
+REPLAYING: [15]Executing:   store i8* %0, i8** %2, align 8
+[2]Peeking  :   %4 = load i32, i32* @x, align 4
+REPLAYING: [16]Executing:   %10 = load i64, i64* %6, align 8
+AT REPLAY PT: has unexplored leads
+unexplored leads:
+returning unexp leads
+lead: (<>, <(1:2), (2:3)>, (([2:3](0))))
+set current thread=1 and event 
+pref_idx=18
+[17]Executing:   store i32 1, i32* @x, align 4
+[18]Executing:   ret i8* null
+[19]Executing:   %11 = call i32 @pthread_join(i64 %10, i8** null)
+[20]Executing:   %12 = load i64, i64* %7, align 8
+refuse schedule call 1
+refuse schedule
+[21]Refusing(0):   %13 = call i32 @pthread_join(i64 %12, i8** null)
+exploring R or W (forbidden=(([2:3](0))))
+to_explore =<(2:3)>
+has unexplored leads
+unexplored leads:
+returning unexp leads
+lead: (<>, <(2:3)>, (([2:3](0))))
+set current thread=2 and event 
+pref_idx=22
+[21]Executing:   %4 = load i32, i32* @x, align 4
+[22]Executing:   store i32 %4, i32* %3, align 4
+[23]Executing:   ret i8* null
+[24]Executing:   %13 = call i32 @pthread_join(i64 %12, i8** null)
+[25]Executing:   ret i32 0Trace count: 2
+No errors were detected.
+
+Debug_print: execution_sequence.size()=26
+[0]: --
+[1]: --
+[2]: --
+[3]: --
+[4]: --
+[5]: Stack Operation
+[6]: Stack Operation
+[7]: Stack Operation
+[8]: [0:8] (Write(1,0))
+[9]: --
+[10]: --
+[11]: Stack Operation
+[12]: --
+[13]: --
+[14]: --
+[15]: Stack Operation
+[16]: Stack Operation
+[17]: [1:2] (Write(1,1))
+[18]: --
+[19]: --
+[20]: Stack Operation
+[21]: [2:3] (Read(1,1))
+[22]: Stack Operation
+[23]: --
+[24]: --
+[25]: --
+[snj]: sleepset_is_empty being invoked!!
