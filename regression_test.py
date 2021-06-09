@@ -49,10 +49,11 @@ for test_file in test_files:
     # for line in sout:
     #     print line
     # print "-- stdout --"
+    # break
 
     for line in sout:
-        if line.startswith('Trace count:'):
-            out_traces = int(line[len('Trace count: '):])
+        if 'Trace count:' in line:
+            out_traces = int(line[line.find('Trace count') + len('Trace count: '):])
             if (out_traces != test_traces):
                 count_fail =True
 
@@ -70,18 +71,20 @@ for test_file in test_files:
         print str(test_index) + ' failed to complete run'
 
     if (count_fail and violation_status_fail):
-        failed_tests = (test_file, 'Traces count mismatch (expected=' + test_traces + ' found=' + out_traces + ') & violation status mismatch (expected=' + test_isviolation + ')')
+        failed_tests.append((test_file, 'Traces count mismatch (expected=' + str(test_traces) + ' found=' + str(out_traces) + ') & violation status mismatch (expected=' + test_isviolation + ')'))
     elif (count_fail):
-        failed_tests = (test_file, 'Traces count mismatch (expected=' + test_traces + ' found=' + out_traces + ')')
+        failed_tests.append((test_file, 'Traces count mismatch (expected=' + str(test_traces) + ' found=' + str(out_traces) + ')'))
     elif (violation_status_fail):
-        failed_tests = (test_file, 'Violation status mismatch (expected=' + test_isviolation + ')')
+        failed_tests.append((test_file, 'Violation status mismatch (expected=' + test_isviolation + ')'))
 
     tests_completed = tests_completed + 1
 
 # assert(tests_completed == len(test_files))
 
+print('----------------------------------------------')
 print ('No. of tests run = ' + str(tests_completed))
 print ('No. of tests failed = ' + str(len(failed_tests)))
+print('----------------------------------------------')
 for (idx, msg) in failed_tests:
     print ('Test ' + idx + ': FAIL')
     print ('     ' + msg)
