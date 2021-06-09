@@ -44,6 +44,7 @@ public:
     virtual NODISCARD bool atomic_store(const SymData &ml) override;
     virtual NODISCARD bool load(const SymAddrSize &ml) override;
 
+            int  find_replay_state_prefix();
     virtual bool reset() override;
     virtual void cancel_replay() override;
     virtual bool is_replaying() const override;
@@ -69,6 +70,10 @@ public:
     void backward_analysis(Event event, SOPFormula<IID<IPid>>& forbidden);
 
     bool exists_non_memory_access(int * proc);
+    void make_new_state();
+    IID<IPid> compute_next_event();
+    void execute_next_lead(IID<IPid> next_event);
+
     void analyse_unexplored_influenecers(IID<IPid> read_event);
 
     //[nau]: added virtual function definitions for the sake of compiling

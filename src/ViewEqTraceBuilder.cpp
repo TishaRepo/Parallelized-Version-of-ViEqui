@@ -30,8 +30,6 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun)
   // snj: For compatibility with existing design
   *aux = -1; *alt = 0; *DryRun = false;
 
-  if (prefix_idx = 0) llvm::outs() << "initial forbidden=" << forbidden.to_string() << "\n";
-
   assert(execution_sequence.size() == prefix_state.size());
 
   // [snj]: peak next read/write event / execute next non-read/write event
@@ -39,6 +37,7 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun)
     return true;
 
   if (Enabled.empty()) {
+    assert(forbidden.evaluate != RESULT::TRUE);
     debug_print();
     return false; // [snj]: maximal trace explored
   }
@@ -46,14 +45,52 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun)
   llvm::outs() << "exploring R or W (forbidden=" << forbidden.to_string() << ")\n";
 
   // [snj]: Explore Algo function
+  make_new_state();
+  IID<IPid> next_event = compute_next_event(); // next event for execution
+
+  if (states[current_state].has_unexplored_leads()) {
+    execute_next_lead(next_event);
+    // [snj]: execute current event from Interpreter::run() in Execution.cpp
+    threads[current_thread].awaiting_load_store = false; // [snj]: next event after current may not be load or store
+    *proc = current_thread;
+    return true;
+  }
+  
+  assert(false); //must not reach here
+  return false;
+}
+
+bool ViewEqTraceBuilder::exists_non_memory_access(int *proc) {
+  // reverse loop to prioritize newly created threads
+  for (int i = threads.size()-1; i >=0 ; i--) {
+    if (threads[i].available && !threads[i].awaiting_load_store) {   // && (conf.max_search_depth < 0 || threads[i].events.size() < conf.max_search_depth)){
+      IID<IPid> iid = IID<IPid>(IPid(i), threads[i].events.size());
+      threads[i].push_back(no_load_store);
+      execution_sequence.push_back(iid);
+      prefix_state.push_back(-1);
+      prefix_idx++;
+
+      current_thread = i;
+      *proc = i;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+void ViewEqTraceBuilder::make_new_state() {
   State next_state; // new state
-  IID<IPid> next_event; // next event for execution
   next_state.sequence_prefix = prefix_idx;
   next_state.forbidden = forbidden;
   next_state.done = done;
   
   current_state = states.size();
   states.push_back(next_state);
+}
+
+IID<IPid> ViewEqTraceBuilder::compute_next_event() {
+  IID<IPid> next_event;
 
   if (to_explore.empty()) {
     llvm::outs() << "to_explore empty\n";
@@ -88,74 +125,50 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun)
     to_explore.pop_front();
   }
 
-  if (states[current_state].has_unexplored_leads()) {
-    llvm::outs() << "has unexplored leads\n";
-    // [snj]: TODO remove - only for debug
-    llvm::outs() << "unexplored leads:\n";
-    std::vector<Lead> unexl = states[current_state].unexplored_leads();
-    for (auto it = unexl.begin(); it != unexl.end(); it++) {
-      llvm::outs() << "lead: ";
-      llvm::outs() << (*it).to_string() << "\n";
-    }
-    /////
-    Lead next_lead = states[current_state].next_unexplored_lead();
-    llvm::outs() << "got lead\n";
-    states[current_state].update_alpha(next_lead);
-    llvm::outs() << "set alpha\n";
-    update_done(states[current_state].alpha_sequence.head()); // [snj]: TODO add events to done after explore
-    forbidden = next_lead.forbidden;
-    llvm::outs() << "updated done, popped from to_explore, set forbidden \n";
-    current_thread = next_event.get_pid();
-    current_event = threads[current_thread][next_event.get_index()];
-    assert(current_event.is_write() || current_event.is_read());
-    assert(0 <= current_thread && current_thread < long(threads.size()));
-    llvm::outs() << "set current thread and event \n";
-    //update last_write
-    if(current_event.is_write()){
-      last_write[current_event.object] = current_event.iid;
-      mem[current_event.object] = current_event.value;
-      llvm::outs() << "set mem and last write \n";
-    }
-    //update vpo when read is done
-    if(current_event.is_read()) { 
-      visible[current_event.object].execute_read(current_event.get_pid(), last_write[current_event.object]);
-      current_event.value = mem[current_event.object];
-      threads[current_thread][current_event.get_id()].value = current_event.value;
-    }
-    // [snj]: record current event as next in execution sequence
-    execution_sequence.push_back(current_event.iid);
-    prefix_state.push_back(current_state);
-    llvm::outs() << "pushed: " << current_state << " at prefix_state[" << execution_sequence.indexof(current_event.iid) << "]\n";
-    prefix_idx++;
-    llvm::outs() << "pushed to execution, prefix_state[" << (prefix_state.size()-1) << "]=" << current_state << " \n";
-    llvm::outs() << "setting proc and returning \n";
-    // [snj]: execute current event from Interpreter::run() in Execution.cpp
-    threads[current_thread].awaiting_load_store = false; // [snj]: next event after current may not be load or store
-    *proc = current_thread;
-    return true;
-  }
-  
-  assert(false); //must not reach here
-  return false;
+  return next_event;
 }
 
-bool ViewEqTraceBuilder::exists_non_memory_access(int *proc) {
-  // reverse loop to prioritize newly created threads
-  for (int i = threads.size()-1; i >=0 ; i--) {
-    if (threads[i].available && !threads[i].awaiting_load_store) {   // && (conf.max_search_depth < 0 || threads[i].events.size() < conf.max_search_depth)){
-      IID<IPid> iid = IID<IPid>(IPid(i), threads[i].events.size());
-      threads[i].push_back(no_load_store);
-      execution_sequence.push_back(iid);
-      prefix_state.push_back(-1);
-      prefix_idx++;
-
-      current_thread = i;
-      *proc = i;
-      return true;
-    }
+void ViewEqTraceBuilder::execute_next_lead(IID<IPid> next_event) {
+  llvm::outs() << "has unexplored leads\n";
+  // [snj]: TODO remove - only for debug
+  llvm::outs() << "unexplored leads:\n";
+  std::vector<Lead> unexl = states[current_state].unexplored_leads();
+  for (auto it = unexl.begin(); it != unexl.end(); it++) {
+    llvm::outs() << "lead: ";
+    llvm::outs() << (*it).to_string() << "\n";
   }
-
-  return false;
+  /////
+  Lead next_lead = states[current_state].next_unexplored_lead();
+  llvm::outs() << "got lead\n";
+  states[current_state].update_alpha(next_lead);
+  llvm::outs() << "set alpha\n";
+  update_done(states[current_state].alpha_sequence.head()); // [snj]: TODO add events to done after explore
+  forbidden = next_lead.forbidden;
+  llvm::outs() << "updated done, popped from to_explore, set forbidden \n";
+  current_thread = next_event.get_pid();
+  current_event = threads[current_thread][next_event.get_index()];
+  assert(current_event.is_write() || current_event.is_read());
+  assert(0 <= current_thread && current_thread < long(threads.size()));
+  llvm::outs() << "set current thread and event \n";
+  //update last_write
+  if(current_event.is_write()){
+    last_write[current_event.object] = current_event.iid;
+    mem[current_event.object] = current_event.value;
+    llvm::outs() << "set mem and last write \n";
+  }
+  //update vpo when read is done
+  if(current_event.is_read()) { 
+    visible[current_event.object].execute_read(current_event.get_pid(), last_write[current_event.object]);
+    current_event.value = mem[current_event.object];
+    threads[current_thread][current_event.get_id()].value = current_event.value;
+  }
+  // [snj]: record current event as next in execution sequence
+  execution_sequence.push_back(current_event.iid);
+  prefix_state.push_back(current_state);
+  llvm::outs() << "pushed: " << current_state << " at prefix_state[" << execution_sequence.indexof(current_event.iid) << "]\n";
+  prefix_idx++;
+  llvm::outs() << "pushed to execution, prefix_state[" << (prefix_state.size()-1) << "]=" << current_state << " \n";
+  llvm::outs() << "setting proc and returning \n";
 }
 
 void ViewEqTraceBuilder::analyse_unexplored_influenecers(IID<IPid> read_event) {
@@ -366,29 +379,61 @@ bool ViewEqTraceBuilder::record_symbolic(SymEv event)
   return false;
 }
 
+int ViewEqTraceBuilder::find_replay_state_prefix() {
+  int replay_state_prefix = states.size() - 1;
+  for (auto it = states.end(); it != states.begin();) {
+    it--;
+
+    it->add_done(it->alpha_sequence);
+    if (it->has_unexplored_leads())  // found replay state
+      break;
+
+    replay_state_prefix --;
+  }
+
+  return replay_state_prefix;
+}
+
 bool ViewEqTraceBuilder::reset() {
   if (round == 0) return false;
   llvm::outs() << "reset round " << round << "\n";
   round--;
-  execution_sequence.clear();
-  to_explore.clear();
 
+  llvm::outs() << "\nRESETTING\n";
+
+  // int replay_state_prefix = find_replay_state_prefix();
+  // if (replay_state_prefix < 0) // no more leads to explore, model checking complete
+  //   return false; 
+
+  // int replay_execution_prefix = states[replay_state_prefix].sequence_prefix;
+  // execution_sequence.erase(execution_sequence.begin() + replay_execution_prefix + 1, execution_sequence().end());
+  // states.erase(states.begin() + replay_state_prefix + 1, states.end());
+  // llvm::outs() << "trimmed ex seq size=" << execution_sequence.size() << ", states size=" << states.size() << "\n";
+
+  execution_sequence.clear();
+
+  to_explore.clear();
   CPS = CPidSystem();
+  
   threads.clear();
   threads.push_back(Thread(CPid(), -1));
   // mutexes.clear();
   // cond_vars.clear();
+  
   mem.clear();
   visible.clear();
   last_write.clear();
+  
   // last_full_memory_conflict = -1;
   prefix_idx = -1;
-  done.clear();
-  forbidden.clear();
+  
+  done.clear();// = states[replay_state_prefix].done;
+  forbidden.clear();// = states[replay_state_prefix].forbidden;
+  
   // dryrun = false;
   replay = true;
   // dry_sleepers = 0;
-  last_md = 0;
+  last_md = 0; // [snj]: TODO ??
 
   return true;
 }
