@@ -188,12 +188,12 @@ protected:
         Sequence(std::vector<IID<IPid>> &seq, std::vector<Thread>* t){events = seq; threads = t;}
         Sequence(IID<IPid>& e, std::vector<Thread>* t) {events.push_back(e); threads = t;}
         Sequence(std::unordered_set<IID<IPid>> a, std::vector<Thread>* t) {events.insert(events.begin(), a.begin(), a.end()); threads = t;}
-
+        
         void update_threads(std::vector<Thread>* t) {threads = t;}
 
         bool empty() {return (size() == 0);}
         std::size_t size() const {return events.size();}
-        IID<IPid> last() {return events.back();}
+        IID<IPid> last() {if (empty()) return IID<IPid>(-1,-1); return events.back();}
         std::vector<IID<IPid>>::iterator begin() {return events.begin();}
         std::vector<IID<IPid>>::iterator end() {return events.end();}
         IID<IPid> head() {return events.front();}

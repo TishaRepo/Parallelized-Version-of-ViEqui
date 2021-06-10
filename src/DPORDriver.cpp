@@ -338,7 +338,7 @@ DPORDriver::Result DPORDriver::run_rfsc_sequential() {
     Trace *t= this->run_once(TB, mod.get(), assume_blocked);
     TB.compute_prefixes();
     tasks_left--;
-
+    
     int to_create = TB.tasks_created;
 
 
@@ -495,7 +495,7 @@ DPORDriver::Result DPORDriver::run(){
         2. look for race based on the computed hb
     */
     Trace *t = run_once(*TB, mod.get(), assume_blocked);
-
+    
     if (handle_trace(TB, t, &computation_count, res, assume_blocked)) break;
     if(conf.print_progress_estimate && (computation_count+1) % 100 == 0){
       estimate = std::round(TB->estimate_trace_count());
@@ -513,9 +513,9 @@ DPORDriver::Result DPORDriver::run(){
   if(conf.print_progress){
     llvm::dbgs() << ESC_char << "[K\n";
   }
-
+  llvm::outs() << "done conf print prog \n";
   delete TB;
-
+llvm::outs() << "done delete TB \n";
   return res;
 }
 
