@@ -23,7 +23,6 @@ protected:
 public:
     typedef int IPid;
 
-    int round; //[snj]: TODO temporary
     ViewEqTraceBuilder(const Configuration &conf = Configuration::default_conf);
     virtual ~ViewEqTraceBuilder() override;
 
@@ -75,7 +74,7 @@ public:
 
     bool exists_non_memory_access(int * proc);
     void make_new_state();
-    void compute_next_event();
+    void compute_new_leads();
     void execute_next_lead();
 
     void analyse_unexplored_influenecers(IID<IPid> read_event);
@@ -229,7 +228,7 @@ protected:
         Sequence prefix(IID<IPid> ev); // prefix of this upto (but not including) ev
         Sequence suffix(IID<IPid> ev); // suffix of this after (not including) ev
         Sequence suffix(Sequence &seq); // suffix of this after prefix seq
-        Sequence poPrefix(IID<IPid> ev, sequence_iterator end); // program ordered prefix upto end of ev in this
+        Sequence poPrefix(IID<IPid> ev, sequence_iterator begin, sequence_iterator end); // program ordered prefix upto end of ev in this
         Sequence commonPrefix(Sequence &seq);  // prefix of this and seq that is common
         bool conflicting(Sequence &other_seq); // has events in this and other that occur in reverse order
         Sequence backseq(IID<IPid> e1, IID<IPid> e2); // poprefix(e1).(write out of e1, e2).(read out of e1, e2)
@@ -335,12 +334,6 @@ protected:
     * not replaying.
     */
     unsigned sym_idx;
-
-    /* Are we currently replaying the events given in prefix from the
-    * previous execution? Or are we executing new events by arbitrary
-    * scheduling?
-    */
-    bool replay;
 
     /* The number of events that were or are going to be replayed in the
     * current computation.
