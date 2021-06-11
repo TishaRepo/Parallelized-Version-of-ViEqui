@@ -21,7 +21,7 @@ void *t2(void *arg){
 
 void *t3(void *arg){
   int n, l, p;
-  n = y;
+  n = z;
   l = y;
   if(n && !l) p = x;
   return NULL;
