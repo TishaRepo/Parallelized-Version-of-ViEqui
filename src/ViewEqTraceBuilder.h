@@ -66,6 +66,7 @@ public:
     void update_leads(IID<IPid> event_id, SOPFormula<IID<IPid>>& forbidden) {update_leads(get_event(event_id), forbidden);}
     void update_leads(Event event, SOPFormula<IID<IPid>>& forbidden);
     void update_done(IID<IPid> ev);
+    void update_forbidden(Lead *lead);
 
     void forward_analysis(Event event, SOPFormula<IID<IPid>>& forbidden);
     void backward_analysis_read(Event event, SOPFormula<IID<IPid>>& forbidden, std::unordered_map<int, std::vector<Lead>>& L);
@@ -263,22 +264,27 @@ protected:
 
     class Lead {
     public:
-        Sequence constraint;
-        Sequence start;
-        SOPFormula<IID<IPid>> forbidden;
-        Sequence merged_sequence;
+        Sequence constraint; // sequence from previous trace to be maintained
+        Sequence start; // new to explore to get key value
+        SOPFormula<IID<IPid>> forbidden; // objXval pairs that must not be explored
+        std::pair<IID<IPid>, int> key; // objXval pair for which this trace is created
+        Sequence merged_sequence; // cmerge(start, constraint) sequence to explore while a=maintaining constraint
 
         Lead() {}
-        Lead(Sequence c, Sequence s, SOPFormula<IID<IPid>> f) {
-            constraint = c; start = s; forbidden = f;
+        Lead(Sequence c, Sequence s, SOPFormula<IID<IPid>> f, std::pair<IID<IPid>, int> k) {
+            constraint = c; start = s; forbidden = f; key = k;
             merged_sequence = s;
             merged_sequence.cmerge(c);
         }
-        Lead(Sequence s, SOPFormula<IID<IPid>> f) {
-            start = s; forbidden = f;
+        Lead(Sequence s, SOPFormula<IID<IPid>> f, std::pair<IID<IPid>, int> k) {
+            start = s; forbidden = f; key = k;
             merged_sequence = s;
         }
-        Lead(Sequence s) { start = s; merged_sequence = s; }
+        Lead(Sequence s, SOPFormula<IID<IPid>> f) {
+            start = s; forbidden = f; key = std::make_pair(IID<IPid>(),-1); // dummy key
+            merged_sequence = s;
+        }
+        Lead(Sequence s, std::pair<IID<IPid>, int> k) { start = s; merged_sequence = s; key = k;}
 
         std::string to_string();
 
