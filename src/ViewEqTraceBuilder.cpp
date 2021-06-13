@@ -301,10 +301,10 @@ void ViewEqTraceBuilder::forward_analysis(Event event, SOPFormula<IID<IPid>>& fo
 }
 
 void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula<IID<IPid>>& forbidden, std::unordered_map<int, std::vector<Lead>>& L) {
-  std::unordered_set<IID<IPid>> ui = unexploredInfluencers(event, forbidden);
+  // std::unordered_set<IID<IPid>> ui = unexploredInfluencers(event, forbidden);
   std::unordered_set<IID<IPid>> ei = exploredInfluencers(event, forbidden);
   
-  // SOPFormula<IID<IPid>> fui = (std::make_pair(event.iid, mem[event.object]));
+  SOPFormula<IID<IPid>> fui = (std::make_pair(event.iid, mem[event.object]));
   // for (auto it = ui.begin(); it != ui.end(); it++) {
   //   fui || std::make_pair(event.iid, get_event((*it)).value);
   // }
@@ -333,7 +333,7 @@ void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula<IID<IPid
       }
     }
     
-    // inF || fui;
+    inF || fui;
     L[event_index].push_back(Lead(states[event_index].alpha_sequence(), execution_sequence.backseq((*it), event.iid), inF, std::make_pair(event.iid, get_event(*it).value)));
   }
 }
