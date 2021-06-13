@@ -266,19 +266,19 @@ protected:
         Sequence constraint;
         Sequence start;
         SOPFormula<IID<IPid>> forbidden;
-        Sequence merge;
+        Sequence merged_sequence;
 
         Lead() {}
         Lead(Sequence c, Sequence s, SOPFormula<IID<IPid>> f) {
             constraint = c; start = s; forbidden = f;
-            merge = s;
-            merge.cmerge(c);
+            merged_sequence = s;
+            merged_sequence.cmerge(c);
         }
         Lead(Sequence s, SOPFormula<IID<IPid>> f) {
             start = s; forbidden = f;
-            merge = s;
+            merged_sequence = s;
         }
-        Lead(Sequence s) { start = s; merge = s; }
+        Lead(Sequence s) { start = s; merged_sequence = s; }
 
         std::string to_string();
 
@@ -302,7 +302,6 @@ protected:
         std::vector<Sequence> done;
         SOPFormula<IID<IPid>> forbidden;
         Lead alpha;
-        Sequence alpha_sequence;
 
         State() {}
         State(int prefix_idx) : sequence_prefix(prefix_idx) {};
@@ -310,14 +309,14 @@ protected:
 
         void add_done(Sequence d);
         bool is_done(Sequence seq);
-        void update_alpha(Lead l) {alpha = l; alpha_sequence = l.start; alpha_sequence.cmerge(l.constraint);}
-
+        
         bool has_unexplored_leads();
         std::vector<Lead> unexplored_leads();
         Lead next_unexplored_lead();
         void consistent_join(Lead& l);
         void consistent_join(std::vector<Lead>& L);
 
+        Sequence alpha_sequence() {return alpha.merged_sequence;}
         std::ostream & print_leads(std::ostream &os);
     };
 

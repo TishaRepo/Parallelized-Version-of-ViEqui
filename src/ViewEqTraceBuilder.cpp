@@ -29,9 +29,10 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun) {
 
   if (at_replay_point()) {
     llvm::outs() << "AT REPLAY PT: ";
-    assert(states[current_state].has_unexplored_leads());
     
     current_state = prefix_state[prefix_idx];
+    assert(states[current_state].has_unexplored_leads());
+
     execution_sequence.pop_back();
     prefix_state.pop_back();
     
@@ -199,21 +200,22 @@ void ViewEqTraceBuilder::compute_new_leads() {
 }
 
 void ViewEqTraceBuilder::execute_next_lead() {
-  // llvm::outs() << "has unexplored leads\n";
-  // // [snj]: TODO remove - only for debug
-  // llvm::outs() << "unexplored leads:\n";
-  // std::vector<Lead> unexl = states[current_state].unexplored_leads();
-  // for (auto it = unexl.begin(); it != unexl.end(); it++) {
-  //   llvm::outs() << "lead: ";
-  //   llvm::outs() << (*it).to_string() << "\n";
-  // }
-  // ///
+  llvm::outs() << "has unexplored leads\n";
+  // [snj]: TODO remove - only for debug
+  llvm::outs() << "unexplored leads:\n";
+  std::vector<Lead> unexl = states[current_state].unexplored_leads();
+  for (auto it = unexl.begin(); it != unexl.end(); it++) {
+    llvm::outs() << "lead: ";
+    llvm::outs() << (*it).to_string() << "\n";
+  }
+   //
   Lead next_lead = states[current_state].next_unexplored_lead();
   // llvm::outs() << "got lead=" << next_lead.to_string() << "\n";
-  states[current_state].update_alpha(next_lead);
-  IID<IPid> next_event = states[current_state].alpha_sequence.head();
-  to_explore = states[current_state].alpha_sequence.tail();
-  // llvm::outs() << "set at states[" << current_state << "]: alpha=" << states[current_state].alpha_sequence.to_string() << ", to_explore=" << to_explore.to_string() << "\n";
+  states[current_state].alpha = next_lead;
+  // llvm::outs() << "updated alphaseq=" << states[current_state].alpha_sequence().to_string() << "\n";
+  IID<IPid> next_event = states[current_state].alpha_sequence().head();
+  to_explore = states[current_state].alpha_sequence().tail();
+  // llvm::outs() << "set at states[" << current_state << "]: alpha=" << states[current_state].alpha_sequence().to_string() << ", to_explore=" << to_explore.to_string() << "\n";
 
   auto it = std::find(Enabled.begin(), Enabled.end(), next_event);
   assert(it != Enabled.end());
@@ -247,7 +249,6 @@ void ViewEqTraceBuilder::execute_next_lead() {
   threads[current_thread].awaiting_load_store = false; // [snj]: next event after current may not be load or store
   // llvm::outs() << "pref_idx=" << prefix_idx << "\n";
   // llvm::outs() << "pushed to execution, prefix_state[" << (prefix_state.size()-1) << "]=" << current_state << " \n";
-  // llvm::outs() << "setting proc and returning \n";
 }
 
 void ViewEqTraceBuilder::analyse_unexplored_influenecers(IID<IPid> read_event) {
@@ -272,6 +273,9 @@ void ViewEqTraceBuilder::forward_analysis(Event event, SOPFormula<IID<IPid>>& fo
   std::vector<Lead> L{Lead(empty_sequence, uiseq, fui_all)};
 
   for (auto it = ui.begin(); it != ui.end(); it++) {
+    if (get_event(*it).value == mem[event.object]) 
+      continue;
+
     Sequence start = uiseq;
     start.erase((*it));
     start.push_front((*it));
@@ -303,8 +307,18 @@ void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula<IID<IPid
     if (get_event((*it)).value == mem[event.object])
       continue;
 
-    int event_index = prefix_state[execution_sequence.indexof((*it))];
-    
+    int es_idx = execution_sequence.indexof((*it)); // index in execution_sequnce of ei
+    if (execution_sequence[es_idx].get_pid() == 0) { // if ei is init event
+      while (execution_sequence[es_idx].get_pid() != event.get_pid()) { // move down to state id where thread of event created
+        es_idx++;
+      }
+    }
+
+    while (prefix_state[es_idx] == -1) { // next state to add lead
+      es_idx++;
+    }
+    int event_index = prefix_state[es_idx];
+
     SOPFormula<IID<IPid>> inF;
     for (auto it = states[event_index].alpha.start.begin(); it != states[event_index].alpha.start.end(); it++) {
       std::pair<bool, ProductTerm<IID<IPid>>> forbidden_term_of_event = states[event_index].alpha.forbidden.term_of_object((*it));
@@ -312,9 +326,11 @@ void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula<IID<IPid
         inF || forbidden_term_of_event.second;
       }
     }
-
+    
     inF || fui;
-    L[event_index].push_back(Lead(states[event_index].alpha_sequence, execution_sequence.backseq((*it), event.iid), inF));
+    L[event_index].push_back(Lead(states[event_index].alpha_sequence(), execution_sequence.backseq((*it), event.iid), inF));
+
+    Lead ltemp(states[event_index].alpha_sequence(), execution_sequence.backseq((*it), event.iid), inF);
   }
 }
 
@@ -336,7 +352,7 @@ void ViewEqTraceBuilder::backward_analysis_write(Event event, SOPFormula<IID<IPi
       }
     }
     (inF || std::make_pair((*it),it_val));
-    L[event_index].push_back(Lead(states[event_index].alpha_sequence, execution_sequence.backseq((*it), event.iid), inF));
+    L[event_index].push_back(Lead(states[event_index].alpha_sequence(), execution_sequence.backseq((*it), event.iid), inF));
   }
 }
 
@@ -444,8 +460,8 @@ int ViewEqTraceBuilder::find_replay_state_prefix() {
     it--;
     // llvm::outs() << "state[" << replay_state_prefix << "] has more leads? ";
 
-    it->add_done(it->alpha_sequence);
-    // llvm::outs() << "added" << it->alpha_sequence.to_string() << " to done of states[" << replay_state_prefix << "]\n";
+    it->add_done(it->alpha_sequence());
+    // llvm::outs() << "added" << it->alpha_sequence().to_string() << " to done of states[" << replay_state_prefix << "]\n";
     if (it->has_unexplored_leads()) { // found replay state
       // llvm::outs() << "LEADS:\n";
       // for (auto i = states[replay_state_prefix].leads.begin(); i != states[replay_state_prefix].leads.end(); i++) {
@@ -731,18 +747,18 @@ void ViewEqTraceBuilder::Event::make_write() {
   object = sym_event().addr().addr.block.get_no();
 }
 
-bool ViewEqTraceBuilder::Event::same_object(ViewEqTraceBuilder::Event event) {
+bool ViewEqTraceBuilder::Event::same_object(Event event) {
   return (object == event.object);
 }
 
-bool ViewEqTraceBuilder::Event::operator==(ViewEqTraceBuilder::Event event) {
+bool ViewEqTraceBuilder::Event::operator==(Event event) {
   if (value != event.value)
     return false;
 
   return (symEvent == event.symEvent);
 }
 
-bool ViewEqTraceBuilder::Event::operator!=(ViewEqTraceBuilder::Event event) {
+bool ViewEqTraceBuilder::Event::operator!=(Event event) {
   return !(*this == event);
 }
 
@@ -835,6 +851,11 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix(IID<IPid> ev
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1, IID<IPid> e2){
   assert(this->has(e1) && this->has(e2));
   ViewEqTraceBuilder::Sequence po_pre = poPrefix(e2, find(e1)+1, find(e2));
+
+  if (e1.get_pid() == 0) { // event from thread zero ie init write event
+    po_pre.push_back(e2);
+    return po_pre; // init event is not added to backseq
+  }
   
   Event event1 = threads->at(e1.get_pid())[e1.get_index()];
   Event event2 = threads->at(e2.get_pid())[e2.get_index()];
@@ -944,13 +965,13 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::cmerge(Sequence &othe
     other_seq.concatenate(current_seq);
     return other_seq;
   }
-
+  
   sequence_iterator it;
-  for (it = current_seq.events.begin(); it != (*this).events.end(); it++) {
+  for (it = current_seq.begin(); it != current_seq.end(); it++) {
     if (other_seq.has(*it))
       break;
   }
-  if (it == current_seq.events.end()) { // no common event
+  if (it == current_seq.end()) { // no common event
     current_seq.concatenate(other_seq);
     return current_seq;
   }
@@ -967,10 +988,10 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::cmerge(Sequence &othe
 
 // [snj]: TODO function not tested
 bool ViewEqTraceBuilder::Sequence::hasRWpairs(Sequence &seq) {
-  for (sequence_iterator it1 = (*this).events.begin(); it1 != (*this).events.end(); it1++) {
-    for (sequence_iterator it2 = seq.events.begin(); it2 != seq.events.end(); it2++) {
-      ViewEqTraceBuilder::Event e1 = (*threads)[it1->get_pid()][it1->get_index()];
-      ViewEqTraceBuilder::Event e2 = (*threads)[it2->get_pid()][it2->get_index()];
+  for (sequence_iterator it1 = begin(); it1 != end(); it1++) {
+    Event e1 = threads->at(it1->get_pid())[it1->get_index()];
+    for (sequence_iterator it2 = seq.begin(); it2 != seq.end(); it2++) {
+      Event e2 = threads->at(it2->get_pid())[it2->get_index()];
       if (e1.same_object(e2)) {
         if (e1.is_read() && e2.is_write()) return true;
         if (e1.is_write() && e2.is_read()) return true;
@@ -1149,7 +1170,7 @@ bool ViewEqTraceBuilder::State::has_unexplored_leads() {
     bool is_unexplored = true;
     
     for (auto itd = done.begin(); itd != done.end(); itd++) {
-      if (itd->isPrefix(itl->merge)) {
+      if (itd->isPrefix(itl->merged_sequence)) {
         is_unexplored = false;
         break; // itl is not unexplored
       }
@@ -1168,7 +1189,7 @@ std::vector<ViewEqTraceBuilder::Lead> ViewEqTraceBuilder::State::unexplored_lead
     bool is_unexplored = true;
     
     for (auto itd = done.begin(); itd != done.end(); itd++) {
-      if (itd->isPrefix(itl->merge)) {
+      if (itd->isPrefix(itl->merged_sequence)) {
         is_unexplored = false;
         break; // itl is not unexplored
       }
@@ -1188,7 +1209,7 @@ ViewEqTraceBuilder::Lead ViewEqTraceBuilder::State::next_unexplored_lead() {
     bool is_unexplored = true;
     
     for (auto itd = done.begin(); itd != done.end(); itd++) {
-      if (itd->isPrefix(itl->merge)) {
+      if (itd->isPrefix(itl->merged_sequence)) {
         is_unexplored = false;
         break; // itl is not unexplored
       }
