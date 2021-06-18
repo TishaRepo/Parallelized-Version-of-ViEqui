@@ -215,6 +215,7 @@ protected:
         sequence_iterator find(IID<IPid> event) {return std::find(events.begin(), events.end(), event);}
 
         void concatenate(Sequence seq) { events.insert(events.end(), seq.events.begin(), seq.events.end()); }
+        void concatenate(Sequence seq, sequence_iterator begin) {events.insert(events.end(), begin, seq.events.end());}
         bool hasRWpairs(Sequence &seq);
         bool conflits_with(Sequence &seq);
 
@@ -273,8 +274,7 @@ protected:
         Lead() {}
         Lead(Sequence c, Sequence s, SOPFormula<IID<IPid>> f, std::pair<IID<IPid>, int> k) {
             constraint = c; start = s; forbidden = f; key = k;
-            merged_sequence = s;
-            merged_sequence.cmerge(c);
+            merged_sequence = s.cmerge(c);
         }
         Lead(Sequence s, SOPFormula<IID<IPid>> f, std::pair<IID<IPid>, int> k) {
             start = s; forbidden = f; key = k;
