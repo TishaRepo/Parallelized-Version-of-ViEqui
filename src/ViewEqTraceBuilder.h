@@ -198,9 +198,11 @@ protected:
         std::vector<IID<IPid>>::iterator end() {return events.end();}
         IID<IPid> head() {return events.front();}
         Sequence tail() {
-            std::vector<IID<IPid>> tl(events.begin()+1, events.end());
-            Sequence stl(tl,threads);
-            return stl;
+            llvm::outs() << "tail of " << to_string() << " (size=" << size() << ") = ";
+            Sequence tl(events, threads);
+            tl.pop_front();
+            llvm::outs() << tl.to_string() << " (tail size=" << tl.size() << "\n";
+            return tl;
         }
 
         void push_back(IID<IPid> event) {events.push_back(event);}
