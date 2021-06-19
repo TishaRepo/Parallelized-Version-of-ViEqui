@@ -21,15 +21,15 @@ template <class T>
 class ProductTerm
 {
 private:
-    std::unordered_map<T, int> objectToVal;
     bool initPhase = true;
 
 public:
+    std::unordered_map<T, uint8_t> objToVal;
     std::unordered_set<T> objects;
     RESULT result = RESULT::INIT;
 
-    ProductTerm(){}
-    ProductTerm(std::pair<T, int> p) {addConstraint(p.first, p.second);}
+    ProductTerm() {}
+    ProductTerm(std::pair<T, int> p) { addConstraint(p.first, p.second); }
 
     void addConstraint(T var, int val)
     {
@@ -38,10 +38,10 @@ public:
         initPhase = false;
         result = RESULT::DEPENDENT;
         assert(objects.find(var) == objects.end());
-        assert(objectToVal.find(var) == objectToVal.end());
+        assert(objToVal.find(var) == objToVal.end());
 
         objects.insert(var);
-        objectToVal.insert({var, val});
+        objToVal.insert({var, val});
         assert(sanity());
     }
 
@@ -68,7 +68,7 @@ public:
             auto got = valueEnv.find(*i);
             if (got != valueEnv.end())
             {
-                if (objectToVal.at(*i) != got->second)
+                if (objToVal.at(*i) != got->second)
                 {
                     ret_result = RESULT::FALSE;
                     assert(sanity());
@@ -120,10 +120,10 @@ public:
             auto got = valueEnv.find(*i);
             if (got != valueEnv.end())
             {
-                if (objectToVal.at(*i) != got->second)
+                if (objToVal.at(*i) != got->second)
                 {
                     objects.clear();
-                    objectToVal.clear();
+                    objToVal.clear();
                     result = RESULT::FALSE;
                     assert(sanity());
                     return result;
@@ -143,7 +143,7 @@ public:
         if (!isDependent)
         {
             objects.clear();
-            objectToVal.clear();
+            objToVal.clear();
             result = RESULT::TRUE;
             assert(sanity());
             return result;
@@ -153,13 +153,13 @@ public:
         // [rmnt]: Clean up true vars
         for (auto j = trueVars.begin(); j != trueVars.end(); j++)
         {
-            objectToVal.erase(*j);
+            objToVal.erase(*j);
             objects.erase(*j);
         }
-        // objectToVal.erase(std::remove_if(objectToVal.begin(), objectToVal.end(), [trueVars]({T var, uint8_t val}){
+        // objToVal.erase(std::remove_if(objToVal.begin(), objToVal.end(), [trueVars]({T var, uint8_t val}){
         //                    return (trueVars.find(var) != trueVars.end());
         //                }),
-        //                objectToVal.end());
+        //                objToVal.end());
         // objects.erase(std::remove_if(objects.begin(), objects.end(), [trueVars]({T var, uint8_t val}){
         //                   return (trueVars.find(var) != trueVars.end());
         //               }),
@@ -169,33 +169,42 @@ public:
         return result;
     }
 
-    bool is_term_of_object(T object) {
-        if (!unit()) return false;
-        if (objectToVal.begin()->first != object) return false;
+    bool is_term_of_object(T object)
+    {
+        if (!unit())
+            return false;
+        if (objToVal.begin()->first != object)
+            return false;
         return true;
     }
 
-    bool unit() {
-        return (objectToVal.size() == 1);
+    bool unit()
+    {
+        return (objToVal.size() == 1);
     }
 
-    bool in(std::pair<T,int> term) {
-        for (auto it = objectToVal.begin(); it != objectToVal.end(); it++) {
-            if (it->first == term.first && it->second == term.second) 
+    bool in(std::pair<T, int> term)
+    {
+        for (auto it = objToVal.begin(); it != objToVal.end(); it++)
+        {
+            if (it->first == term.first && it->second == term.second)
                 return true;
         }
 
         return false;
     }
 
-    std::string to_string() {
-        int size = objectToVal.size();
+    std::string to_string()
+    {
+        int size = objToVal.size();
         int cnt = 0;
         std::string s = "(";
 
-        auto it = objectToVal.begin();
-        for (; it != objectToVal.end(); it++, cnt++) {
-            if (cnt == size-1) break;
+        auto it = objToVal.begin();
+        for (; it != objToVal.end(); it++, cnt++)
+        {
+            if (cnt == size - 1)
+                break;
             s = s + "[" + std::to_string(it->first.get_pid()) + ":" + std::to_string(it->first.get_index()) + "]";
             s = s + "(" + std::to_string(it->second) + ") ^ ";
         }
@@ -210,9 +219,9 @@ public:
         /* [rmnt]: Checking for various invariants that must be maintained
                    1. For every variable, we must have a corresponding value.
                    2. If the term has no free variables, it has either not been initialized yet (so result is INIT) or it must not have a DEPENDENT result. Conversely, if it doesn't have a dependent result, it must not have any redundant free variables.
-                   3. Size of objects = Size of objectToVal. Combined with 1, ensures one to one mapping between objectToVal keys and objects
+                   3. Size of objects = Size of objToVal. Combined with 1, ensures one to one mapping between objToVal keys and objects
         */
-        if (objects.size() != objectToVal.size())
+        if (objects.size() != objToVal.size())
         {
             return false;
         }
@@ -240,7 +249,7 @@ public:
 
         for (auto i = objects.begin(); i != objects.end(); i++)
         {
-            if (objectToVal.find(*i) == objectToVal.end())
+            if (objToVal.find(*i) == objToVal.end())
             {
                 return false;
             }
@@ -254,7 +263,7 @@ public:
         {
             for (auto i = t1.objects.begin(); i != t1.objects.end(); i++)
             {
-                if (t1.objectToVal.at(*i) != t2.objectToVal.at(*i))
+                if (t1.objToVal.at(*i) != t2.objToVal.at(*i))
                 {
                     return false;
                 }
@@ -276,7 +285,8 @@ public:
 
     SOPFormula() {}
 
-    SOPFormula(std::pair<T, int> t) {
+    SOPFormula(std::pair<T, int> t)
+    {
         ProductTerm<T> pt(t);
         addTerm(pt);
     };
@@ -379,9 +389,8 @@ public:
 
         // [rmnt]: Clean up false terms
         //         TODO should we clean up duplicate terms?
-        terms.remove_if([](ProductTerm<T> t) {
-            return (t.result == RESULT::FALSE);
-        });
+        terms.remove_if([](ProductTerm<T> t)
+                        { return (t.result == RESULT::FALSE); });
 
         assert(sanity());
 
@@ -432,8 +441,10 @@ public:
         return ret_result;
     }
 
-    std::pair<bool, ProductTerm<T>> term_of_object(T object) {
-        for (auto it = terms.begin(); it != terms.end(); it++) {
+    std::pair<bool, ProductTerm<T>> term_of_object(T object)
+    {
+        for (auto it = terms.begin(); it != terms.end(); it++)
+        {
             if (it->is_term_of_object(object))
                 return std::make_pair(true, (*it));
         }
@@ -442,8 +453,10 @@ public:
         return std::make_pair(false, dummy);
     }
 
-    bool in(std::pair<T, int> term) {
-        for (auto it = terms.begin(); it != terms.end(); it++) {
+    bool in(std::pair<T, int> term)
+    {
+        for (auto it = terms.begin(); it != terms.end(); it++)
+        {
             if (it->unit() && it->in(term))
                 return true;
         }
@@ -453,44 +466,98 @@ public:
 
     friend void operator||(SOPFormula &f1, SOPFormula &f2)
     {
+        SOPFormula f;
+        f = f1;
         for (auto j = f2.terms.begin(); j != f2.terms.end(); j++)
         {
             f1.addTerm(*j);
         }
     }
 
-    friend void operator||(SOPFormula &f1, std::pair<T, int> t) {
+    friend void operator||(SOPFormula &f1, std::pair<T, int> t)
+    {
         ProductTerm<T> pt(t);
         f1.addTerm(pt);
     }
 
-    friend void operator||(SOPFormula &f1, ProductTerm<T> term) {
+    friend void operator||(SOPFormula &f1, ProductTerm<T> term)
+    {
         f1.addTerm(term);
     }
 
-    void operator=(SOPFormula f) {
+    void operator=(SOPFormula f)
+    {
         terms = f.terms;
         result = f.result;
         initPhase = f.initPhase;
     }
 
-    void clear() {terms.clear(); result = RESULT::INIT;}
+    void clear()
+    {
+        terms.clear();
+        result = RESULT::INIT;
+    }
 
-    std::string to_string() {
-        if (result == RESULT::INIT || result == RESULT::FALSE) return "-";
-        if (result == RESULT::TRUE) return "TRUE";
+    std::string to_string()
+    {
+        if (result == RESULT::INIT || result == RESULT::FALSE)
+            return "-";
+        if (result == RESULT::TRUE)
+            return "TRUE";
 
         std::string s = "(";
 
         auto it = terms.begin();
-        for (; it != terms.end(); it++) {
-            auto it1 = it; it1++;
-            if (it1 == terms.end()) break;
+        for (; it != terms.end(); it++)
+        {
+            auto it1 = it;
+            it1++;
+            if (it1 == terms.end())
+                break;
             s = s + it->to_string() + " v ";
         }
 
         s = s + it->to_string() + ")";
         return s;
+    }
+
+    SOPFormula AND(const SOPFormula &f2) const
+    {
+        assert(sanity() && f2.sanity());
+        SOPFormula f;
+        for (auto i = terms.begin(); i != terms.end(); i++)
+        {
+            for (auto j = f2.terms.begin(); j != f2.terms.end(); j++)
+            {
+                ProductTerm<T> disjunct = *i;
+                bool toDiscard = false;
+                for (auto k = j->objects.begin(); k != j->objects.end(); k++)
+                {
+                    if (disjunct.objects.find(*k) != disjunct.objects.end())
+                    {
+                        if (disjunct.objToVal.at(*k) == j->objToVal.at(*k))
+                        {
+                            continue;
+                        }
+                        else
+                        {
+                            toDiscard = true;
+                        }
+                    }
+                    else
+                    {
+                        disjunct.addConstraint(*k, j->objToVal.at(*k));
+                    }
+                }
+                if (!toDiscard)
+                {
+                    f.addTerm(std::ref(disjunct));
+                }
+            }
+        }
+
+        assert(f.sanity());
+        return f;
     }
 
     bool sanity()

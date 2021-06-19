@@ -73,6 +73,9 @@ public:
     void backward_analysis_write(Event event, SOPFormula<IID<IPid>>& forbidden, std::unordered_map<int, std::vector<Lead>>& L);
     void backward_analysis(Event event, SOPFormula<IID<IPid>>& forbidden);
 
+    void consistent_join(int state, Lead& l);
+    void consistent_join(int state, std::vector<Lead>& L);
+
     bool exists_non_memory_access(int * proc);
     void make_new_state();
     void compute_new_leads();
@@ -321,8 +324,6 @@ protected:
         bool has_unexplored_leads();
         std::vector<Lead> unexplored_leads();
         Lead next_unexplored_lead();
-        void consistent_join(Lead& l);
-        void consistent_join(std::vector<Lead>& L);
 
         Sequence alpha_sequence() {return alpha.merged_sequence;}
         std::ostream & print_leads(std::ostream &os);

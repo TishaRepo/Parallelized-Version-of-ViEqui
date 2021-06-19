@@ -185,13 +185,13 @@ void ViewEqTraceBuilder::compute_new_leads() {
       // llvm::outs() << "making seq of next event (forbidden=" << forbidden.to_string() << ")\n";
       Sequence seq(next_event, &threads);
       Lead l(seq, forbidden); 
-      states[current_state].consistent_join(l);
+      consistent_join(current_state, l);
     }
   }
   else { // has a lead to explore
     // llvm::outs() << "to_explore not empty = " << to_explore.to_string() << "\n";
     Lead l(to_explore, forbidden);
-    states[current_state].consistent_join(l);
+    consistent_join(current_state, l);
     to_explore.pop_front();
   }
 }
@@ -295,7 +295,7 @@ void ViewEqTraceBuilder::forward_analysis(Event event, SOPFormula<IID<IPid>>& fo
     L.push_back(l);
   }
 
-  states[current_state].consistent_join(L); // add leads at current state
+  consistent_join(current_state, L); // add leads at current state
 }
 
 void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula<IID<IPid>>& forbidden, std::unordered_map<int, std::vector<Lead>>& L) {
@@ -383,7 +383,7 @@ void ViewEqTraceBuilder::backward_analysis(Event event, SOPFormula<IID<IPid>>& f
   }
 
   for (auto it = L.begin(); it != L.end(); it++) {
-    states[it->first].consistent_join(it->second); // consistent join at respective execution prefix
+    consistent_join(it->first, it->second); // consistent join at respective execution prefix
   }
 }
 
@@ -1283,19 +1283,6 @@ ViewEqTraceBuilder::Lead ViewEqTraceBuilder::State::next_unexplored_lead() {
   return dummy;
 }
 
-void ViewEqTraceBuilder::State::consistent_join(Lead& l) {
-  std::vector<Lead> L;
-  L.push_back(l);
-  consistent_join(L);
-}
-
-// [snj]: TODO dummy implementation
-void ViewEqTraceBuilder::State::consistent_join(std::vector<Lead>& L) {
-  for (auto it = L.begin(); it != L.end(); it++) {
-    leads.push_back((*it));
-  }
-}
-
 std::ostream & ViewEqTraceBuilder::State::print_leads(std::ostream &os) {
   std::string s = "State[" + std::to_string(sequence_prefix) + "] leads:\n";
   for (auto l : leads) {
@@ -1303,4 +1290,168 @@ std::ostream & ViewEqTraceBuilder::State::print_leads(std::ostream &os) {
   }
 
   return os << s;
+}
+
+void ViewEqTraceBuilder::consistent_join(int state, Lead& l) {
+  std::vector<Lead> L;
+  L.push_back(l);
+  consistent_join(state, L);
+}
+
+void ViewEqTraceBuilder::consistent_join(int state, std::vector<Lead>& L) {
+  assert(state >= 0 && state < states.size());
+
+  std::unordered_map<int, std::vector<Lead>> forward_state_leads;
+  //llvm::outs()<<"Inside consistent join\n";
+  for (auto i = L.begin(); i != L.end();) { 
+    assert(!(i->merged_sequence).empty());
+    assert(!states[state].alpha_sequence.empty());
+    //remove invalid leads from the set of new leads
+    if ((i -> constraint).conflits_with(i -> start)) {
+      i = L.erase(i);
+    }
+    else if(states[state].alpha_sequence().isPrefix(i->merged_sequence)) {
+      //llvm::outs()<<"ald prefix true\n";
+      //llvm::outs()<<states[state].alpha_sequence.to_string()<<"\n";
+
+      int fwd_state = prefix_state[execution_sequence.indexof(states[state].alpha_sequence().last())] + 1;
+      assert(fwd_state >= 0 && fwd_state < states.size());
+      SOPFormula<IID<IPid>> f = (i->forbidden);
+      f || states[fwd_state].forbidden;
+      Sequence state_alpha = states[state].alpha_sequence();
+      Lead fwd_lead(states[state].alpha_sequence(), (i->merged_sequence).suffix(state_alpha), f, i->key);
+      forward_state_leads[fwd_state].push_back(std::move(fwd_lead));
+      states[state].add_done(i->merged_sequence);
+      i = L.erase(i);
+    }
+    else {
+      i++;
+    }
+  }
+    //llvm::outs()<<"Traversed new leads\n";
+  for (auto itfl = forward_state_leads.begin(); itfl != forward_state_leads.end(); itfl++) {
+      consistent_join(itfl->first, itfl->second);
+  }
+
+  if(states[state].leads.empty()) {
+    states[state].leads = L;
+    return;
+  }
+
+  std::set<int, std::greater<int>> removeLeads; //indices to be deleted in descending order
+  std::vector<Lead> addLeads; //leads to be added
+
+  /*llvm::outs()<<"new leadsn";
+  for( auto i = L.begin(); i != L.end(); i++)
+  {
+    llvm::outs()<< i->to_string()<<"\n";
+  }
+  llvm::outs()<<"old leads\n";
+
+  for( auto i = states[state].leads.begin(); i != states[state].leads.end(); i++)
+  {
+    llvm::outs()<< i->to_string()<<"\n";
+  }*/
+  for( auto i = L.begin(); i != L.end(); i++)
+  {
+    bool added = false;
+    for( auto j = states[state].leads.begin(); j != states[state].leads.end(); j++)
+    {
+       if ((i -> constraint) == (j -> constraint))
+      {
+        if (i -> start == j -> start)
+        {
+          assert(i->key == j->key);
+          removeLeads.insert(j - states[state].leads.begin());
+          SOPFormula<IID<IPid>> f = i->forbidden;
+          f || j->forbidden;
+          Lead l(i->constraint, i->start, f, i->key);
+          added = true;
+          addLeads.push_back(l);
+        }
+        else if ((i->start).isPrefix(j->start))
+        {
+          removeLeads.insert(j - states[state].leads.begin());
+          SOPFormula<IID<IPid>> f = (i->forbidden).AND(j->forbidden);
+          Lead l(i->constraint, i->start, f, i->key);
+          added = true;
+          addLeads.push_back(l);
+        }
+        else if ((j->start).isPrefix(i->start))
+        {
+          removeLeads.insert(j - states[state].leads.begin());
+          SOPFormula<IID<IPid>> f = (i->forbidden).AND(j->forbidden);
+          Lead l(j->constraint, j->start, f, j->key);
+          added = true;
+          addLeads.push_back(l);
+        }
+        // else if (!(i->start).commonPrefix(j->start).empty())
+        // {
+        //   removeLeads.insert(j - states[state].leads.begin());
+        //   SOPFormula<IID<IPid>> f = i->forbidden;
+        //   f || j->forbidden;
+        //   Sequence s = (i->start).commonPrefix(j->start);
+        //   Lead l(i->constraint, s, f);
+        //   added = true;
+        //   addLeads.push_back(l);
+        // }
+      }
+      else if ((i->start) == (j->start))
+      {
+        assert(i->key == j->key);
+        if ((i->constraint).conflits_with(j->constraint))
+        {
+          if ((i->start).isPrefix(i->merged_sequence) && (j->start).isPrefix(j->merged_sequence))
+          {
+            removeLeads.insert(j - states[state].leads.begin());
+            SOPFormula<IID<IPid>> f = i->forbidden;
+            f || j->forbidden;
+            Sequence s = (i->constraint).commonPrefix(j->constraint);
+            Lead l(s, i->start, f, i->key);
+            added = true;
+            addLeads.push_back(l);
+          }
+          else
+          {
+            added = true;
+            addLeads.push_back(*i);
+          }
+        }
+        else
+        {
+          removeLeads.insert(j - states[state].leads.begin());
+          SOPFormula<IID<IPid>> f = i->forbidden;
+          f || j->forbidden;
+          Sequence s = (i->constraint).commonPrefix(j->constraint);
+          Lead l(s, i->start, f, i->key);
+          added = true;
+          addLeads.push_back(l);
+        }
+      }
+    }
+    if(! added ) addLeads.push_back(*i);
+
+  }
+
+  //llvm::outs()<<"removed indices\n";
+
+  for( auto k = removeLeads.begin(); k != removeLeads.end(); k++)
+  {
+    //llvm::outs()<<*k<<"\n";
+     states[state].leads.erase(*k + states[state].leads.begin());
+  }
+
+  /*//llvm::outs()<<"old leads after deleting\n";
+  for( auto i = states[state].leads.begin(); i != states[state].leads.end(); i++)
+  {
+    llvm::outs()<< i->to_string()<<"\n";
+  }*/
+
+  //llvm::outs()<<"add leads\n";
+  for( auto k = addLeads.begin(); k != addLeads.end(); k++)
+  { //llvm::outs()<< k->to_string()<<"\n";
+    states[state].leads.push_back(*k);
+  }
+  //llvm::outs()<<"returning from consistent join\n";
+  return;
 }
