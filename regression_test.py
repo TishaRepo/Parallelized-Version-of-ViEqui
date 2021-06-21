@@ -16,7 +16,25 @@
 import os
 import subprocess
 
-test_results = [(2,'N'), (3,'N'), (3,'N'), (5,'N'), (7,'N'), (2,'N'), (3,'N'), (16,'N'), (5,'N'), (2,'N'), (2,'N'), (3,'N'), (3,'N'), (4,'N'), (9,'N'), (6,'N'), (6,'N'), (7,'N')]
+test_results = [(2,'N'), # Test1
+                (3,'N'), # Test2
+                (4,'N'), # Test3
+                (5,'N'), # Test4
+                (7,'N'), # Test5
+                (2,'N'), # Test6
+                (3,'N'), # Test7
+                (16,'N'), # Test8
+                (5,'N'), # Test9
+                (2,'N'), # Test10
+                (2,'N'), # Test11 -- needs join
+                (2,'N'), # Test12
+                (3,'N'), # Test13
+                (4,'N'), # Test14
+                (9,'N'), # Test15
+                (6,'N'), # Test16
+                (6,'N'), # Test17
+                (7,'N'), # Test18
+                (4,'N')] # Test19
 
 failed_tests = []
 
