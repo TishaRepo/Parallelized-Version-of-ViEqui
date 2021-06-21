@@ -326,7 +326,7 @@ protected:
         Lead next_unexplored_lead();
 
         Sequence alpha_sequence() {return alpha.merged_sequence;}
-        std::ostream & print_leads(std::ostream &os);
+        std::string print_leads();
     };
 
     /* The index into prefix corresponding to the last event that was
