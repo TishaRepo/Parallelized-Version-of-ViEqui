@@ -73,8 +73,8 @@ public:
     void backward_analysis_write(Event event, SOPFormula<IID<IPid>>& forbidden, std::unordered_map<int, std::vector<Lead>>& L);
     void backward_analysis(Event event, SOPFormula<IID<IPid>>& forbidden);
 
-    void consistent_join(int state, Lead& l);
-    void consistent_join(int state, std::vector<Lead>& L);
+    void consistent_union(int state, Lead& l);
+    void consistent_union(int state, std::vector<Lead>& L);
 
     bool exists_non_memory_access(int * proc);
     void make_new_state();
@@ -149,6 +149,8 @@ protected:
         bool is_write() {return (symEvent.size()==1 && sym_event().addr().addr.block.is_global() && type == WRITE);}
         bool is_global() {return (symEvent.size()==1 && sym_event().addr().addr.block.is_global());}
         bool same_object(Event e);
+        bool RWpair(Event e);
+
         IID<IPid> get_iid() const {return iid;}
         int get_id() {return iid.get_index();}
         IPid get_pid() {return iid.get_pid();}
@@ -222,7 +224,7 @@ protected:
         void concatenate(Sequence seq) { events.insert(events.end(), seq.events.begin(), seq.events.end()); }
         void concatenate(Sequence seq, sequence_iterator begin) {events.insert(events.end(), begin, seq.events.end());}
         bool hasRWpairs(Sequence &seq);
-        bool conflits_with(Sequence &seq);
+        // bool conflits_with(Sequence &seq);
 
         IID<IPid>& operator[](std::size_t i) {return events[i];}
         const IID<IPid>& operator[](std::size_t i) const {return events[i];}
@@ -237,7 +239,10 @@ protected:
         Sequence suffix(Sequence &seq); // suffix of this after prefix seq
         Sequence poPrefix(IID<IPid> ev, sequence_iterator begin, sequence_iterator end); // program ordered prefix upto end of ev in this
         Sequence commonPrefix(Sequence &seq);  // prefix of this and seq that is common
-        bool conflicting(Sequence &other_seq); // has events in this and other that occur in reverse order
+        
+        bool view_adjust(IID<IPid> e1, IID<IPid> e2);
+        bool conflicts_with(Sequence &other_seq);  // has events in this and other that occur in reverse order
+        std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> conflicts_with(Sequence &other_seq, bool returnRWpair);
         Sequence backseq(IID<IPid> e1, IID<IPid> e2); // poprefix(e1).(write out of e1, e2).(read out of e1, e2)
         // [snj]: consistent merge, merges 2 sequences such that all read events maitain their sources
         //          i.e, reads-from relation remain unchanged
