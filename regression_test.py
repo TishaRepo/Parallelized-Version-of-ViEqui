@@ -47,15 +47,14 @@ test_files = [f for f in os.listdir(test_path) if f.endswith('.c')]
 
 tests_completed = 0
 
-for test_file in test_files:
-    test_index = int(test_file.split('_')[0][4:]) - 1
-    test_name = test_file[5 + len(str(test_index)):]
+for test_index in range(1, len(test_results)+1):
+    test_name = [test_file for test_file in test_files if ('Test' + str(test_index) + '_') in test_file][0]
 
     print ('Running Test' + str(test_index))
 
-    (test_traces, test_isviolation) = test_results[test_index]
+    (test_traces, test_isviolation) = test_results[test_index-1]
 
-    os.system('clang -c -emit-llvm -S -o executable_file.ll ' + test_path + test_file)
+    os.system('clang -c -emit-llvm -S -o executable_file.ll ' + test_path + test_name)
     process = subprocess.Popen([current_path + 'src/nidhugg', '--sc', '--view' , current_path + 'executable_file.ll'], stdout=subprocess.PIPE, bufsize=1, universal_newlines=True)
     sout = process.stdout.readlines() # process.communicate()[0]
     os.system('rm ' + current_path + 'executable_file.ll')
@@ -64,10 +63,10 @@ for test_file in test_files:
     count_fail = False
     violation_status_fail = False
 
-    # for line in sout:
-    #     print line
-    # print "-- stdout --"
-    # break
+#     # for line in sout:
+#     #     print line
+#     # print "-- stdout --"
+#     # break
 
     for line in sout:
         if 'Trace count:' in line:
@@ -97,7 +96,7 @@ for test_file in test_files:
 
     tests_completed = tests_completed + 1
 
-# assert(tests_completed == len(test_files))
+assert(tests_completed == len(test_results))
 
 print('----------------------------------------------')
 print ('No. of tests run = ' + str(tests_completed))
