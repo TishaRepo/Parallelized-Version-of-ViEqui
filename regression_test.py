@@ -24,9 +24,9 @@ test_results = [(2,'N'), # Test1
                 (2,'N'), # Test6
                 (3,'N'), # Test7
                 (16,'N'), # Test8
-                (5,'N'), # Test9
-                (2,'N'), # Test10
-                (2,'N'), # Test11 -- needs join
+                (16,'N'), # Test9
+                (5,'N'), # Test10
+                (2,'N'), # Test11 
                 (2,'N'), # Test12
                 (3,'N'), # Test13
                 (4,'N'), # Test14
