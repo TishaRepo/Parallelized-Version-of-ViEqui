@@ -178,12 +178,6 @@ protected:
     
     class Sequence
     {
-    private:
-        // [snj]: required by Sequence::cmerge function
-        std::tuple<Sequence, Sequence, Sequence> join(Sequence &primary, Sequence &other, IID<IPid> delim, Sequence &joined);
-        // [snj]: projects tuple projectsions on the thress sequqnces respectively
-        void project(std::tuple<Sequence, Sequence, Sequence> &triple, Sequence &seq1, Sequence &seq2, Sequence &seq3);
-
     public:
         std::vector<IID<IPid>> events;
         std::vector<Thread> *threads;
@@ -230,7 +224,6 @@ protected:
         const IID<IPid>& operator[](std::size_t i) const {return events[i];}
         bool operator==(Sequence seq) {return (events == seq.events);}
         bool operator!=(Sequence seq) {return (events != seq.events);}
-        Sequence operator+(Sequence &other_seq) {return cmerge(other_seq);}
         std::ostream &operator<<(std::ostream &os){return os << to_string();}
 
         bool isPrefix(Sequence &seq); // if this is prefix of seq
@@ -244,9 +237,6 @@ protected:
         bool conflicts_with(Sequence &other_seq);  // has events in this and other that occur in reverse order
         std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> conflicts_with(Sequence &other_seq, bool returnRWpair);
         Sequence backseq(IID<IPid> e1, IID<IPid> e2); // poprefix(e1).(write out of e1, e2).(read out of e1, e2)
-        // [snj]: consistent merge, merges 2 sequences such that all read events maitain their sources
-        //          i.e, reads-from relation remain unchanged
-        Sequence cmerge(Sequence &other_seq);
 
         std::string to_string();
 
@@ -274,32 +264,48 @@ protected:
     };
 
     class Lead {
+    private:
+        // [snj]: required by cmerge function
+        std::tuple<Sequence, Sequence, Sequence> join(Sequence &primary, Sequence &other, IID<IPid> delim, Sequence &joined);
+        // [snj]: projects tuple projectsions on the thress sequqnces respectively
+        void project(std::tuple<Sequence, Sequence, Sequence> &triple, Sequence &seq1, Sequence &seq2, Sequence &seq3);
+
     public:
         Sequence constraint; // sequence from previous trace to be maintained
         Sequence start; // new to explore to get key value
         SOPFormula<IID<IPid>> forbidden; // objXval pairs that must not be explored
         std::pair<IID<IPid>, int> key; // objXval pair for which this trace is created
         Sequence merged_sequence; // cmerge(start, constraint) sequence to explore while a=maintaining constraint
+        bool view_reversible;
 
-        Lead() {}
+        Lead() { view_reversible = false; }
         Lead(Sequence c, Sequence s, SOPFormula<IID<IPid>> f, std::pair<IID<IPid>, int> k) {
             constraint = c; start = s; forbidden = f; key = k;
-            merged_sequence = s.cmerge(c);
+            view_reversible = false;
+            merged_sequence = cmerge(s, c);
         }
         Lead(Sequence s, SOPFormula<IID<IPid>> f, std::pair<IID<IPid>, int> k) {
             start = s; forbidden = f; key = k;
             merged_sequence = s;
+            view_reversible = false;
         }
         Lead(Sequence s, SOPFormula<IID<IPid>> f) {
             start = s; forbidden = f; key = std::make_pair(IID<IPid>(),-1); // dummy key
             merged_sequence = s;
+            view_reversible = false;
         }
-        Lead(Sequence s, std::pair<IID<IPid>, int> k) { start = s; merged_sequence = s; key = k;}
-
-        std::string to_string();
+        Lead(Sequence s, std::pair<IID<IPid>, int> k) { 
+            start = s; merged_sequence = s; key = k;
+            view_reversible = false;
+        }
 
         bool operator==(Lead l);
         std::ostream &operator<<(std::ostream &os){return os << to_string();}
+        
+        // [snj]: consistent merge, merges 2 sequences such that all read events maitain their sources
+        //          i.e, reads-from relation remain unchanged
+        Sequence cmerge(Sequence &primary_seq, Sequence &other_seq);
+        std::string to_string();
     };
 
     /* [snj]: dummy event */
