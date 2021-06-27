@@ -961,7 +961,7 @@ std::tuple<ViewEqTraceBuilder::Sequence, ViewEqTraceBuilder::Sequence, ViewEqTra
 ViewEqTraceBuilder::Sequence::join(Sequence &primary, Sequence &other, IID<IPid> delim, Sequence &joined)
 {
   typedef std::tuple<Sequence, Sequence, Sequence> return_type;
-  // llvm::outs() << "JOIN(" << primary.to_string() << ", " << other.to_string() << ", " << delim.to_string() << ", " << joined.to_string() << ")\n";
+  llvm::outs() << "JOIN(" << primary.to_string() << ", " << other.to_string() << ", " << delim.to_string() << ", " << joined.to_string() << ")\n";
   if (primary.empty()) {
     joined.concatenate(other);
     primary.clear();
@@ -999,7 +999,7 @@ ViewEqTraceBuilder::Sequence::join(Sequence &primary, Sequence &other, IID<IPid>
     if (!other.has(e)) { // e not in both primary and other [algo 6-12]
       IID<IPid> er;
       sequence_iterator it;
-      for (it = other.events.begin(); it != other.events.end(); it++) {
+      for (it = other.begin(); it != other.end(); it++) {
         er = *it;
         Event event_er = threads->at(er.get_pid())[er.get_index()];
         if (!event_er.is_read()) continue;
@@ -1008,16 +1008,26 @@ ViewEqTraceBuilder::Sequence::join(Sequence &primary, Sequence &other, IID<IPid>
       }
 
       if (it != other.end()) { // there exists a read er in other that is not in primary s.t. obj(e) == obj(er)
-        return_type triple;
         if (other.head() == delim && primary.has(delim)) { //other.front() is also waiting to be pushed later in joined seq
-          primary.pop_front();
-          other.pop_front();
-          joined.push_back(e);
+          Event edelim = threads->at(delim.get_pid())[delim.get_index()];
+          if (edelim.is_write()) {
+            primary.pop_front();
+            other.pop_front();
+            joined.push_back(e);
+          }
+          else {
+            primary.clear();
+            other.clear();
+            joined.clear();
+            return std::make_tuple(primary, other, joined);
+          }
         }
         else {
           return_type triple = join(other, primary, er, joined);
-          project(triple, other, primary, joined);
+          if (primary.empty() && other.empty())
+            return std::make_tuple(primary, other, joined);
 
+          project(triple, other, primary, joined);
           if (!joined.has(er)) joined.push_back(er); 
           if (!joined.has(e)) joined.push_back(e); 
         }
@@ -1028,10 +1038,20 @@ ViewEqTraceBuilder::Sequence::join(Sequence &primary, Sequence &other, IID<IPid>
       }
     }
     else { // e in both primary and other [algo 13-17]
-      return_type triple = join(other, primary, e, joined);
-      project(triple, other, primary, joined);
-      if (joined.last() != e) joined.push_back(e);
-      if (primary.head() == e) primary.pop_front(); // [snj]: TODO is the check needed?
+      if (other.head() == e) {
+        primary.pop_front();
+        other.pop_front();
+        joined.push_back(e);
+      }
+      else {
+        return_type triple = join(other, primary, e, joined);
+        if (primary.empty() && other.empty())
+          return std::make_tuple(primary, other, joined);
+
+        project(triple, other, primary, joined);
+        if (joined.last() != e) joined.push_back(e);
+        if (primary.head() == e) primary.pop_front(); // [snj]: TODO is the check needed?
+      }
     }
   }
 
@@ -1048,6 +1068,9 @@ ViewEqTraceBuilder::Sequence::join(Sequence &primary, Sequence &other, IID<IPid>
       }
       else {
         return_type triple = join(other, primary, e, joined);
+        if (primary.empty() && other.empty())
+          return std::make_tuple(primary, other, joined);
+
         project(triple, other, primary, joined);
         if (!joined.has(e)) joined.push_back(e);
       }
@@ -1375,11 +1398,13 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
     assert(!(i->merged_sequence).empty());
 
     //remove invalid leads from the set of new leads
-    if ((i->constraint).conflicts_with(i->start)) {
-      if (i->merged_sequence.empty())
+    // if ((i->constraint).conflicts_with(i->start)) {
+    //   if (i->merged_sequence.empty())
+    //     i = L.erase(i);
+    //   else i++;
+    // }
+    if (i->merged_sequence.empty())
         i = L.erase(i);
-      else i++;
-    }
     else if(!states[state].alpha_sequence().empty() && states[state].alpha_sequence().isPrefix(i->merged_sequence)) {
       llvm::outs() << "ald " << states[state].alpha_sequence().to_string() << " is prefix of " << i->merged_sequence.to_string() << "\n";
 
