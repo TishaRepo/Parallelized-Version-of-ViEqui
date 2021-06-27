@@ -197,10 +197,8 @@ protected:
         std::vector<IID<IPid>>::iterator end() {return events.end();}
         IID<IPid> head() {return events.front();}
         Sequence tail() {
-            llvm::outs() << "tail of " << to_string() << " (size=" << size() << ") = ";
             Sequence tl(events, threads);
             tl.pop_front();
-            llvm::outs() << tl.to_string() << " (tail size=" << tl.size() << "\n";
             return tl;
         }
 

@@ -4066,7 +4066,6 @@ bool Interpreter::checkRefuse(Instruction &I)
         if (Threads[tid].ECStack.size() || Threads[tid].AssumeBlocked)
         {
           /* The awaited thread is still executing. */
-          llvm::outs() << "refuse schedule call 1\n";
           TB.refuse_schedule();
           Threads[tid].AwaitingJoin.push_back(CurrentThread);
           return true;
@@ -4093,7 +4092,7 @@ bool Interpreter::checkRefuse(Instruction &I)
           abort();
           return true;
         }
-          llvm::outs() << "refuse schedule call 2\n";
+         
         TB.refuse_schedule();
         PthreadMutexes[ptr].waiting.insert(CurrentThread);
         return true;
@@ -4223,7 +4222,7 @@ void Interpreter::run()
     }
     else if (checkRefuse(I))
     {
-      llvm::outs() << "[" << e << "]Refusing(" << CurrentThread << "): "; I.print(llvm::outs(), true); llvm::outs() << "\n";
+      // llvm::outs() << "[" << e << "]Refusing(" << CurrentThread << "): "; I.print(llvm::outs(), true); llvm::outs() << "\n";
       if (!ECStack()->empty())
       {
         /* Revert without executing the next instruction. */
@@ -4260,7 +4259,7 @@ void Interpreter::run()
       else if (isGlobalStore(I)) completeStoreInst(static_cast<llvm::StoreInst&>(I));
       else visit(I);
 
-      llvm::outs() << "[" << e++ << "]Executing: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
+      // llvm::outs() << "[" << e++ << "]Executing: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
     }
     else {
     /* 
@@ -4313,7 +4312,7 @@ void Interpreter::run()
 
       if (isGlobalLoad(I) || isGlobalStore(I)) {
         visit(I); // visitLoadInst, visitStoreInst modified to peek and enable event but not execute
-        llvm::outs() << "[" << p++ << "]Peeking  : "; I.print(llvm::outs(), true); llvm::outs() << "\n";
+        // llvm::outs() << "[" << p++ << "]Peeking  : "; I.print(llvm::outs(), true); llvm::outs() << "\n";
       }
     }
   }

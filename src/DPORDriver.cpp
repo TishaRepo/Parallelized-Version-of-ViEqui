@@ -513,9 +513,8 @@ DPORDriver::Result DPORDriver::run(){
   if(conf.print_progress){
     llvm::dbgs() << ESC_char << "[K\n";
   }
-  llvm::outs() << "done conf print prog \n";
+  
   delete TB;
-llvm::outs() << "done delete TB \n";
   return res;
 }
 
