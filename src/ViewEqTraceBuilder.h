@@ -6,6 +6,7 @@
 
 #include "TSOPSOTraceBuilder.h"
 #include "SymEv.h"
+#include "TraceUtil.h"
 #include "SOPFormula.h"
 #include "Visible.h"
 
@@ -54,6 +55,7 @@ public:
 
     virtual IID<CPid> get_iid() const override;
             Event get_event(IID<IPid> event_id) {return threads[event_id.get_pid()][event_id.get_index()];}
+            Event get_event(IID<IPid> event_id) const {return threads[event_id.get_pid()][event_id.get_index()];}
 
     virtual Trace *get_trace() const override;
     virtual void debug_print() const override;
@@ -134,7 +136,7 @@ protected:
         unsigned object;
 
         Event() {}
-        Event(SymEv sym) {symEvent.push_back(sym);}
+        Event(SymEv sym) {symEvent.push_back(sym); md = 0;}
         Event(const IID<IPid> &iid, sym_ty sym = {}) : iid(iid), symEvent(std::move(sym)), md(0){};
         void make_spawn();
         void make_join();

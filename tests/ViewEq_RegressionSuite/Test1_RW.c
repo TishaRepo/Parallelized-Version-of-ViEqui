@@ -11,7 +11,6 @@ void *t0(void *arg){
 
 void *t1(void *arg){
   int a = x;
-  assert(a != 0);
 
   return NULL;
 }

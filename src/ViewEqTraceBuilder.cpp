@@ -49,7 +49,6 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun) {
 
   if (Enabled.empty()) {
     assert(forbidden.evaluate != RESULT::TRUE);
-    debug_print();
     return false; // [snj]: maximal trace explored
   }
 
@@ -479,6 +478,7 @@ void ViewEqTraceBuilder::metadata(const llvm::MDNode *md)
   // [rmnt]: Originally, they check whether dryrun is false before updating the current event's metadata and also maintain a last_md object inside TSOTraceBuilder. Since we don't use dryrun, we have omitted the checks and also last_md
   assert(current_event.md == 0);
   current_event.md = md;
+  last_md = md;
 }
 
 bool ViewEqTraceBuilder::record_symbolic(SymEv event)
@@ -581,7 +581,7 @@ bool ViewEqTraceBuilder::at_replay_point() {
   return prefix_idx == replay_point;
 }
 
-void ViewEqTraceBuilder::cancel_replay() {llvm::outs() << "REPLAY CANCELLED\n";  replay_point = -1;} //[snj]: needed?
+void ViewEqTraceBuilder::cancel_replay() { replay_point = -1; }
 
 bool ViewEqTraceBuilder::full_memory_conflict() {return false;} //[snj]: TODO
 
@@ -713,7 +713,29 @@ bool ViewEqTraceBuilder::fence() {
   return true;
 }
 
-Trace* ViewEqTraceBuilder::get_trace() const {Trace *t = NULL; return t;} //[snj]: TODO
+Trace* ViewEqTraceBuilder::get_trace() const {
+  std::vector<IID<CPid>> cmp;
+  SrcLocVectorBuilder cmp_md;
+  std::vector<Error *> errs;
+  
+  // for (unsigned i = 0; i < prefix.len(); ++i) {
+  //   cmp.push_back(IID<CPid>(threads[prefix[i].iid.get_pid()].cpid, prefix[i].iid.get_index()));
+  //   cmp_md.push_from(prefix[i].md);
+  // };
+  for (unsigned i = 0; i < execution_sequence.size(); i++) {
+    cmp.push_back(IID<CPid>(threads[execution_sequence[i].get_pid()].cpid, execution_sequence[i].get_index()));
+    cmp_md.push_from(get_event(execution_sequence[i]).md);
+  };
+
+  for (unsigned i = 0; i < errors.size(); ++i)
+  {
+    errs.push_back(errors[i]->clone());
+  }
+
+  Trace *t = new IIDSeqTrace(cmp, cmp_md.build(), errs);
+  // t->set_blocked(!sleepset_is_empty());
+  return t;
+} 
 
 // [snj]: HOW TO READ
 //  - stack operations have been abstracted ( as they are mostly parameters 'void *arg')

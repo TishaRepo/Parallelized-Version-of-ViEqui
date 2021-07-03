@@ -3934,7 +3934,7 @@ void Interpreter::callFunction(Function *F,
     GenericValue Result = callExternalFunction(F, ArgVals);
     // Simulate a 'ret' instruction of the appropriate type.
     popStackAndReturnValueToCaller(F->getReturnType(), Result);
-    
+
     return;
   }
 
@@ -4288,6 +4288,8 @@ void Interpreter::run()
 
     if (ECStack()->empty())
     { // The thread has terminated
+      if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ && Blocked) break; // snj: assert fail
+
       if (CurrentThread == 0 && AtExitHandlers.size())
       {
         callFunction(AtExitHandlers.back(), {});
@@ -4317,7 +4319,6 @@ void Interpreter::run()
     }
   }
 
-  // std::cout << "snj: leaving while\n";
   CurrentThread = 0;
   clearAllStacks();
 }
