@@ -230,7 +230,8 @@ protected:
         Sequence prefix(IID<IPid> ev); // prefix of this upto (but not including) ev
         Sequence suffix(IID<IPid> ev); // suffix of this after (not including) ev
         Sequence suffix(Sequence &seq); // suffix of this after prefix seq
-        Sequence poPrefix(IID<IPid> ev, sequence_iterator begin, sequence_iterator end); // program ordered prefix upto end of ev in this
+        Sequence poPrefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end); // program ordered prefix upto end of ev in this
+        Sequence poPrefix_master(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end); // program ordered prefix upto end of ev in this
         Sequence commonPrefix(Sequence &seq);  // prefix of this and seq that is common
         
         bool view_adjust(IID<IPid> e1, IID<IPid> e2);

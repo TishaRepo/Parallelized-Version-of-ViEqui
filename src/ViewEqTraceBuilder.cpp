@@ -589,16 +589,24 @@ bool ViewEqTraceBuilder::spawn()
 {
   Event event(SymEv::Spawn(threads.size()));
   event.make_spawn();
+  event.object = threads.size();
 
+  // remove the no_load_store event added by exists_non_memory access 
+  // add replace with the event crated in this fucntion.
+  threads[current_thread].pop_back();
+  execution_sequence.pop_back();
+  
   // [snj]: create event in thread that is spawning a new event
   current_event = event;
   current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+  
   threads[current_thread].push_back(current_event);
+  execution_sequence.push_back(current_event.iid);
 
   // [snj]: setup new program thread
   IPid parent_ipid = current_event.iid.get_pid();
   CPid child_cpid = CPS.spawn(threads[parent_ipid].cpid);
-  /* Spwan event of thread is dummy */
+  /* Spawn event of thread is dummy */
   threads.push_back(Thread(child_cpid, -42));
 
   for( auto it = visible.begin(); it != visible.end(); it++){
@@ -610,10 +618,18 @@ bool ViewEqTraceBuilder::spawn()
 bool ViewEqTraceBuilder::join(int tgt_proc) {
   Event event(SymEv::Join(tgt_proc));
   event.make_join();
+  event.object = tgt_proc;
+
+  // remove the no_load_store event added by exists_non_memory access 
+  // add replace with the event crated in this fucntion.
+  threads[current_thread].pop_back();
+  execution_sequence.pop_back();
 
   current_event = event;
   current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+  
   threads[current_thread].push_back(current_event);
+  execution_sequence.push_back(current_event.iid);
 
   return true;
 }
@@ -625,6 +641,11 @@ bool ViewEqTraceBuilder::load(const SymAddrSize &ml) {
   current_event = event;
 
   if (current_event.is_global()) {
+    /* a global event is peeked from Execution.cpp run(), this is function
+       call is a result of the peek. Hence, a no_load_store event was not adeed 
+       by exists_non_memory_access function and thus there is no pop in case
+       of a global event.
+    */
     current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
     threads[current_thread].push_back(current_event);
     threads[current_thread].awaiting_load_store = true;
@@ -633,10 +654,16 @@ bool ViewEqTraceBuilder::load(const SymAddrSize &ml) {
     Enabled.push_back(current_event.iid);
   }
   else {
+    /* exists_non_memory_access adds a no_load_store event in thread before executing
+       the next event of thread, if the next event is a non-global load or strore
+       then the no_load_store event is popped and load/store event in added to the
+       thread of the event.
+    */
     threads[current_thread].pop_back();
+    execution_sequence.pop_back();
+
     current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
     threads[current_thread].push_back(current_event);
-    execution_sequence.pop_back();
     execution_sequence.push_back(current_event.iid);
   }
 
@@ -651,6 +678,11 @@ bool ViewEqTraceBuilder::store(const SymData &ml) {
   current_event = event;
 
   if (current_event.is_global()) {
+    /* a global event is peeked from Execution.cpp run(), this is function
+       call is a result of the peek. Hence, a no_load_store event was not adeed 
+       by exists_non_memory_access function and thus there is no pop in case
+       of a global event.
+    */
     current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
     threads[current_thread].push_back(current_event);
     threads[current_thread].awaiting_load_store = true;
@@ -665,10 +697,16 @@ bool ViewEqTraceBuilder::store(const SymData &ml) {
       visible[current_event.object].add_enabled_write(current_event.iid);
   }
   else {
+    /* exists_non_memory_access adds a no_load_store event in thread before executing
+       the next event of thread, if the next event is a non-global load or strore
+       then the no_load_store event is popped and load/store event in added to the
+       thread of the event.
+    */
     threads[current_thread].pop_back();
+    execution_sequence.pop_back();
+
     current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
     threads[current_thread].push_back(current_event);
-    execution_sequence.pop_back();
     execution_sequence.push_back(current_event.iid);
   }
 
@@ -682,6 +720,11 @@ bool ViewEqTraceBuilder::atomic_store(const SymData &ml) {
   current_event = event;
 
   if (current_event.is_global()) {
+    /* a global event is peeked from Execution.cpp run(), this is function
+       call is a result of the peek. Hence, a no_load_store event was not adeed 
+       by exists_non_memory_access function and thus there is no pop in case
+       of a global event.
+    */
     current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
     threads[current_thread].push_back(current_event);
     threads[current_thread].awaiting_load_store = true;
@@ -697,10 +740,16 @@ bool ViewEqTraceBuilder::atomic_store(const SymData &ml) {
       visible[current_event.object].add_enabled_write(current_event.iid);
   }
   else {
+    /* exists_non_memory_access adds a no_load_store event in thread before executing
+       the next event of thread, if the next event is a non-global load or strore
+       then the no_load_store event is popped and load/store event in added to the
+       thread of the event.
+    */
     threads[current_thread].pop_back();
+    execution_sequence.pop_back();
+
     current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
     threads[current_thread].push_back(current_event);
-    execution_sequence.pop_back();
     execution_sequence.push_back(current_event.iid);
   }
 
@@ -747,19 +796,23 @@ void ViewEqTraceBuilder::debug_print() const {
   for (int i = 0; i < execution_sequence.size(); i++) {
     int thread = execution_sequence[i].get_pid();
     Event event = threads[thread][execution_sequence[i].get_index()];
+   
+    if (i < 10) llvm::outs() << " [" << i << "]: "; 
+    else llvm::outs() << "[" << i << "]: ";
+
     if (event.symEvent.size() < 1) {
-      llvm::outs() << "[" << i << "]: --\n";
+      llvm::outs() << "--\n";
       continue;
     }
     if (event.sym_event().addr().addr.block.is_stack()) {
-      llvm::outs() << "[" << i << "]: Stack Operation\n";
+      llvm::outs() << "Stack Operation:  " << event.to_string() << "\n";
       continue;
     }
     if (event.sym_event().addr().addr.block.is_heap()) {
-      llvm::outs() << "[" << i << "]: Heap Operation\n";
+      llvm::outs() << "Heap Operation:   " << event.to_string() << "\n";
       continue;
     }
-    llvm::outs() << "[" << i << "]: " << event.to_string() << "\n";
+    llvm::outs() << "Global Operation: " << event.to_string() << "\n";
   }
 } 
 
@@ -827,15 +880,19 @@ bool ViewEqTraceBuilder::Event::operator!=(Event event) {
 
 std::string ViewEqTraceBuilder::Event::type_to_string() const {
   switch(type) {
-    case WRITE: return "Write";
-    case READ: return "Read";
+    case WRITE: return "Write"; break;
+    case READ:  return "Read";  break;
+    case JOIN:  return "Join";  break;
+    case SPAWN: return "Spawn"; break;
   }
   return "";
 }
 
 std::string ViewEqTraceBuilder::Event::to_string() const {
-  // return (sym_event().to_string() + " *** (" + type_to_string() + "(" + std::to_string(object) + "," + std::to_string(value) + "))");
-  return ("[" + std::to_string(get_pid()) + ":" + std::to_string(get_id()) + "] (" + type_to_string() + "(" + std::to_string(object) + "," + std::to_string(value) + "))");
+  if (type == READ || type == WRITE)
+    return ("[" + std::to_string(get_pid()) + ":" + std::to_string(get_id()) + "] (" + type_to_string() + "(" + std::to_string(object) + "," + std::to_string(value) + "))");
+  
+  return ("[" + std::to_string(get_pid()) + ":" + std::to_string(get_id()) + "] (" + type_to_string() + ":thread" + std::to_string(object) + ")");
 }
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::prefix(IID<IPid> ev) {
@@ -935,13 +992,50 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::commonPrefix(ViewEqTr
   return comPrefix;
 }
 
-ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix(IID<IPid> ev, sequence_iterator begin, sequence_iterator end){
-  assert(has(ev));
+ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix_master(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end){ 
+  std::vector<int> joining_threads;
+  Sequence local_suffix(threads);
+  Sequence po_pre(threads);
+
+  for (auto it = end; it != begin; it--) {
+    auto i = it-1;
+    Event event = threads->at(i->get_pid())[i->get_index()];
+
+    if (i->get_pid() == e2.get_pid()) {
+      local_suffix.push_front(*i);
+      if (event.type == Event::ACCESS_TYPE::JOIN) {
+        joining_threads.push_back(event.object);
+      }
+    }
+    else if (i->get_pid() == e1.get_pid()) {
+      local_suffix.push_front(*i);
+    }
+    else {
+      if (std::find(joining_threads.begin(), joining_threads.end(), i->get_pid()) != joining_threads.end()) {
+        // events from joined threads, not from thread of e1
+        po_pre.push_front(*i);
+      }
+    }
+  }
+
+  po_pre.concatenate(local_suffix);
+  po_pre.push_back(e2);
+  llvm::outs() << "retuning po_pre of master=" << po_pre.to_string() << "\n";
+  return po_pre;
+}
+
+ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end){
+  assert(has(e2));
   sequence_iterator it;
   std::vector<IID<IPid>> poPre;
 
+  if (e2.get_pid() == 0) { // read event in thread 0 after join to check assertion
+    llvm::outs() << "jumping to po_pre of master\n";
+    return poPrefix_master(e1, e2, begin, end);
+  }
+
   for(it = begin; it != end && it != events.end(); it++){
-    if(it->get_pid() == ev.get_pid()) {
+    if(it->get_pid() == e2.get_pid()) {
       Event ite = threads->at(it->get_pid())[it->get_index()];
       if (ite.is_global())
         poPre.push_back(*it);
@@ -954,10 +1048,12 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix(IID<IPid> ev
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1, IID<IPid> e2){
   assert(this->has(e1) && this->has(e2));
-  ViewEqTraceBuilder::Sequence po_pre = poPrefix(e2, find(e1)+1, find(e2));
+  llvm::outs() << "in backseq e1=" << e1.to_string() << ", e2=" << e2.to_string() << "\n";
+  ViewEqTraceBuilder::Sequence po_pre = poPrefix(e1, e2, find(e1)+1, find(e2));
 
-  if (e1.get_pid() == 0) { // event from thread zero ie init write event
+  if (e1.get_pid() == 0 || e2.get_pid() == 0) { // event from thread zero ie init write event
     po_pre.push_back(e2);
+    llvm::outs() << "retuning po_pre=" << po_pre.to_string() << "\n";
     return po_pre; // init event is not added to backseq
   }
   
@@ -1225,7 +1321,9 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredInfluencers(Event er, 
   assert(visible[o_id].mpo.size() == visible[o_id].visible_start.size() + 1);
   
   //[nau]: check if init event is visible to er
+  llvm::outs() << "call to check_init_visible\n";
   if(visible[o_id].check_init_visible(pid)) {
+    llvm::outs() << "call to check_init_visible done\n";
     IID<IPid> initid = visible[o_id].mpo[0][0];
     Event init = get_event(initid);
     assert(init.value == 0);
@@ -1254,7 +1352,6 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredInfluencers(Event er, 
           }
       }
   }
-  
   return ei;
 }
 

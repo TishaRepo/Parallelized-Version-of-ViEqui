@@ -18,10 +18,10 @@ void *t2(void *arg){
   return NULL;
 }
 
-void *t3(void *arg){
-  int d = x;
-  return NULL;
-}
+// void *t3(void *arg){
+//   int d = x;
+//   return NULL;
+// }
 
 int main(int argc, char *argv[]){
   pthread_t thr0;
@@ -39,8 +39,9 @@ int main(int argc, char *argv[]){
   pthread_join(thr1, NULL);
   pthread_join(thr2, NULL);
 
-  pthread_create(&thr3, NULL, t3, NULL);
-  pthread_join(thr3, NULL);
+  // pthread_create(&thr3, NULL, t3, NULL);
+  // pthread_join(thr3, NULL);
+  int d = x;
 
   return 0;
 }
