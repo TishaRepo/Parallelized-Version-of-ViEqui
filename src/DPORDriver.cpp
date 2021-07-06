@@ -275,17 +275,9 @@ bool DPORDriver::handle_trace(TraceBuilder *TB, Trace *t, uint64_t *computation_
     res.all_traces.push_back(t);
     t_used = true;
   }
-  if(!TB->sleepset_is_empty()) {
-    if (conf.dpor_algorithm == Configuration::VIEW_EQ) {
-      llvm::outs() << "[snj]: sleepset is not empty\n";
-      assert(false);
-    }
+  if(conf.dpor_algorithm != Configuration::VIEW_EQ && !TB->sleepset_is_empty()) {
     ++res.sleepset_blocked_trace_count;
   }else if(assume_blocked){
-    if (conf.dpor_algorithm == Configuration::VIEW_EQ) {
-      llvm::outs() << "[snj]: assume_blocked is true\n";
-      assert(false);
-    }
     ++res.assume_blocked_trace_count;
   }else{
     ++res.trace_count;
@@ -475,7 +467,7 @@ DPORDriver::Result DPORDriver::run(){
   uint64_t computation_count = 0;
   long double estimate = 1;
   do{
-    if(conf.print_progress){
+    if(conf.print_progress && conf.dpor_algorithm != Configuration::VIEW_EQ){
       print_progress(computation_count, estimate, res);
     }
     if((computation_count+1) % 1000 == 0){
@@ -499,6 +491,9 @@ DPORDriver::Result DPORDriver::run(){
     if (handle_trace(TB, t, &computation_count, res, assume_blocked)) break;
     if(conf.print_progress_estimate && (computation_count+1) % 100 == 0){
       estimate = std::round(TB->estimate_trace_count());
+    }
+    if (conf.dpor_algorithm == Configuration::VIEW_EQ && conf.print_progress) {
+      TB->debug_print();
     }
   }while(TB->reset()); /* snj:
     find a branching point in prefix of last explored sequence (if any)
