@@ -1213,22 +1213,42 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredInfluencers(Event er, 
   }
   
   //for writes other than init
-  for(int i = 0; i < visible[o_id].visible_start[pid - 1].size(); i++){
-      int j = visible[o_id].visible_start[pid - 1][i];
-      for( int k = j; k < visible[o_id].mpo[i + 1].size() + 1; k++){
-          if(k == 0) continue;
-          IID<IPid> e_id = visible[o_id].mpo[i + 1][k - 1];
+  if(pid == 0){
+    for(int i = 0; i < visible[o_id].mpo.size(); i++){
+      if(mpo[i].size() != 0){
+        IID<IPid> e_id = visible[o_id].mpo[i][mpo[i].size()];
+        Event e = get_event(e_id);
+        //repeated value || already checked forbidden value || unexplored event
+        if(values.find(e.value) != values.end() || forbidden_values.find(e.value) != forbidden_values.end() || find(Enabled.begin(), Enabled.end(), e_id) != Enabled.end() ) continue;
 
-          Event e = get_event(e_id);
-          //repeated value || already checked forbidden value || unexplored event
-          if(values.find(e.value) != values.end() || forbidden_values.find(e.value) != forbidden_values.end() || find(Enabled.begin(), Enabled.end(), e_id) != Enabled.end() ) continue;
+        std::unordered_map<IID<IPid>, int> valueEnv{{e_id, e.value}};
 
-          std::unordered_map<IID<IPid>, int> valueEnv{{e_id, e.value}};
+        if(f.check_evaluation(valueEnv) == RESULT::TRUE ) forbidden_values.insert(e.value);
+        else{
+          ei.insert(e_id);
+          values.insert(e.value);
+        }
+      }
+    }
+  }
+  else{
+    for(int i = 0; i < visible[o_id].visible_start[pid - 1].size(); i++){
+          int j = visible[o_id].visible_start[pid - 1][i];
+          for( int k = j; k < visible[o_id].mpo[i + 1].size() + 1; k++){
+              if(k == 0) continue;
+              IID<IPid> e_id = visible[o_id].mpo[i + 1][k - 1];
 
-          if(f.check_evaluation(valueEnv) == RESULT::TRUE ) forbidden_values.insert(e.value);
-          else{
-            ei.insert(e_id);
-            values.insert(e.value);
+              Event e = get_event(e_id);
+              //repeated value || already checked forbidden value || unexplored event
+              if(values.find(e.value) != values.end() || forbidden_values.find(e.value) != forbidden_values.end() || find(Enabled.begin(), Enabled.end(), e_id) != Enabled.end() ) continue;
+
+              std::unordered_map<IID<IPid>, int> valueEnv{{e_id, e.value}};
+
+              if(f.check_evaluation(valueEnv) == RESULT::TRUE ) forbidden_values.insert(e.value);
+              else{
+                ei.insert(e_id);
+                values.insert(e.value);
+              }
           }
       }
   }
