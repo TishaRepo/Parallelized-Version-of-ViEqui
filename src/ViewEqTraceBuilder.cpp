@@ -172,14 +172,24 @@ void ViewEqTraceBuilder::compute_new_leads() {
 
     // llvm::outs() << "updating leads\n";
     update_leads(next_event, forbidden);
-    // llvm::outs() << "updated leads\n";
-    // llvm::outs() << "checking if state[" << current_state << "] has unexploredleads (states.siez=" << states.size() << ") \n";
+    llvm::outs() << "updated leads\n";
+    llvm::outs() << "checking if state[" << current_state << "] has unexploredleads (states.siez=" << states.size() << ") \n";
     if (!states[current_state].has_unexplored_leads()) {
-      // llvm::outs() << "making seq of next event (forbidden=" << forbidden.to_string() << ")\n";
+      llvm::outs() << "making seq of next event (forbidden=" << forbidden.to_string() << ")\n";
       Sequence seq(next_event, &threads);
       Lead l(seq, forbidden); 
       consistent_union(current_state, l);
     }
+    ////
+    else {
+      llvm::outs() << "else of !states[current_state].has_unexplored_leads() and unexplored leads=\n";
+      std::vector<Lead> unexl = states[current_state].unexplored_leads();
+      for (auto it = unexl.begin(); it != unexl.end(); it++) {
+        llvm::outs() << "lead: ";
+        llvm::outs() << (*it).to_string() << "\n";
+      }
+    }
+    ////
   }
   else { // has a lead to explore
     // llvm::outs() << "to_explore not empty = " << to_explore.to_string() << "\n";
@@ -206,7 +216,7 @@ void ViewEqTraceBuilder::execute_next_lead() {
   // llvm::outs() << "updated alphaseq=" << states[current_state].alpha_sequence().to_string() << "\n";
   IID<IPid> next_event = states[current_state].alpha_sequence().head();
   to_explore = states[current_state].alpha_sequence().tail();
-  // llvm::outs() << "set at states[" << current_state << "]: alpha=" << states[current_state].alpha_sequence().to_string() << ", to_explore=" << to_explore.to_string() << "\n";
+  llvm::outs() << "set at states[" << current_state << "]: alpha=" << states[current_state].alpha_sequence().to_string() << ", to_explore=" << to_explore.to_string() << "\n";
 
   auto it = std::find(Enabled.begin(), Enabled.end(), next_event);
   assert(it != Enabled.end());
@@ -214,23 +224,27 @@ void ViewEqTraceBuilder::execute_next_lead() {
  
   update_done(next_event);
   update_forbidden(&next_lead);
-  // llvm::outs() << "updated done, set forbidden \n";
+  llvm::outs() << "updated done, set forbidden \n";
   current_thread = next_event.get_pid();
   current_event = threads[current_thread][next_event.get_index()];
   assert(current_event.is_write() || current_event.is_read());
   assert(0 <= current_thread && current_thread < long(threads.size()));
-  // llvm::outs() << "set current thread=" << current_thread << " and event \n";
+  llvm::outs() << "set current thread=" << current_thread << " and event \n";
   //update last_write
   if(current_event.is_write()){
     last_write[current_event.object] = current_event.iid;
     mem[current_event.object] = current_event.value;
-    // llvm::outs() << "set mem and last write \n";
+    llvm::outs() << "set mem and last write \n";
   }
   //update vpo when read is done
   if(current_event.is_read()) { 
+    llvm::outs() << "calling execute_read\n";
     visible[current_event.object].execute_read(current_event.get_pid(), last_write[current_event.object]);
+    llvm::outs() << "getting value\n";
     current_event.value = mem[current_event.object];
+    llvm::outs() << "got value\n";
     threads[current_thread][current_event.get_id()].value = current_event.value;
+    llvm::outs() << "set visible with execute_read and got value=" << current_event.value << "\n";
   }
   // [snj]: record current event as next in execution sequence
   execution_sequence.push_back(current_event.iid);
@@ -332,14 +346,14 @@ void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula<IID<IPid
     // }
     SOPFormula<IID<IPid>> inF = states[event_index].alpha.forbidden;
     
-     llvm::outs() << "making backward lead for read" << event.to_string() << "\n";
+    //  llvm::outs() << "making backward lead for read" << event.to_string() << "\n";
     inF || fui; inF || fei;
     // llvm::outs() << "alpha: " << states[event_index].alpha_sequence().to_string() <<"\n";
     // llvm::outs() << "backseq: " << execution_sequence.backseq((*it), event.iid).to_string() <<"\n";
     // llvm::outs() << "forbidden: " << inF.to_string() <<"\n";
     L[event_index].push_back(Lead(states[event_index].alpha_sequence(), execution_sequence.backseq((*it), event.iid), inF, std::make_pair(event.iid, get_event(*it).value)));   
     // ///
-     llvm::outs() << "created lead with backseq\n";
+    //  llvm::outs() << "created lead with backseq\n";
     // Lead l(states[event_index].alpha_sequence(), execution_sequence.backseq((*it), event.iid), inF, std::make_pair(event.iid, get_event(*it).value));
     // llvm::outs() << "at " << event_index << "," << es_idx << " added lead " << l.to_string() << " with alpha " << l.merged_sequence.to_string() << "\n";
     // ////
@@ -387,10 +401,10 @@ void ViewEqTraceBuilder::backward_analysis(Event event, SOPFormula<IID<IPid>>& f
   for (auto it = L.begin(); it != L.end(); it++) {
     consistent_union(it->first, it->second); // consistent join at respective execution prefix
     // ////
-     llvm::outs() << "at " << it->first << "consistently joined:\n";
-     for (auto l = it->second.begin(); l != it->second.end(); l++) {
-       llvm::outs() << l->to_string() << "\n";
-     }
+    //  llvm::outs() << "at " << it->first << "consistently joined:\n";
+    //  for (auto l = it->second.begin(); l != it->second.end(); l++) {
+    //    llvm::outs() << l->to_string() << "\n";
+    //  }
     // ////
   }
 }
@@ -998,7 +1012,7 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix_master(IID<I
   std::vector<int> joining_threads;
   Sequence local_suffix(threads);
   Sequence po_pre(threads);
-  llvm::outs() << this->to_string();
+  
   for (auto it = end; it != begin; it--) {
     auto i = it-1;
     Event event = threads->at(i->get_pid())[i->get_index()];
@@ -1201,17 +1215,18 @@ ViewEqTraceBuilder::Lead::join(Sequence &primary, Sequence &other, IID<IPid> del
       }
     }
   }
-  //llvm::outs() << "ev is " << ev.to_string() <<"\n";
+  
   return join(primary, other, delim, joined);
 }
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Lead::cmerge(Sequence &primary_seq, Sequence &other_seq) {
-  llvm::outs() << "entered cmerge\n";
   std::vector<Thread>* threads = primary_seq.threads;
   llvm::outs() << primary_seq.to_string() << " (+) " << other_seq.to_string() << " = ";
 
   assert(!primary_seq.empty());
   if (other_seq.empty()) return primary_seq;
+
+  if (primary_seq.last().get_pid() == 0) return primary_seq; // lead created for assert check in master thread
 
   std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> conflictingRWpair = primary_seq.conflicts_with(other_seq, true);
   while (conflictingRWpair.first) { // primary_seq and other_seq conflict
@@ -1227,9 +1242,7 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Lead::cmerge(Sequence &primary_
       return dummy;
     }
   }
-  llvm::outs() << "checked RWpairs\n";
-  // events = primary_seq.events; // if adjusted update to original
-
+  
   sequence_iterator it;
   for (it = primary_seq.begin(); it != primary_seq.end(); it++) {
     if (other_seq.has((*it)))
@@ -1250,15 +1263,12 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Lead::cmerge(Sequence &primary_
   // llvm::outs() << primary_seq.to_string() << " (+) " << other_seq.to_string() << " = ";
   IID<IPid> dummy;
   Sequence joined(threads);
-  llvm::outs() << "entered join\n";
   std::tuple<Sequence, Sequence, Sequence> triple = join(primary_seq, other_seq, dummy, joined);
-  llvm::outs() << "join done\n";
   assert(std::get<0>(triple).size() == 0);
   assert(std::get<1>(triple).size() == 0);
 
   // llvm::outs() << std::get<2>(triple).to_string() << "\n";
   return std::get<2>(triple);
-  llvm::outs() << "leaving cmerge\n";
 }
 
 bool ViewEqTraceBuilder::Sequence::hasRWpairs(Sequence &seq) {

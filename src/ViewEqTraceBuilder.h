@@ -281,11 +281,9 @@ protected:
 
         Lead() { view_reversible = false; }
         Lead(Sequence c, Sequence s, SOPFormula<IID<IPid>> f, std::pair<IID<IPid>, int> k) {
-            llvm::outs()<<"creating lead\n";
             constraint = c; start = s; forbidden = f; key = k;
             view_reversible = false;
             merged_sequence = cmerge(s, c);
-            llvm::outs() << "done\n";
         }
         Lead(Sequence s, SOPFormula<IID<IPid>> f, std::pair<IID<IPid>, int> k) {
             start = s; forbidden = f; key = k;
