@@ -17,6 +17,7 @@ class Visible{
         std::vector<bool> init_visible; //init event visible to thread[i+1] if init_visible[i] is true
         IID<MPid> low_mid;  //low index according to mpo
         IID<IPid> low_iid;  //last observed write event - initialised to init
+        bool first_read_after_join;
 
         void add_thread();
         void execute_read(unsigned er_proc_id, IID<IPid> new_low);

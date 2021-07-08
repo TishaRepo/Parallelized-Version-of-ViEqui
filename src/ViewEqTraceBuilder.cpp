@@ -220,6 +220,7 @@ void ViewEqTraceBuilder::execute_next_lead() {
 
   auto it = std::find(Enabled.begin(), Enabled.end(), next_event);
   assert(it != Enabled.end());
+  if(it == Enabled.end()) llvm::outs() << "can't find" << next_event.to_string() << get_event(next_event).to_string() << "in enabled\n";
   Enabled.erase(it);
  
   update_done(next_event);
@@ -1331,7 +1332,6 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredInfluencers(Event er, 
   unsigned o_id = er.object;
   int pid = er.get_pid();
   
-  assert(pid > 0);
   auto it = visible.find(o_id);
   assert(it!= visible.end());
   assert(visible[o_id].mpo[0].size() == 1); //only the init event in first row
@@ -1351,7 +1351,12 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredInfluencers(Event er, 
   }
   
   //for writes other than init
+  // check if read is from thr0 after join
   if(pid == 0){
+    if( ! visible[o_id].first_read_after_join ){
+      ei.insert(last_write[o_id]);
+      return ei;
+    }
     for(int i = 1; i < visible[o_id].mpo.size(); i++){
       if(visible[o_id].mpo[i].size() != 0){
         IID<IPid> e_id = visible[o_id].mpo[i][visible[o_id].mpo[i].size() - 1];
