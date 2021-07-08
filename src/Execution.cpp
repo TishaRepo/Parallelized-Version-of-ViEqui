@@ -1543,27 +1543,48 @@ void Interpreter::completeStoreInst(StoreInst &I)
 
 // [snj]: check if a load instruction accesses global variable
 bool Interpreter ::isGlobalLoad(Instruction &I) {
-  llvm::outs() << "checking for global load ";
   if (isa<LoadInst>(I)) {
-    llvm::outs() << "is load ";
-    for (const Value *Op : I.operands())
-        if (const GlobalValue* G = dyn_cast<GlobalValue>(Op)) {
-          llvm::outs() << "is global\n";
+    for (const Use& Op : I.operands()){
+      if (const GlobalValue* G = dyn_cast<GlobalValue>(Op)) {
+        return true;
+      }
+      //check inside gepo for global arrays
+      else if (GEPOperator* gepo = dyn_cast<GEPOperator>(&Op)){
+        if (GlobalVariable* gv = dyn_cast<GlobalVariable>(gepo->getPointerOperand()))
           return true;
+      
+        for (auto it = gepo->idx_begin(), et = gepo->idx_end(); it != et; ++it){
+          if (GlobalValue* gv = dyn_cast<GlobalValue>(*it)){
+              return true;
+          }
         }
+      }
+    }
     // if (GlobalVariable* GV = dyn_cast<GlobalVariable>(I.getOperand(0))) {
     //   return true;
     // }   
   }
-  llvm::outs() << "- not load\n";
   return false;      
 }
 
 // [snj]: check if a store instruction accesses global variable
 bool Interpreter ::isGlobalStore(Instruction &I) {
   if (isa<StoreInst>(I)) {
-    if (GlobalVariable* GV = dyn_cast<GlobalVariable>(I.getOperand(1))) {
-      return true;
+    for (const Use& Op : I.operands()){
+      if (const GlobalValue* G = dyn_cast<GlobalValue>(Op)) {
+        return true;
+      }
+      //check inside gepo for global arrays
+      else if (GEPOperator* gepo = dyn_cast<GEPOperator>(&Op)){
+        if (GlobalVariable* gv = dyn_cast<GlobalVariable>(gepo->getPointerOperand()))
+          return true;
+      
+        for (auto it = gepo->idx_begin(), et = gepo->idx_end(); it != et; ++it){
+          if (GlobalValue* gv = dyn_cast<GlobalValue>(*it)){
+              return true;
+          }
+        }
+      }
     }   
   }
   return false;      
