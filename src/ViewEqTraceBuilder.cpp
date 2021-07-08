@@ -221,6 +221,13 @@ void ViewEqTraceBuilder::execute_next_lead() {
   auto it = std::find(Enabled.begin(), Enabled.end(), next_event);
   assert(it != Enabled.end());
   if(it == Enabled.end()) llvm::outs() << "can't find" << next_event.to_string() << get_event(next_event).to_string() << "in enabled\n";
+  /////
+    llvm::outs() << "Enabled evenets: ";
+    for (auto it = Enabled.begin(); it != Enabled.end(); it++) {
+      llvm::outs() << it->to_string() << ", ";
+    } 
+    llvm::outs() << "\n ";
+  ////
   Enabled.erase(it);
  
   update_done(next_event);
@@ -587,6 +594,8 @@ void ViewEqTraceBuilder::refuse_schedule() {
   execution_sequence.pop_back();
   prefix_state.pop_back();
   prefix_idx--;
+
+  threads[current_thread].pop_back();
   mark_unavailable(current_thread);
 }
 
@@ -669,7 +678,16 @@ bool ViewEqTraceBuilder::load(const SymAddrSize &ml) {
 
     assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
     Enabled.push_back(current_event.iid);
-  }
+
+    /////
+    llvm::outs() << "inside load(): Enabled events: "; 
+    for (auto it = Enabled.begin(); it != Enabled.end(); it++) {
+      Event ev = get_event(*it);
+      llvm::outs() << ev.to_string() << ", ";
+    } 
+    llvm::outs() << "\n ";
+    ////
+  } 
   else {
     /* exists_non_memory_access adds a no_load_store event in thread before executing
        the next event of thread, if the next event is a non-global load or strore
@@ -822,14 +840,14 @@ void ViewEqTraceBuilder::debug_print() const {
       continue;
     }
     if (event.sym_event().addr().addr.block.is_stack()) {
-      llvm::outs() << "Stack Operation:  " << event.to_string() << "\n";
+      llvm::outs() << "Stack Operation \n";
       continue;
     }
     if (event.sym_event().addr().addr.block.is_heap()) {
-      llvm::outs() << "Heap Operation:   " << event.to_string() << "\n";
+      llvm::outs() << "Heap Operation \n";
       continue;
     }
-    llvm::outs() << "Global Operation: " << event.to_string() << "\n";
+    llvm::outs() << event.to_string() << "\n";
   }
 } 
 
@@ -1019,21 +1037,25 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix_master(IID<I
     Event event = threads->at(i->get_pid())[i->get_index()];
 
     if (i->get_pid() == e2.get_pid()) {
-      local_suffix.push_front(*i);
+      if (event.is_global())
+        local_suffix.push_front(*i);
       if (event.type == Event::ACCESS_TYPE::JOIN) {
         joining_threads.push_back(event.object);
       }
     }
     else if (i->get_pid() == e1.get_pid()) {
-      local_suffix.push_front(*i);
+      if (event.is_global())
+        local_suffix.push_front(*i);
     }
     else {
       if (std::find(joining_threads.begin(), joining_threads.end(), i->get_pid()) != joining_threads.end()) {
         // events from joined threads, not from thread of e1
-        po_pre.push_front(*i);
+        if (event.is_global())
+          po_pre.push_front(*i);
       }
     }
   }
+
   local_suffix.push_front(e1);
   po_pre.concatenate(local_suffix);
   po_pre.push_back(e2);

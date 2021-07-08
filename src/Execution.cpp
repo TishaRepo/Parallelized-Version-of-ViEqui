@@ -1543,11 +1543,19 @@ void Interpreter::completeStoreInst(StoreInst &I)
 
 // [snj]: check if a load instruction accesses global variable
 bool Interpreter ::isGlobalLoad(Instruction &I) {
+  llvm::outs() << "checking for global load ";
   if (isa<LoadInst>(I)) {
-    if (GlobalVariable* GV = dyn_cast<GlobalVariable>(I.getOperand(0))) {
-      return true;
-    }   
+    llvm::outs() << "is load ";
+    for (const Value *Op : I.operands())
+        if (const GlobalValue* G = dyn_cast<GlobalValue>(Op)) {
+          llvm::outs() << "is global\n";
+          return true;
+        }
+    // if (GlobalVariable* GV = dyn_cast<GlobalVariable>(I.getOperand(0))) {
+    //   return true;
+    // }   
   }
+  llvm::outs() << "- not load\n";
   return false;      
 }
 
