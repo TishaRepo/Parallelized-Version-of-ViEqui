@@ -60,7 +60,7 @@ public:
     virtual Trace *get_trace() const override;
     virtual void debug_print() const override;
 
-    int current_value(unsigned obj);
+    int current_value(std::pair<unsigned, unsigned> obj);
     std::unordered_set<IID<IPid>> unexploredInfluencers(Event er, SOPFormula<IID<IPid>>& f);
     std::unordered_set<IID<IPid>> exploredInfluencers(Event er, SOPFormula<IID<IPid>> &f);
     std::unordered_set<IID<IPid>> exploredWitnesses(Event ew, SOPFormula<IID<IPid>> &f);
@@ -133,7 +133,7 @@ protected:
         // [snj]: value signifies the value read by a read event or written by a write event in the current
         // execution sequence, all value are initialized to 0 by default
         int value;
-        unsigned object;
+        std::pair<unsigned, unsigned> object; // <base, offset> - offset for arrays
 
         Event() {}
         Event(SymEv sym) {symEvent.push_back(sym); md = 0;}
@@ -382,12 +382,20 @@ protected:
     // list of (thread id, next event) pairs
     std::vector<IID<IPid>> Enabled;
 
-    // [snj]: memory map object to last stored value
-    std::unordered_map<unsigned, int> mem;
+    /* object base -> object offset -> value
+        maps object to current value in memory
+    */
+    std::unordered_map<unsigned, std::unordered_map<unsigned, int>> mem;
 
-    std::unordered_map<unsigned, IID<IPid>> last_write; // object x event to perform latest write 
-
-    std::unordered_map<unsigned,Visible> visible;//vpo for each object, can be accessed by referencing index 'e.object'
+    /* object base -> object offset -> event id
+        maps object to event that performed the latest write on the object
+    */
+    std::unordered_map<unsigned, std::unordered_map<unsigned, IID<IPid>>> last_write;
+    
+    /* object base -> object offset -> Visible (vpo)
+        maps object to its visible-partial-order
+    */
+    std::unordered_map<unsigned, std::unordered_map<unsigned, Visible>> visible;
 
     /* [snj]: state corresponding to execution sequence prefix */
     std::vector<int> prefix_state;
