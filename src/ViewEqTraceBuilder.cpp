@@ -212,7 +212,7 @@ void ViewEqTraceBuilder::execute_next_lead() {
   //  ////
   Lead next_lead = states[current_state].next_unexplored_lead();
   // llvm::outs() << "got lead=" << next_lead.to_string() << "\n";
-  states[current_state].alpha = next_lead;
+  states[current_state].alpha = next_lead; 
   // llvm::outs() << "updated alphaseq=" << states[current_state].alpha_sequence().to_string() << "\n";
   IID<IPid> next_event = states[current_state].alpha_sequence().head();
   to_explore = states[current_state].alpha_sequence().tail();
@@ -1040,7 +1040,7 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::commonPrefix(ViewEqTr
 }
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix_master(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end){ 
-  std::vector<std::pair<unsigned, unsigned>> joining_threads;
+  std::vector<unsigned> joining_threads;
   Sequence local_suffix(threads);
   Sequence po_pre(threads);
   
@@ -1052,7 +1052,7 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix_master(IID<I
       if (event.is_global())
         local_suffix.push_front(*i);
       if (event.type == Event::ACCESS_TYPE::JOIN) {
-        joining_threads.push_back(event.object);
+        joining_threads.push_back(event.object.first);
       }
     }
     else if (i->get_pid() == e1.get_pid()) {
@@ -1070,7 +1070,6 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix_master(IID<I
 
   local_suffix.push_front(e1);
   po_pre.concatenate(local_suffix);
-  po_pre.push_back(e2);
   llvm::outs() << "retuning po_pre of master=" << po_pre.to_string() << "\n";
   return po_pre;
 }
@@ -1325,12 +1324,12 @@ std::string ViewEqTraceBuilder::Sequence::to_string() {
   if (events.empty()) return "<>";
 
   std::string s = "<";
-  for (auto ev : events) {
-    if (ev == last()) break;
-    s = s + "(" + std::to_string(ev.get_pid()) + ":" + std::to_string(ev.get_index()) +"), ";
+  s += "(" + std::to_string(events[0].get_pid()) + ":" + std::to_string(events[0].get_index()) +")";
+  for (auto it = events.begin() + 1; it != events.end(); it++) {
+    s = s + ", (" + std::to_string(it->get_pid()) + ":" + std::to_string(it->get_index()) +")";
   }
 
-  s = s + "(" + std::to_string(last().get_pid()) + ":" + std::to_string(last().get_index()) + ")>";
+  s = s + ">";
   return s;
 }
 
