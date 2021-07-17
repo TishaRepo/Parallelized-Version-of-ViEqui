@@ -104,7 +104,7 @@ void ViewEqTraceBuilder::replay_memory_access(int next_replay_thread, IID<IPid> 
   }
   //update vpo when read is done
   if(current_event.is_read()) { 
-    visible[current_event.object.first][current_event.object.second].execute_read(current_event.get_pid(), last_write[current_event.object.first][current_event.object.second]);
+    visible[current_event.object.first][current_event.object.second].execute_read(current_event.get_pid(), last_write[current_event.object.first][current_event.object.second], mem[current_event.object.first][current_event.object.second]);
     current_event.value = mem[current_event.object.first][current_event.object.second];
     threads[current_thread][current_event.get_id()].value = current_event.value;
   }
@@ -231,6 +231,13 @@ void ViewEqTraceBuilder::execute_next_lead() {
   Enabled.erase(it);
  
   update_done(next_event);
+
+  //update forbidden
+  if(get_event(next_event).is_read()){
+      std::unordered_map<IID<IPid>, int> valueEnv{{current_event.iid, mem[current_event.object.first][current_event.object.second]}};
+      forbidden.evaluate(valueEnv);
+      //llvm::outs()<< forbidden.to_string() << "\n";
+  } 
   update_forbidden(&next_lead);
   // llvm::outs() << "updated done, set forbidden \n";
   current_thread = next_event.get_pid();
@@ -247,11 +254,11 @@ void ViewEqTraceBuilder::execute_next_lead() {
   //update vpo when read is done
   if(current_event.is_read()) { 
     // llvm::outs() << "calling execute_read\n";
-    visible[current_event.object.first][current_event.object.second].execute_read(current_event.get_pid(), last_write[current_event.object.first][current_event.object.second]);
+    visible[current_event.object.first][current_event.object.second].execute_read(current_event.get_pid(), last_write[current_event.object.first][current_event.object.second], mem[current_event.object.first][current_event.object.second]);
     // llvm::outs() << "getting value\n";
     current_event.value = mem[current_event.object.first][current_event.object.second];
     // llvm::outs() << "got value\n";
-    threads[current_thread][current_event.get_id()].value = current_event.value;
+    threads[current_thread][current_event.get_id()].value = current_event.value;    
     // llvm::outs() << "set visible with execute_read and got value=" << current_event.value << "\n";
   }
   // [snj]: record current event as next in execution sequence
@@ -682,12 +689,12 @@ bool ViewEqTraceBuilder::load(const SymAddrSize &ml) {
     Enabled.push_back(current_event.iid);
 
     /////
-    llvm::outs() << "inside load(): Enabled events: "; 
-    for (auto it = Enabled.begin(); it != Enabled.end(); it++) {
-      Event ev = get_event(*it);
-      llvm::outs() << ev.to_string() << ", ";
-    } 
-    llvm::outs() << "\n ";
+    //llvm::outs() << "inside load(): Enabled events: "; 
+    //for (auto it = Enabled.begin(); it != Enabled.end(); it++) {
+    //  Event ev = get_event(*it);
+    //  llvm::outs() << ev.to_string() << ", ";
+    //} 
+    //llvm::outs() << "\n ";
     ////
   } 
   else {
@@ -727,11 +734,11 @@ bool ViewEqTraceBuilder::store(const SymData &ml) {
     assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
     Enabled.push_back(current_event.iid);
     if(current_thread == 0){
-      Visible vis(current_event.iid);
+      Visible vis(current_event.iid, current_event.value);
       visible[current_event.object.first].insert({current_event.object.second, vis});
     }
     else
-      visible[current_event.object.first][current_event.object.second].add_enabled_write(current_event.iid);
+      visible[current_event.object.first][current_event.object.second].add_enabled_write(current_event.iid, current_event.value);
   }
   else {
     /* exists_non_memory_access adds a no_load_store event in thread before executing
@@ -770,11 +777,11 @@ bool ViewEqTraceBuilder::atomic_store(const SymData &ml) {
     Enabled.push_back(current_event.iid);
 
     if(current_thread == 0){
-      Visible vis( current_event.iid);
+      Visible vis( current_event.iid, current_event.value);
       visible[current_event.object.first].insert({current_event.object.second, vis});
     }
     else
-      visible[current_event.object.first][current_event.object.second].add_enabled_write(current_event.iid);
+      visible[current_event.object.first][current_event.object.second].add_enabled_write(current_event.iid, current_event.value);
   }
   else {
     /* exists_non_memory_access adds a no_load_store event in thread before executing
@@ -1098,13 +1105,13 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix(IID<IPid> e1
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1, IID<IPid> e2){
   assert(this->has(e1) && this->has(e2));
-  llvm::outs() << "in backseq e1=" << e1.to_string() << ", e2=" << e2.to_string() << "\n";
+  //llvm::outs() << "in backseq e1=" << e1.to_string() << ", e2=" << e2.to_string() << "\n";
   ViewEqTraceBuilder::Sequence po_pre = poPrefix(e1, e2, find(e1)+1, find(e2));
 
   if (e1.get_pid() == 0 || e2.get_pid() == 0) { // event from thread zero ie init write event
     po_pre.push_back(e2);
-    llvm::outs() << "retuning po_pre=" << po_pre.to_string() << "\n";
-    llvm::outs() << "returned popre\n";
+    //llvm::outs() << "retuning po_pre=" << po_pre.to_string() << "\n";
+    //llvm::outs() << "returned popre\n";
     return po_pre; // init event is not added to backseq
   }
   
@@ -1255,7 +1262,7 @@ ViewEqTraceBuilder::Lead::join(Sequence &primary, Sequence &other, IID<IPid> del
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Lead::cmerge(Sequence &primary_seq, Sequence &other_seq) {
   std::vector<Thread>* threads = primary_seq.threads;
-  llvm::outs() << primary_seq.to_string() << " (+) " << other_seq.to_string() << " = ";
+  //llvm::outs() << primary_seq.to_string() << " (+) " << other_seq.to_string() << " = ";
 
   assert(!primary_seq.empty());
   if (other_seq.empty()) return primary_seq;
@@ -1373,16 +1380,17 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredInfluencers(Event er, 
   assert(visible[o_id.first][o_id.second].mpo.size() == visible[o_id.first][o_id.second].visible_start.size() + 1);
   
   //[nau]: check if init event is visible to er
-  llvm::outs() << "call to check_init_visible\n";
+  //llvm::outs() << "call to check_init_visible\n";
   if(visible[o_id.first][o_id.second].check_init_visible(pid)) {
     // if(pid == 0) llvm::outs()<< "init visible to thr0\n";
     // llvm::outs() << "call to check_init_visible done\n";
-    IID<IPid> initid = visible[o_id.first][o_id.second].mpo[0][0];
-    Event init = get_event(initid);
-    assert(init.value == 0);
-    std::unordered_map<IID<IPid>, int> valueEnv{{initid, init.value}};
-    if(f.check_evaluation(valueEnv) != RESULT::TRUE ) ei.insert(visible[o_id.first][o_id.second].mpo[0][0]);
-    else forbidden_values.insert(init.value);
+    IID<IPid> initid = visible[o_id.first][o_id.second].mpo[0][0].first;
+    int init_value = visible[o_id.first][o_id.second].mpo[0][0].second;
+    
+    assert(init_value == 0);
+    std::unordered_map<IID<IPid>, int> valueEnv{{initid, init_value}};
+    if(f.check_evaluation(valueEnv) != RESULT::TRUE ) ei.insert(initid);
+    else forbidden_values.insert(init_value);
   }
   
   //for writes other than init
@@ -1394,17 +1402,18 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredInfluencers(Event er, 
     }
     for(int i = 1; i < visible[o_id.first][o_id.second].mpo.size(); i++){
       if(visible[o_id.first][o_id.second].mpo[i].size() != 0){
-        IID<IPid> e_id = visible[o_id.first][o_id.second].mpo[i][visible[o_id.first][o_id.second].mpo[i].size() - 1];
-        Event e = get_event(e_id);
+        std::pair<IID<IPid>, int> e = visible[o_id.first][o_id.second].mpo[i][visible[o_id.first][o_id.second].mpo[i].size() - 1];
+        IID<IPid> e_id = e.first;
+        int e_val = e.second;
         //repeated value || already checked forbidden value || unexplored event
-        if(values.find(e.value) != values.end() || forbidden_values.find(e.value) != forbidden_values.end() || find(Enabled.begin(), Enabled.end(), e_id) != Enabled.end() ) continue;
+        if(values.find(e_val) != values.end() || forbidden_values.find(e_val) != forbidden_values.end() || find(Enabled.begin(), Enabled.end(), e_id) != Enabled.end() ) continue;
 
-        std::unordered_map<IID<IPid>, int> valueEnv{{e_id, e.value}};
+        std::unordered_map<IID<IPid>, int> valueEnv{{e_id, e_val}};
 
-        if(f.check_evaluation(valueEnv) == RESULT::TRUE ) forbidden_values.insert(e.value);
+        if(f.check_evaluation(valueEnv) == RESULT::TRUE ) forbidden_values.insert(e_val);
         else{
           ei.insert(e_id);
-          values.insert(e.value);
+          values.insert(e_val);
         }
       }
     }
@@ -1414,20 +1423,21 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredInfluencers(Event er, 
           int j = visible[o_id.first][o_id.second].visible_start[pid - 1][i];
           for( int k = j; k < visible[o_id.first][o_id.second].mpo[i + 1].size() + 1; k++){
               if(k == 0) continue;
-              IID<IPid> e_id = visible[o_id.first][o_id.second].mpo[i + 1][k - 1];
+              std::pair<IID<IPid>, int> e = visible[o_id.first][o_id.second].mpo[i + 1][k - 1];
+              IID<IPid> e_id = e.first;
+              int e_val = e.second;
 
-              Event e = get_event(e_id);
               //repeated value || already checked forbidden value || unexplored event
-              if(values.find(e.value) != values.end() || 
-                forbidden_values.find(e.value) != forbidden_values.end() || 
+              if(values.find(e_val) != values.end() || 
+                forbidden_values.find(e_val) != forbidden_values.end() || 
                 find(Enabled.begin(), Enabled.end(), e_id) != Enabled.end() ) continue;
 
-              std::unordered_map<IID<IPid>, int> valueEnv{{e_id, e.value}};
+              std::unordered_map<IID<IPid>, int> valueEnv{{e_id, e_val}};
 
-              if(f.check_evaluation(valueEnv) == RESULT::TRUE ) forbidden_values.insert(e.value);
+              if(f.check_evaluation(valueEnv) == RESULT::TRUE ) forbidden_values.insert(e_val);
               else{
                 ei.insert(e_id);
-                values.insert(e.value);
+                values.insert(e_val);
               }
           }
       }
