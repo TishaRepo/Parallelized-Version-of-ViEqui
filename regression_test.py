@@ -86,14 +86,15 @@ for test_index in range(1, len(test_results)+1):
                 violation_status_fail = True
 
     if (run_fail):
-        print str(test_index) + ' failed to complete run'
+        print str(test_index) + ' Failed to complete run'
+        failed_tests.append((test_name, 'Failed to complete run'))
 
     if (count_fail and violation_status_fail):
-        failed_tests.append((test_file, 'Traces count mismatch (expected=' + str(test_traces) + ' found=' + str(out_traces) + ') & violation status mismatch (expected=' + test_isviolation + ')'))
+        failed_tests.append((test_name, 'Traces count mismatch (expected=' + str(test_traces) + ' found=' + str(out_traces) + ') & violation status mismatch (expected=' + test_isviolation + ')'))
     elif (count_fail):
-        failed_tests.append((test_file, 'Traces count mismatch (expected=' + str(test_traces) + ' found=' + str(out_traces) + ')'))
+        failed_tests.append((test_name, 'Traces count mismatch (expected=' + str(test_traces) + ' found=' + str(out_traces) + ')'))
     elif (violation_status_fail):
-        failed_tests.append((test_file, 'Violation status mismatch (expected=' + test_isviolation + ')'))
+        failed_tests.append((test_name, 'Violation status mismatch (expected=' + test_isviolation + ')'))
 
     tests_completed = tests_completed + 1
 
