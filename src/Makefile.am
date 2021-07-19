@@ -28,11 +28,15 @@ libnidhugg_a_SOURCES = \
   PrefixHeuristic.h PrefixHeuristic.cpp \
   PSOInterpreter.cpp PSOInterpreter.h \
   PSOTraceBuilder.cpp PSOTraceBuilder.h \
+  RFSCUnfoldingTree.cpp RFSCUnfoldingTree.h \
+  RFSCDecisionTree.cpp RFSCDecisionTree.h \
+  RFSCTraceBuilder.cpp RFSCTraceBuilder.h \
   SaturatedGraph.h SaturatedGraph.cpp \
   SatSolver.h \
   Seqno.h \
   SExpr.h SExpr.cpp \
   SmtlibSatSolver.h SmtlibSatSolver.cpp \
+  SOPFormula.h SOPFormula.cpp \
   SpinAssumePass.cpp SpinAssumePass.h \
   StrModule.cpp StrModule.h \
   SymEv.cpp SymEv.h \
@@ -46,12 +50,10 @@ libnidhugg_a_SOURCES = \
   TSOPSOTraceBuilder.h \
   TSOTraceBuilder.cpp TSOTraceBuilder.h \
   Visible.cpp Visible.h\
-  ViewEqTraceBuilder.cpp ViewEqTraceBuilder.h \
-  RFSCUnfoldingTree.cpp RFSCUnfoldingTree.h \
-  RFSCDecisionTree.cpp RFSCDecisionTree.h \
-  RFSCTraceBuilder.cpp RFSCTraceBuilder.h \
   VClock.cpp VClock.h VClock.tcc \
-  vecset.h vecset.tcc
+  vecset.h vecset.tcc \
+  ViewEqTraceBuilder.cpp ViewEqTraceBuilder.h 
+
 libnidhugg_a_CXXFLAGS = -fno-rtti
 
 EXTRA_PROGRAMS = nidhuggc

@@ -61,19 +61,22 @@ public:
     virtual void debug_print() const override;
 
     int current_value(std::pair<unsigned, unsigned> obj);
-    std::unordered_set<IID<IPid>> unexploredInfluencers(Event er, SOPFormula<IID<IPid>>& f);
-    std::unordered_set<IID<IPid>> exploredInfluencers(Event er, SOPFormula<IID<IPid>> &f);
-    std::unordered_set<IID<IPid>> exploredWitnesses(Event ew, SOPFormula<IID<IPid>> &f);
+    std::unordered_set<IID<IPid>> unexploredInfluencers(Event er, SOPFormula& f);
+    std::unordered_set<IID<IPid>> exploredInfluencers(Event er, SOPFormula &f);
+    std::unordered_set<IID<IPid>> exploredWitnesses(Event ew, SOPFormula &f);
     
-    void update_leads(IID<IPid> event_id, SOPFormula<IID<IPid>>& forbidden) {update_leads(get_event(event_id), forbidden);}
-    void update_leads(Event event, SOPFormula<IID<IPid>>& forbidden);
+    void update_leads(IID<IPid> event_id, SOPFormula& forbidden) {update_leads(get_event(event_id), forbidden);}
+    void update_leads(Event event, SOPFormula& forbidden);
     void update_done(IID<IPid> ev);
-    void update_forbidden(Lead *lead);
+    /* take disjunction with keys of other leads that are on same read event */
+    void disjunct_forbidden_with_other_keys(Lead *lead);
+    /* remove keys of L if they have the same read event as key parameter */
+    void reduce_forbidden(SOPFormula f, std::pair<IID<IPid>, int> key, std::vector<Lead> L);
 
-    void forward_analysis(Event event, SOPFormula<IID<IPid>>& forbidden);
-    void backward_analysis_read(Event event, SOPFormula<IID<IPid>>& forbidden, std::unordered_map<int, std::vector<Lead>>& L);
-    void backward_analysis_write(Event event, SOPFormula<IID<IPid>>& forbidden, std::unordered_map<int, std::vector<Lead>>& L);
-    void backward_analysis(Event event, SOPFormula<IID<IPid>>& forbidden);
+    void forward_analysis(Event event, SOPFormula& forbidden);
+    void backward_analysis_read(Event event, SOPFormula& forbidden, std::unordered_map<int, std::vector<Lead>>& L);
+    void backward_analysis_write(Event event, SOPFormula& forbidden, std::unordered_map<int, std::vector<Lead>>& L);
+    void backward_analysis(Event event, SOPFormula& forbidden);
 
     void consistent_union(int state, Lead& l);
     void consistent_union(int state, std::vector<Lead>& L);
@@ -274,23 +277,23 @@ protected:
     public:
         Sequence constraint; // sequence from previous trace to be maintained
         Sequence start; // new to explore to get key value
-        SOPFormula<IID<IPid>> forbidden; // objXval pairs that must not be explored
+        SOPFormula forbidden; // objXval pairs that must not be explored
         std::pair<IID<IPid>, int> key; // objXval pair for which this trace is created
         Sequence merged_sequence; // cmerge(start, constraint) sequence to explore while a=maintaining constraint
         bool view_reversible;
 
         Lead() { view_reversible = false; }
-        Lead(Sequence c, Sequence s, SOPFormula<IID<IPid>> f, std::pair<IID<IPid>, int> k) {
+        Lead(Sequence c, Sequence s, SOPFormula f, std::pair<IID<IPid>, int> k) {
             constraint = c; start = s; forbidden = f; key = k;
             view_reversible = false;
             merged_sequence = cmerge(s, c);
         }
-        Lead(Sequence s, SOPFormula<IID<IPid>> f, std::pair<IID<IPid>, int> k) {
+        Lead(Sequence s, SOPFormula f, std::pair<IID<IPid>, int> k) {
             start = s; forbidden = f; key = k;
             merged_sequence = s;
             view_reversible = false;
         }
-        Lead(Sequence s, SOPFormula<IID<IPid>> f) {
+        Lead(Sequence s, SOPFormula f) {
             start = s; forbidden = f; key = std::make_pair(IID<IPid>(),-1); // dummy key
             merged_sequence = s;
             view_reversible = false;
@@ -298,6 +301,12 @@ protected:
         Lead(Sequence s, std::pair<IID<IPid>, int> k) { 
             start = s; merged_sequence = s; key = k;
             view_reversible = false;
+        }
+
+        bool same_key_event(IID<IPid> e) {if (key.first == e) return true; return false;}
+        bool same_key(std::pair<IID<IPid>, int> k) {
+            if (key.first == k.first && key.second == k.second) return true;
+            return false; 
         }
 
         bool operator==(Lead l);
@@ -323,12 +332,12 @@ protected:
         int sequence_prefix;
         std::vector<Lead> leads;
         std::vector<Sequence> done;
-        SOPFormula<IID<IPid>> forbidden;
+        SOPFormula forbidden;
         Lead alpha;
 
         State() {}
         State(int prefix_idx) : sequence_prefix(prefix_idx) {};
-        // State(int i, Lead a, SOPFormula<IID<IPid>> f) {sequence_prefix = i; alpha = a; forbidden = f; alpha_sequence = alpha.start + alpha.constraint;};
+        // State(int i, Lead a, SOPFormula f) {sequence_prefix = i; alpha = a; forbidden = f; alpha_sequence = alpha.start + alpha.constraint;};
 
         void add_done(Sequence d);
         bool is_done(Sequence seq);
@@ -407,7 +416,10 @@ protected:
     Sequence to_explore;
 
     /* [snj]: forbidden values for the current trace */
-    SOPFormula<IID<IPid>> forbidden;
+    SOPFormula forbidden;
+
+    /* [snj]: key (read,value) pair for the current trace */
+    std::pair<IID<IPid>, int> key;
 
     /* [snj]: sequences already explored after the current trace prefix */
     std::vector<Sequence> done;

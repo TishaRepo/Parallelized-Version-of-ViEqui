@@ -32,9 +32,9 @@ int main(int argc, char *argv[]){
   y = 0;
   z = 0;
 
-  pthread_create(&thr0, NULL, t0, NULL);
+  pthread_create(&thr0, NULL, t2, NULL);
   pthread_create(&thr1, NULL, t1, NULL);
-  pthread_create(&thr2, NULL, t2, NULL);
+  pthread_create(&thr2, NULL, t0, NULL);
 
   pthread_join(thr0, NULL);
   pthread_join(thr1, NULL);
