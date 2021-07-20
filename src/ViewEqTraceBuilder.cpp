@@ -1667,7 +1667,9 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
     bool added = false;
     for( auto j = states[state].leads.begin(); j != states[state].leads.end(); j++)
     {
-       if ((i -> constraint) == (j -> constraint))
+      if (i->key == j->key) {added = true; break;} // already exists another lead for same key, skip this one
+
+      if ((i -> constraint) == (j -> constraint))
       {
         if (i -> start == j -> start)
         {
