@@ -557,6 +557,7 @@ int ViewEqTraceBuilder::find_replay_state_prefix() {
     // llvm::outs() << "state[" << replay_state_prefix << "] has more leads? ";
 
     it->add_done(it->alpha_sequence());
+    it->done_keys[it->alpha.key.first].push_back(it->alpha.key.second);
     // llvm::outs() << "added" << it->alpha_sequence().to_string() << " to done of states[" << replay_state_prefix << "]\n";
     if (it->has_unexplored_leads()) { // found replay state
       // llvm::outs() << "LEADS:\n";
@@ -1537,6 +1538,9 @@ bool ViewEqTraceBuilder::State::is_done(Sequence seq) {
 
 bool ViewEqTraceBuilder::State::has_unexplored_leads() {
   for (auto itl = leads.begin(); itl != leads.end(); itl++) {
+    if (std::find(done_keys[itl->key.first].begin(), done_keys[itl->key.first].end(), itl->key.second) != done_keys[itl->key.first].end())
+      continue; // key is laready done, look for another lead
+
     bool is_unexplored = true;
     
     for (auto itd = done.begin(); itd != done.end(); itd++) {
@@ -1556,6 +1560,9 @@ std::vector<ViewEqTraceBuilder::Lead> ViewEqTraceBuilder::State::unexplored_lead
   std::vector<Lead> ul;
 
   for (auto itl = leads.begin(); itl != leads.end(); itl++) {
+    if (std::find(done_keys[itl->key.first].begin(), done_keys[itl->key.first].end(), itl->key.second) != done_keys[itl->key.first].end())
+      continue; // key is laready done, look for another lead
+
     bool is_unexplored = true;
     
     for (auto itd = done.begin(); itd != done.end(); itd++) {
@@ -1575,6 +1582,9 @@ ViewEqTraceBuilder::Lead ViewEqTraceBuilder::State::next_unexplored_lead() {
   assert(has_unexplored_leads());
 
   for (auto itl = leads.begin(); itl != leads.end(); itl++) {
+    if (std::find(done_keys[itl->key.first].begin(), done_keys[itl->key.first].end(), itl->key.second) != done_keys[itl->key.first].end())
+      continue; // key is laready done, look for another lead
+
     bool is_unexplored = true;
     
     for (auto itd = done.begin(); itd != done.end(); itd++) {
@@ -1667,8 +1677,6 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
     bool added = false;
     for( auto j = states[state].leads.begin(); j != states[state].leads.end(); j++)
     {
-      if (i->key == j->key) {added = true; break;} // already exists another lead for same key, skip this one
-
       if ((i -> constraint) == (j -> constraint))
       {
         if (i -> start == j -> start)

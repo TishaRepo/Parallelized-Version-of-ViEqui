@@ -329,11 +329,12 @@ protected:
     {
     public:
         // index of sequence explored corresponding to current state
-        int sequence_prefix;
-        std::vector<Lead> leads;
-        std::vector<Sequence> done;
-        SOPFormula forbidden;
-        Lead alpha;
+        int sequence_prefix;                                       // index in execution sequence corresponding to this state
+        std::vector<Lead> leads;                                   // leads(configurations) to be explored from this state
+        std::vector<Sequence> done;                                // sequences prefixes that are done
+        std::unordered_map<IID<IPid>, std::vector<int>> done_keys; // keys that are done in some lead, ie (read, value) pair has been seen 
+        SOPFormula forbidden;                                      // (read,value pairs that must not be seen after this state)
+        Lead alpha;                                                // current lead being explored
 
         State() {}
         State(int prefix_idx) : sequence_prefix(prefix_idx) {};
