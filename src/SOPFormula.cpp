@@ -40,7 +40,7 @@ RESULT ProductTerm::evaluate(std::pair<IID<IPid>, int> term) {
 
 
 bool ProductTerm::has(std::pair<IID<IPid>, int> term) {
-    for (auto it = terms.begin(); it != terms.end();) {
+    for (auto it = terms.begin(); it != terms.end(); it++) {
         if ((*it) == term) return true;
     }
 
@@ -169,6 +169,8 @@ bool SOPFormula::has(std::pair<IID<IPid>, int> term) {
 }
 
 bool SOPFormula::has_product_term(ProductTerm product_term) {
+    if (terms.empty()) return false;
+
     for (auto it = terms.begin(); it != terms.end(); it++) {
         if ((*it) == product_term) 
             return true;
@@ -211,18 +213,14 @@ void SOPFormula::operator||(SOPFormula &formula) {
 
 void SOPFormula::operator||(ProductTerm &product_term) {
     if (has_product_term(product_term)) return;
-    llvm::outs() << "doesn't have product term, adding now\n";
+
     terms.push_back(product_term);
     result = RESULT::DEPENDENT;
 }
 
 void SOPFormula::operator||(std::pair<IID<IPid>, int> term) {
     ProductTerm product_term(term);
-    llvm::outs() << "made product term\n";
-
     (*this) || product_term;
-    llvm::outs() << "updated (*this) after ||:" << this->to_string() << "\n";
-
 }
 
 void SOPFormula::operator&&(SOPFormula &formula) {
