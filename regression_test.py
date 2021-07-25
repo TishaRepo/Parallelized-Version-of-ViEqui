@@ -38,7 +38,8 @@ test_results = [(2,'N'), # Test1
                 (4,'N'), # Test20
                 (7,'N'), # Test21
                 (3,'N'), # Test22
-                (2,'N')] # Test23
+                (2,'N'), # Test23
+                (4,'N')] # Test24
 
 failed_tests = []
 
