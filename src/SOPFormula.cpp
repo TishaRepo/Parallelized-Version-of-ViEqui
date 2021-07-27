@@ -49,13 +49,20 @@ bool ProductTerm::has(std::pair<IID<IPid>, int> term) {
 
 RESULT ProductTerm::reduce(std::pair<IID<IPid>, int> term) {
     for (auto it = terms.begin(); it != terms.end();) {
-        if ((*it) == term) {
+        if ((*it) == term) { // found term grounded to true
             if (unit()) {
                 result = RESULT::TRUE;
             }
             it = terms.erase(it);
+            break;
         }
-        else it++;
+        
+        if (it->first == term.first) { // found term's event with another value, grounded to false
+            result = RESULT::FALSE;
+            break;
+        }
+
+        it++;
     }
 
     return result;
@@ -183,14 +190,26 @@ void SOPFormula::reduce(std::pair<IID<IPid>, int> term) {
     for (auto it = terms.begin(); it != terms.end();) {
         RESULT product_term_result = it->reduce(term);
         if (product_term_result == RESULT::TRUE) {
-            it = terms.erase(it);
+            result = RESULT::TRUE;
+            break;
         }
-        else it++;
+
+        if (product_term_result == RESULT::FALSE) {
+            it = terms.erase(it);
+            continue;
+        }
+
+        it++;
     }
 
-    if (terms.empty()) { // all terms TRUE
+    if (result == RESULT::TRUE) {
         terms.clear();
-        result = RESULT::TRUE;
+        return;
+    }
+
+    if (terms.empty()) { // all terms FALSE
+        terms.clear();
+        result = RESULT::FALSE;
     }
 }
 

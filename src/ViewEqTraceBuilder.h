@@ -81,6 +81,9 @@ public:
     void consistent_union(int state, Lead& l);
     void consistent_union(int state, std::vector<Lead>& L);
 
+    bool push_down_lead(std::unordered_map<int, std::vector<Lead>>& forward_state_leads, int state, Lead lead);
+    void push_down_suffix_leads(std::unordered_map<int, std::vector<Lead>>& forward_state_leads, int state, std::vector<Lead>& L);    
+
     bool exists_non_memory_access(int * proc);
     void make_new_state();
     void compute_new_leads();
@@ -218,29 +221,49 @@ protected:
         int  indexof(IID<IPid> event) {return (std::find(events.begin(), events.end(), event) - events.begin());}
         sequence_iterator find(IID<IPid> event) {return std::find(events.begin(), events.end(), event);}
 
+        Sequence subsequence(sequence_iterator begin, sequence_iterator end);
         void concatenate(Sequence seq) { events.insert(events.end(), seq.events.begin(), seq.events.end()); }
         void concatenate(Sequence seq, sequence_iterator begin) {events.insert(events.end(), begin, seq.events.end());}
         bool hasRWpairs(Sequence &seq);
-        // bool conflits_with(Sequence &seq);
-
+        
         IID<IPid>& operator[](std::size_t i) {return events[i];}
         const IID<IPid>& operator[](std::size_t i) const {return events[i];}
         bool operator==(Sequence seq) {return (events == seq.events);}
         bool operator!=(Sequence seq) {return (events != seq.events);}
         std::ostream &operator<<(std::ostream &os){return os << to_string();}
 
-        bool isPrefix(Sequence &seq); // if this is prefix of seq
-        Sequence prefix(IID<IPid> ev); // prefix of this upto (but not including) ev
-        Sequence suffix(IID<IPid> ev); // suffix of this after (not including) ev
-        Sequence suffix(Sequence &seq); // suffix of this after prefix seq
-        Sequence poPrefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end); // program ordered prefix upto end of ev in this
-        Sequence poPrefix_master(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end); // program ordered prefix upto end of ev in this
-        Sequence commonPrefix(Sequence &seq);  // prefix of this and seq that is common
+        /* if this is prefix of seq */
+        bool isprefix(Sequence &seq);
+        /* prefix of this upto (but not including) ev */
+        Sequence prefix(IID<IPid> ev);
+        /* suffix of this after (not including) ev */ 
+        Sequence suffix(IID<IPid> ev);
+        /* suffix of this after prefix seq */
+        Sequence suffix(Sequence &seq);
+        /* program ordered prefix upto end of ev in this */
+        Sequence poPrefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
+        /* program ordered prefix upto end of ev in this */
+        Sequence poPrefix_master(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
+        /* prefix of this and seq that is common */
+        Sequence commonPrefix(Sequence &seq);
+
+        /* this is constianed_in s upto with index of s with view adjustment */
+        std::pair<sequence_iterator, sequence_iterator> VA_equivalent_upto(Sequence s);
+        /* this is prefix of s with view-adjustment */
+        bool VA_isprefix(Sequence s);
+        /* this is equivalent to s with view-adjustment */
+        bool VA_equivalent(Sequence s);
+        /* common prefix of this and s with view-adjustment */
+        Sequence VA_common_prefix(Sequence s);
+        /* suffix of a view-adjusted prefix */
+        Sequence VA_suffix(Sequence prefix);
         
         bool view_adjust(IID<IPid> e1, IID<IPid> e2);
-        bool conflicts_with(Sequence &other_seq);  // has events in this and other that occur in reverse order
+        /* has events in this and other that occur in reverse order */
+        bool conflicts_with(Sequence &other_seq);
         std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> conflicts_with(Sequence &other_seq, bool returnRWpair);
-        Sequence backseq(IID<IPid> e1, IID<IPid> e2); // poprefix(e1).(write out of e1, e2).(read out of e1, e2)
+        /* poprefix(e1).(write out of e1, e2).(read out of e1, e2) */
+        Sequence backseq(IID<IPid> e1, IID<IPid> e2);
 
         std::string to_string();
 

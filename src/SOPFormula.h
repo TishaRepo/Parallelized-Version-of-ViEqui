@@ -74,7 +74,7 @@ public:
     bool has(std::pair<IID<IPid>, int> term);
     // check if formula has a productTerm = product_term
     bool has_product_term(ProductTerm product_term);
-    // remove term from productTerms that contain it
+    // given term=(e,v), ground (e,v) to true and (e,v') to false
     void reduce(std::pair<IID<IPid>, int> term);
     // remove ProductTerms that contain term
     void remove_terms_of_term(std::pair<IID<IPid>, int> term);
