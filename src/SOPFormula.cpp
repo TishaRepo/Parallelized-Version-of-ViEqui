@@ -110,6 +110,12 @@ bool ProductTerm::operator==(ProductTerm product_term) {
     return true;
 }
 
+void ProductTerm::operator&&(ProductTerm product_term) {
+    for (auto it = product_term.terms.begin(); it != product_term.terms.end(); it++) {
+        add_term(*it);
+    }
+}
+
 SOPFormula::SOPFormula(std::pair<IID<IPid>, int> term) {
     ProductTerm product_term(term);
     terms.push_back(product_term);
@@ -243,15 +249,25 @@ void SOPFormula::operator||(std::pair<IID<IPid>, int> term) {
 }
 
 void SOPFormula::operator&&(SOPFormula &formula) {
-    for (auto it = formula.begin(); it != formula.end(); it++) {
-        (*this) && (*it);
+    auto it = formula.begin();
+    SOPFormula conjunction = (*this);
+    conjunction && (*it);
+    it++;
+    
+    for (; it != formula.end(); it++) {
+        SOPFormula sop_term = (*this);
+        sop_term && (*it);
+        conjunction || sop_term;
     }
+
+    terms.clear();
+    terms = conjunction.terms;
+    result = conjunction.result;
 }
 
 void SOPFormula::operator&&(ProductTerm &product_term) {
-    pair<IID<IPid>, int> term;
-    for (auto it = product_term.begin();  it != product_term.end(); it++) {
-        (*this) && (*it);
+    for (auto it = terms.begin();  it != terms.end(); it++) {
+        (*it) && product_term;
     }
 }
 

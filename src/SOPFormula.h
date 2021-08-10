@@ -50,6 +50,7 @@ public:
     string result_to_string(RESULT result);
 
     bool operator==(ProductTerm term);
+    void operator&&(ProductTerm term);
 };
 
 class SOPFormula {
