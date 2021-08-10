@@ -466,6 +466,7 @@ DPORDriver::Result DPORDriver::run(){
 
   uint64_t computation_count = 0;
   long double estimate = 1;
+  int count = 1;
   do{
     if(conf.print_progress && conf.dpor_algorithm != Configuration::VIEW_EQ){
       print_progress(computation_count, estimate, res);
@@ -486,6 +487,7 @@ DPORDriver::Result DPORDriver::run(){
         1. form hb relations in the events of the sequence
         2. look for race based on the computed hb
     */
+    std::cout << "Running Trace " << (count++) << "\n"; 
     Trace *t = run_once(*TB, mod.get(), assume_blocked);
     
     if (handle_trace(TB, t, &computation_count, res, assume_blocked)) break;
