@@ -208,6 +208,7 @@ protected:
 
         void push_back(IID<IPid> event) {events.push_back(event);}
         void push_front(IID<IPid> event) {events.insert(events.begin(), event);}
+        void push_at(sequence_iterator loc, IID<IPid> event) {events.insert(loc, event);}
         void pop_back() {events.pop_back();} 
         void pop_front() {events.erase(events.begin());};
         void erase(IID<IPid> event) {events.erase(events.begin() + indexof(event));}

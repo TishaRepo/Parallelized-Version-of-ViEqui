@@ -1284,22 +1284,28 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1,
   assert(this->has(e1) && this->has(e2));
   //llvm::outs() << "in backseq e1=" << e1.to_string() << ", e2=" << e2.to_string() << "\n";
   ViewEqTraceBuilder::Sequence po_pre = poPrefix(e1, e2, find(e1)+1, find(e2));
+  po_pre.push_back(e2);
 
   if (e1.get_pid() == 0 || e2.get_pid() == 0) { // event from thread zero ie init write event
-    po_pre.push_back(e2);
-    //llvm::outs() << "retuning po_pre=" << po_pre.to_string() << "\n";
-    //llvm::outs() << "returned popre\n";
     return po_pre; // init event is not added to backseq
   }
   
-  Event event1 = threads->at(e1.get_pid())[e1.get_index()];
-  Event event2 = threads->at(e2.get_pid())[e2.get_index()];
+  Event event = threads->at(e1.get_pid())[e1.get_index()];
+  if(event.is_write()) {
+    bool conflict = false;
 
-  // [snj]: po prefix followed by write of {e1,e2} followed by read of {e1,e2}
-  if(event1.is_write()) po_pre.push_back(e1);
-  if(event2.is_write()) po_pre.push_back(e2);
-  if(event1.is_read()) po_pre.push_back(e1);
-  if(event2.is_read()) po_pre.push_back(e2);
+    sequence_iterator loc = po_pre.begin();
+    for (auto it = po_pre.begin(); it != po_pre.end(); it++) {
+      Event eit = threads->at(it->get_pid())[it->get_index()];
+      llvm::outs() << "change for?" << (*it) << "\n";
+      if (event.same_object(eit) && eit.is_write() && eit.value != event.value) { // found write of diff value
+        llvm::outs() << "changing location\n";
+        loc = it+1;
+      }
+    }
+    po_pre.push_at(loc, e1);
+  }
+  else po_pre.push_back(e1);
 
   return po_pre;
 }
@@ -1828,21 +1834,21 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
   std::vector<Lead> add; // list of indices of L to be added to state leads
 
   // compare each new lead in L against each lead of state
-  for (auto l = L.begin(); l != L.end(); ) {
-    bool exists_same_lead = false;
-    for (auto sl = states[state].leads.begin(); sl != states[state].leads.end(); sl++) {
-      if ((*l) == (*sl)) {
-        exists_same_lead = true;
-        break;
-      }
-    }
-    if (exists_same_lead) {
-      l = L.erase(l);
-    }
-    else {
-      l++;
-    }
-  }
+  // for (auto l = L.begin(); l != L.end(); ) {
+  //   bool exists_same_lead = false;
+  //   for (auto sl = states[state].leads.begin(); sl != states[state].leads.end(); sl++) {
+  //     if ((*l) == (*sl)) {
+  //       exists_same_lead = true;
+  //       break;
+  //     }
+  //   }
+  //   if (exists_same_lead) {
+  //     l = L.erase(l);
+  //   }
+  //   else {
+  //     l++;
+  //   }
+  // }
 
   for (auto l = L.begin(); l != L.end(); ) {
     llvm::outs() << "checking for " << l->to_string() << " at state " << state << "\n";
@@ -1854,6 +1860,11 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
 
     bool combined_with_existing = false;
     for (auto sl = states[state].leads.begin(); sl != states[state].leads.end(); sl++) {
+      if ((*l) == (*sl)) {
+        combined_with_existing = true;
+        break;
+      }
+
       if ((l->key == sl->key && l->merged_sequence.VA_weakly_equivalent(sl->merged_sequence)) ||
         l->merged_sequence.VA_equivalent(sl->merged_sequence)) { // new lead has the same view as an existing lead
         llvm::outs() << "VAequivalent " << sl->merged_sequence.to_string() << " and " << l->merged_sequence.to_string() << "\n";
@@ -1884,6 +1895,11 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
     }
 
     if (forward_lead(forward_state_leads, state, (*l))) {
+      for (auto sl = states[state].leads.begin(); sl != states[state].leads.end(); sl++) {
+        if (sl->key.first != l->key.first && l->merged_sequence.has(sl->key.first)) {
+          sl->forbidden && l->forbidden;
+        }
+      }
       l = L.erase(l);
       continue;
     }
