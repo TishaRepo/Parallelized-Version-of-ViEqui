@@ -68,11 +68,7 @@ public:
     void update_leads(IID<IPid> event_id, SOPFormula& forbidden) {update_leads(get_event(event_id), forbidden);}
     void update_leads(Event event, SOPFormula& forbidden);
     void update_done(IID<IPid> ev);
-    /* take disjunction with keys of other leads that are on same read event */
-    void disjunct_forbidden_with_other_keys(Lead *lead);
-    /* remove keys of L if they have the same read event as key parameter */
-    void reduce_forbidden(SOPFormula f, std::pair<IID<IPid>, int> key, std::vector<Lead> L);
-
+    
     void forward_analysis(Event event, SOPFormula& forbidden);
     void backward_analysis_read(Event event, SOPFormula& forbidden, std::unordered_map<int, std::vector<Lead>>& L);
     void backward_analysis_write(Event event, SOPFormula& forbidden, std::unordered_map<int, std::vector<Lead>>& L);
@@ -81,8 +77,8 @@ public:
     void consistent_union(int state, Lead& l);
     void consistent_union(int state, std::vector<Lead>& L);
 
-    bool push_down_lead(std::unordered_map<int, std::vector<Lead>>& forward_state_leads, int state, Lead lead);
-    void push_down_suffix_leads(std::unordered_map<int, std::vector<Lead>>& forward_state_leads, int state, std::vector<Lead>& L);    
+    bool forward_lead(std::unordered_map<int, std::vector<Lead>>& forward_state_leads, int state, Lead lead);
+    void forward_suffix_leads(std::unordered_map<int, std::vector<Lead>>& forward_state_leads, int state, std::vector<Lead>& L);    
 
     bool exists_non_memory_access(int * proc);
     void make_new_state();
@@ -247,17 +243,21 @@ protected:
         /* prefix of this and seq that is common */
         Sequence commonPrefix(Sequence &seq);
 
-        /* this is constianed_in s upto with index of s with view adjustment */
+        /* this is constianed_in s upto which index of s with view adjustment */
         std::pair<sequence_iterator, sequence_iterator> VA_equivalent_upto(Sequence s);
         /* this is prefix of s with view-adjustment */
         bool VA_isprefix(Sequence s);
-        /* this is equivalent to s with view-adjustment */
+        /* this may not have same reads but common reads have same values */
+        bool VA_weakly_equivalent(Sequence s);
+        /* same reads and same values of reads */
         bool VA_equivalent(Sequence s);
         /* common prefix of this and s with view-adjustment */
         Sequence VA_common_prefix(Sequence s);
         /* suffix of a view-adjusted prefix */
         Sequence VA_suffix(Sequence prefix);
         
+        /* return read -> value map of reads in sequence */
+        std::unordered_map<IID<IPid>, int> read_value_map();
         bool view_adjust(IID<IPid> e1, IID<IPid> e2);
         /* has events in this and other that occur in reverse order */
         bool conflicts_with(Sequence &other_seq);
@@ -298,40 +298,22 @@ protected:
         void project(std::tuple<Sequence, Sequence, Sequence> &triple, Sequence &seq1, Sequence &seq2, Sequence &seq3);
 
     public:
-        Sequence constraint; // sequence from previous trace to be maintained
-        Sequence start; // new to explore to get key value
-        SOPFormula forbidden; // objXval pairs that must not be explored
-        std::pair<IID<IPid>, int> key; // objXval pair for which this trace is created
-        Sequence merged_sequence; // cmerge(start, constraint) sequence to explore while a=maintaining constraint
-        bool view_reversible;
+        Sequence constraint;              // sequence from previous trace to be maintained
+        Sequence start;                   // new to explore to get key value
+        SOPFormula forbidden;             // objXval pairs that must not be explored
+        Sequence merged_sequence;         // cmerge(start, constraint) sequence to explore while a=maintaining constraint
+        std::pair<IID<IPid>, int> key;    // (read venet, value) to be achieved by this lead
 
-        Lead() { view_reversible = false; }
+        Lead() {}
         Lead(Sequence c, Sequence s, SOPFormula f, std::pair<IID<IPid>, int> k) {
             constraint = c; start = s; forbidden = f; key = k;
-            view_reversible = false;
             merged_sequence = cmerge(s, c);
         }
         Lead(Sequence s, SOPFormula f, std::pair<IID<IPid>, int> k) {
             start = s; forbidden = f; key = k;
             merged_sequence = s;
-            view_reversible = false;
         }
-        Lead(Sequence s, SOPFormula f) {
-            start = s; forbidden = f; key = std::make_pair(IID<IPid>(),-1); // dummy key
-            merged_sequence = s;
-            view_reversible = false;
-        }
-        Lead(Sequence s, std::pair<IID<IPid>, int> k) { 
-            start = s; merged_sequence = s; key = k;
-            view_reversible = false;
-        }
-
-        bool same_key_event(IID<IPid> e) {if (key.first == e) return true; return false;}
-        bool same_key(std::pair<IID<IPid>, int> k) {
-            if (key.first == k.first && key.second == k.second) return true;
-            return false; 
-        }
-
+        
         bool operator==(Lead l);
         std::ostream &operator<<(std::ostream &os){return os << to_string();}
         
@@ -344,6 +326,7 @@ protected:
     /* [snj]: dummy event */
     Event no_load_store;
     IID<IPid> dummy_id;
+    std::pair<IID<IPid>, int> dummy_key;
 
     /* [rmnt]: The CPids of threads in the current execution. */
     CPidSystem CPS;
@@ -355,9 +338,11 @@ protected:
         int sequence_prefix;                                       // index in execution sequence corresponding to this state
         std::vector<Lead> leads;                                   // leads(configurations) to be explored from this state
         std::vector<Sequence> done;                                // sequences prefixes that are done
-        std::unordered_map<IID<IPid>, std::vector<int>> done_keys; // keys that are done in some lead, ie (read, value) pair has been seen 
         SOPFormula forbidden;                                      // (read,value pairs that must not be seen after this state)
         Lead alpha;                                                // current lead being explored
+        
+        int lead_head_execution_prefix = -1;                       // idx in execution sequence where alpha lead starts (-1 if not a part of a lead)
+        bool executing_alpha_lead = false;                         // state is a part of alpha
 
         State() {}
         State(int prefix_idx) : sequence_prefix(prefix_idx) {};
@@ -410,6 +395,9 @@ protected:
 
     /* [snj]: current state (for read and write - no state for other events) */
     int current_state;
+
+    /* [snj]: execution sequence index where current alpha starts */
+    int alpha_head;
 
     /* [snj]: set of enabled events ie next events of each thread */
     // list of (thread id, next event) pairs
