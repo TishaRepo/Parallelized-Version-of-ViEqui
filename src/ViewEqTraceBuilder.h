@@ -68,6 +68,7 @@ public:
     void update_leads(IID<IPid> event_id, SOPFormula& forbidden) {update_leads(get_event(event_id), forbidden);}
     void update_leads(Event event, SOPFormula& forbidden);
     void update_done(IID<IPid> ev);
+    void forbid_other_values(SOPFormula& forbidden, std::pair<IID<IPid>, int> key);
     
     void forward_analysis(Event event, SOPFormula& forbidden);
     void backward_analysis_read(Event event, SOPFormula& forbidden, std::unordered_map<int, std::vector<Lead>>& L);

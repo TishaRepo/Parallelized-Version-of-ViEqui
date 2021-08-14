@@ -249,7 +249,8 @@ void ViewEqTraceBuilder::execute_next_lead() {
  
   // update forbidden with lead forbidden and read event executed
   forbidden = next_lead.forbidden;
-  if(next_Event.is_read()){
+  forbid_other_values(forbidden, next_lead.key);
+  if(next_Event.is_read()){ // update formula for value read
       llvm::outs() << "forbidden:" << forbidden.to_string();
       forbidden.reduce(std::make_pair(next_Event.iid, mem[next_Event.object.first][next_Event.object.second]));
       llvm::outs() << " evaluated with (" << next_Event.to_string() << "," << 
@@ -516,6 +517,14 @@ void ViewEqTraceBuilder::update_done(IID<IPid> ev) {
   for (auto it = remove_indices.end(); it != remove_indices.begin();) {
     it--;
     done.erase(done.begin() + (*it));
+  }
+}
+
+void ViewEqTraceBuilder::forbid_other_values(SOPFormula& forbidden, std::pair<IID<IPid>, int> key) {
+  for (auto it = states[current_state].leads.begin(); it != states[current_state].leads.end(); it++) {
+    if (it->key.first == key.first && it->key.second != key.second) {
+      forbidden || it->key;
+    }
   }
 }
 
@@ -1865,7 +1874,7 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
         break;
       }
 
-      if ((l->key == sl->key && l->merged_sequence.VA_weakly_equivalent(sl->merged_sequence)) ||
+      if ((l->key == sl->key && l->forbidden == sl->forbidden && l->merged_sequence.VA_weakly_equivalent(sl->merged_sequence)) ||
         l->merged_sequence.VA_equivalent(sl->merged_sequence)) { // new lead has the same view as an existing lead
         llvm::outs() << "VAequivalent " << sl->merged_sequence.to_string() << " and " << l->merged_sequence.to_string() << "\n";
         rem.insert(sl - states[state].leads.begin());
@@ -1907,51 +1916,6 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
     l++;
   }
 
-  for (auto l = L.begin(); l != L.end(); l++) {
-    bool combined_with_existing = false;
-    llvm::outs() << "checking for lead" << l->to_string() << "\n";
-
-    std::vector<Lead> unexpl = states[state].unexplored_leads();
-    llvm::outs() << "got unexplored leads\n";
-    for (auto sl = unexpl.begin(); sl != unexpl.end(); sl++) {
-      if (sl->merged_sequence == states[state].alpha_sequence()) continue; // already explored don't merge with this
-
-      Sequence common_prefix = l->merged_sequence.VA_common_prefix(sl->merged_sequence);
-
-      // if (l->key == sl->key && l->constraint.conflicts_with(sl->constraint)) { // new lead conflicts with an existing lead (only possible with constraints)
-      //   llvm::outs() << "VAconflict " << sl->merged_sequence.to_string() << " and " << l->merged_sequence.to_string() << "\n";
-      //   auto state_lead = std::find(states[state].leads.begin(), states[state].leads.end(), (*sl));
-      //   rem.insert(state_lead - states[state].leads.begin());
-      //   SOPFormula f = l->forbidden;
-      //   f || sl->forbidden;
-      //   add.push_back(Lead(empty_sequence, common_prefix, f, l->key));
-
-      //   combined_with_existing = true;
-      //   break;
-      // }
-
-      // if (!common_prefix.empty()) { // new lead has a common prefix with an existing lead
-      //   llvm::outs() << "VAcommon_prefix " << sl->merged_sequence.to_string() << " and " << l->merged_sequence.to_string() << " = " << common_prefix.to_string() << "\n";
-      //   auto state_lead = std::find(states[state].leads.begin(), states[state].leads.end(), (*sl));
-      //   llvm::outs() << "inserting in rem: " << (state_lead - states[state].leads.begin()) << "\n";
-      //   rem.insert(state_lead - states[state].leads.begin());
-      //   llvm::outs() << "new forbidden = " << l->forbidden.to_string() << " && " << sl->forbidden.to_string() << " = ";
-      //   SOPFormula f = l->forbidden;
-      //   f && sl->forbidden;
-      //   llvm::outs() << f.to_string() << "\n";
-      //   add.push_back(Lead(empty_sequence, common_prefix, f, sl->key));
-
-      //   combined_with_existing = true;
-      //   break;
-      // }
-    }
-
-    if (!combined_with_existing) {
-      llvm::outs() << "no common prefix or conflict\n";
-      add.push_back(*l);
-    }
-  }
-
   llvm::outs() << "remaining state " << state << " leads:\n";
   for (auto it = states[state].leads.begin(); it != states[state].leads.end(); it++) {
     llvm::outs() << it->to_string() << "\n";
@@ -1967,168 +1931,12 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
     states[state].leads.push_back(*it);
   }
 
+  for (auto it = L.begin(); it != L.end(); it++) {
+    llvm::outs() << "adding lead: " << it->to_string() << "\n";
+    states[state].leads.push_back(*it);
+  }
+
   for (auto itfl = forward_state_leads.begin(); itfl != forward_state_leads.end(); itfl++) {
     consistent_union(itfl->first, itfl->second);
   }
 }
-
-// void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
-//   assert(state >= 0 && state < states.size());
-//   // ////
-//   // llvm::outs() << "Calling consistent join for state" << state << " with existingleads\n" << states[state].print_leads();
-//   // llvm::outs() << "new leads:\n";
-//   // for (auto it = L.begin(); it != L.end(); it++) {
-//   //   llvm::outs() << it->to_string() << "\n";
-//   // }
-//   // ////
-
-//   std::unordered_map<int, std::vector<Lead>> forward_state_leads;
-//   for (auto i = L.begin(); i != L.end();) { 
-//     assert(!(i->merged_sequence).empty());
-
-//     if (i->merged_sequence.empty())
-//         i = L.erase(i);
-//     else if(!states[state].alpha_sequence().empty() && states[state].alpha_sequence().isprefix(i->merged_sequence)) {
-//       if (i->view_reversible && states[state].is_done(i->start))
-//         i = L.erase(i);
-//       else {
-//         // llvm::outs() << "ald " << states[state].alpha_sequence().to_string() << " is prefix of " << i->merged_sequence.to_string() << "\n";
-
-//         int fwd_state = prefix_state[execution_sequence.indexof(states[state].alpha_sequence().last())] + 1;
-//         // llvm::outs() << "fwd state = " << fwd_state << " for ex_seq index=" << execution_sequence.indexof(states[state].alpha_sequence().last()) << "\n";
-//         assert(fwd_state >= 0 && fwd_state < states.size());
-//         SOPFormula f = (i->forbidden);
-//         f || states[fwd_state].forbidden;
-//         Sequence state_alpha = states[state].alpha_sequence();
-//         Lead fwd_lead(states[fwd_state].alpha_sequence(), (i->merged_sequence).suffix(state_alpha), f, i->key);
-//         // llvm::outs() << "adding lead " << fwd_lead.to_string() << " at state " << fwd_state;
-//         forward_state_leads[fwd_state].push_back(std::move(fwd_lead));
-//         // llvm::outs() << "done\n";
-//         states[state].add_done(i->merged_sequence);
-//         i = L.erase(i);
-//       }
-//     }
-//     else {
-//       i++;
-//     }
-//   }
-//     //llvm::outs()<<"Traversed new leads\n";
-//   for (auto itfl = forward_state_leads.begin(); itfl != forward_state_leads.end(); itfl++) {
-//       consistent_union(itfl->first, itfl->second);
-//   }
-
-//   if(states[state].leads.empty()) {
-//     states[state].leads = L;
-//     return;
-//   }
-
-//   // llvm::outs() << "entring add remove loop\n";
-
-//   std::set<int, std::greater<int>> removeLeads; //indices to be deleted in descending order
-//   std::vector<Lead> addLeads; //leads to be added
-
-//   for( auto i = L.begin(); i != L.end(); i++)
-//   {
-//     bool added = false;
-//     for( auto j = states[state].leads.begin(); j != states[state].leads.end(); j++)
-//     {
-//       if ((i -> constraint) == (j -> constraint))
-//       {
-//         if (i -> start == j -> start)
-//         {
-//           // llvm::outs() << "found same c same s\n";
-//           assert(i->key == j->key);
-//           removeLeads.insert(j - states[state].leads.begin());
-//           SOPFormula f = i->forbidden;
-//           f || j->forbidden;
-//           Lead l(i->constraint, i->start, f, i->key);
-//           added = true;
-//           addLeads.push_back(l);
-//         }
-//         else if ((i->start).isprefix(j->start))
-//         {
-//           // llvm::outs() << "found same c i <| j\n";
-//           removeLeads.insert(j - states[state].leads.begin());
-//           reduce_forbidden(j->forbidden, j->key, L);
-//           (i->forbidden)&&(j->forbidden);
-//           Lead l(i->constraint, i->start, i->forbidden, i->key);
-//           added = true;
-//           addLeads.push_back(l);
-//         }
-//         else if ((j->start).isprefix(i->start))
-//         {
-//           // llvm::outs() << "found same c j <| i\n";
-//           removeLeads.insert(j - states[state].leads.begin());
-//           reduce_forbidden(i->forbidden, i->key, L);
-//           (j->forbidden)&&(i->forbidden);
-//           Lead l(j->constraint, j->start, j->forbidden, j->key);
-//           added = true;
-//           addLeads.push_back(l);
-//         }
-//         // else if (!(i->start).commonPrefix(j->start).empty())
-//         // {
-//         //   removeLeads.insert(j - states[state].leads.begin());
-//         //   SOPFormula f = i->forbidden;
-//         //   f || j->forbidden;
-//         //   Sequence s = (i->start).commonPrefix(j->start);
-//         //   Lead l(i->constraint, s, f);
-//         //   added = true;
-//         //   addLeads.push_back(l);
-//         // }
-//       }
-//       else if ((i->start) == (j->start))
-//       {
-//         assert(i->key == j->key);
-//         if ((i->constraint).conflicts_with(j->constraint))
-//         {
-//           // llvm::outs() << "found same s ic |x| jc\n";
-//           if ((i->start).isprefix(i->merged_sequence) && (j->start).isprefix(j->merged_sequence))
-//           {
-//             removeLeads.insert(j - states[state].leads.begin());
-//             SOPFormula f = i->forbidden;
-//             f || j->forbidden;
-//             Sequence s = (i->constraint).commonPrefix(j->constraint);
-//             Lead l(s, i->start, f, i->key);
-//             added = true;
-//             addLeads.push_back(l);
-//           }
-//           else
-//           {
-//             added = true;
-//             addLeads.push_back(*i);
-//           }
-//         }
-//         else
-//         {
-//           // llvm::outs() << "found same s NOT ic |x| jc\n";
-//           removeLeads.insert(j - states[state].leads.begin());
-//           SOPFormula f = i->forbidden;
-//           f || j->forbidden;
-//           // llvm::outs() << "computing common prefix of ic, jc = ";
-//           Sequence s = (i->constraint).commonPrefix(j->constraint);
-//           // llvm::outs() << s.to_string() << "\n";
-//           Lead l(s, i->start, f, i->key);
-//           added = true;
-//           addLeads.push_back(l);
-//         }
-//       }
-//     }
-//     if(! added ) addLeads.push_back(*i);
-
-//   }
-
-//   for( auto k = removeLeads.begin(); k != removeLeads.end(); k++)
-//   {
-//     // llvm::outs() << "removing lead " << (states[state].leads.begin() + (*k))->to_string() <<"\n";
-//     states[state].leads.erase(*k + states[state].leads.begin());
-//   }
-
-//   for( auto k = addLeads.begin(); k != addLeads.end(); k++)
-//   { 
-//     // llvm::outs() << "adding lead " << k->to_string() << "\n";
-//     states[state].leads.push_back(*k);
-//   }
-
-//   //llvm::outs()<<"returning from consistent join\n";
-//   return;
-// }
