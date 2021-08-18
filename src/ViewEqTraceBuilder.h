@@ -260,6 +260,9 @@ protected:
         
         /* return read -> value map of reads in sequence */
         std::unordered_map<IID<IPid>, int> read_value_map();
+        /* In the sequence attempt to shift events from thread of e1 (including e1)
+           to after e2. If cannot shift an event coherently then retun false and keep
+           original sequence. */
         bool view_adjust(IID<IPid> e1, IID<IPid> e2);
         /* has events in this and other that occur in reverse order */
         bool conflicts_with(Sequence &other_seq);
@@ -388,6 +391,9 @@ protected:
 
     /* [snj]: executions states of current trace */
     std::vector<State> states;
+
+    /* [snj]: leads with same prefix with current alpha */
+    std::vector<Lead> parallel_leads;
 
     /* [snj]: Thread id of the thr(current event) */
     int current_thread;

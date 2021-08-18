@@ -244,8 +244,10 @@ void ViewEqTraceBuilder::execute_next_lead() {
   //   llvm::outs() << "\n ";
   // ////
   Enabled.erase(it);
+  // llvm::outs() << "found in and removed from enabled\n";
  
   update_done(next_event);
+  // llvm::outs() << "updated done\n";
  
   // update forbidden with lead forbidden and read event executed
   forbidden = next_lead.forbidden;
@@ -1170,21 +1172,24 @@ bool ViewEqTraceBuilder::Sequence::view_adjust(IID<IPid> e1, IID<IPid> e2) {
 
   int n2 = indexof(e2);
   int n1 = indexof(e1);
-  for (int i = n2 - 1; i >= n1; i--) {
-    if (events[i].get_pid() != e1.get_pid()) continue;
-    
-    for (int j = i; j < n2; j++) {
+  for (int i = n2 - 1, delim = 0; i >= n1; i--) { // from before e2 till e1
+    if (events[i].get_pid() != e1.get_pid()) continue; // shift only events from e1's thread
+
+    for (int j = i; j < n2 - delim; j++) {
       Event ecurr = threads->at(events[j].get_pid())[events[j].get_index()];
       Event enext = threads->at(events[j+1].get_pid())[events[j+1].get_index()];
 
-      if (!(i == n1 && j+1 == n2) && ecurr.RWpair(enext)) {
+      if (ecurr.RWpair(enext)) { // if cannot exchange
         events = original_events; // restrore original sequence
         return false;
       }
 
+      // can exchange
       IID<IPid> tmp = events[j];
       events[j] = events[j+1];
       events[j+1] = tmp;
+
+      delim++; // shifted 1 event of e1's thread, now 1 location fixed
     }
   }
 
@@ -1349,8 +1354,6 @@ ViewEqTraceBuilder::Lead::join(Sequence &primary, Sequence &other, IID<IPid> del
   
   IID<IPid> e = primary.head();
   //llvm::outs() << "e is " << e.to_string() <<"\n";
-  Event ev = threads->at(e.get_pid())[e.get_index()];
-  assert(ev.is_global()); // is a global read write
 
   if (e == delim) {
     if (other.head() == delim)
@@ -1366,6 +1369,9 @@ ViewEqTraceBuilder::Lead::join(Sequence &primary, Sequence &other, IID<IPid> del
       return std::make_tuple(primary, other, joined);
     }
   }
+
+  Event ev = threads->at(e.get_pid())[e.get_index()];
+  assert(ev.is_global()); // is a global read write
 
   if (ev.is_write()) { // algo 6-17
     if (!other.has(e)) { // e not in both primary and other [algo 6-12]
@@ -1466,11 +1472,15 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Lead::cmerge(Sequence &primary_
     // llvm::outs() << "conflicts with " << conflictingRWpair.second.first.to_string() << " and " << conflictingRWpair.second.second.to_string() << "\n";
     // llvm::outs() << "current seq " << primary_seq.to_string();
     if (primary_seq.view_adjust(conflictingRWpair.second.first, conflictingRWpair.second.second)) { // other_seq adjusted ensuring same view of reads
-      // llvm::outs() << " view adjusted to " << primary_seq.to_string() << "\n";
+      llvm::outs() << "primary view adjusted to " << primary_seq.to_string() << "\n";
       conflictingRWpair = primary_seq.conflicts_with(other_seq, true);
     } 
+    else if(other_seq.view_adjust(conflictingRWpair.second.second, conflictingRWpair.second.first)) {
+      llvm::outs() << "other view adjusted to " << other_seq.to_string() << "\n";
+      conflictingRWpair = primary_seq.conflicts_with(other_seq, true);
+    }
     else { // conflicting and cannot be adjusted
-      // llvm::outs() << " NOT view adjusted to " << primary_seq.to_string() << "\n";
+      llvm::outs() << " NOT view adjusted to " << primary_seq.to_string() << "\n";
       Sequence dummy(threads);
       return dummy;
     }
@@ -1492,14 +1502,14 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Lead::cmerge(Sequence &primary_
     return primary_seq;
   }
 
-  // llvm::outs() << primary_seq.to_string() << " (+) " << other_seq.to_string() << " = ";
+  llvm::outs() << primary_seq.to_string() << " (+) " << other_seq.to_string() << " = ";
   IID<IPid> dummy;
   Sequence joined(threads);
   std::tuple<Sequence, Sequence, Sequence> triple = join(primary_seq, other_seq, dummy, joined);
   assert(std::get<0>(triple).size() == 0);
   assert(std::get<1>(triple).size() == 0);
 
-  // llvm::outs() << std::get<2>(triple).to_string() << "\n";
+  llvm::outs() << std::get<2>(triple).to_string() << "\n";
   return std::get<2>(triple);
 }
 
@@ -1842,23 +1852,6 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
   std::set<int, std::greater<int>> rem; // list of indices to be removed from current leads in descending order
   std::vector<Lead> add; // list of indices of L to be added to state leads
 
-  // compare each new lead in L against each lead of state
-  // for (auto l = L.begin(); l != L.end(); ) {
-  //   bool exists_same_lead = false;
-  //   for (auto sl = states[state].leads.begin(); sl != states[state].leads.end(); sl++) {
-  //     if ((*l) == (*sl)) {
-  //       exists_same_lead = true;
-  //       break;
-  //     }
-  //   }
-  //   if (exists_same_lead) {
-  //     l = L.erase(l);
-  //   }
-  //   else {
-  //     l++;
-  //   }
-  // }
-
   for (auto l = L.begin(); l != L.end(); ) {
     llvm::outs() << "checking for " << l->to_string() << " at state " << state << "\n";
     if (l->merged_sequence.empty()) { // no coherent merge of start and constraint
@@ -1874,7 +1867,7 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
         break;
       }
 
-      if ((l->key == sl->key && l->forbidden == sl->forbidden && l->merged_sequence.VA_weakly_equivalent(sl->merged_sequence)) ||
+      if ((l->forbidden == sl->forbidden && l->merged_sequence.VA_weakly_equivalent(sl->merged_sequence)) ||
         l->merged_sequence.VA_equivalent(sl->merged_sequence)) { // new lead has the same view as an existing lead
         llvm::outs() << "VAequivalent " << sl->merged_sequence.to_string() << " and " << l->merged_sequence.to_string() << "\n";
         rem.insert(sl - states[state].leads.begin());
