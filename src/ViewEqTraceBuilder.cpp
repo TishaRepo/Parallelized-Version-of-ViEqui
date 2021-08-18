@@ -251,7 +251,6 @@ void ViewEqTraceBuilder::execute_next_lead() {
  
   // update forbidden with lead forbidden and read event executed
   forbidden = next_lead.forbidden;
-  forbid_other_values(forbidden, next_lead.key);
   if(next_Event.is_read()){ // update formula for value read
       llvm::outs() << "forbidden:" << forbidden.to_string();
       forbidden.reduce(std::make_pair(next_Event.iid, mem[next_Event.object.first][next_Event.object.second]));
@@ -519,14 +518,6 @@ void ViewEqTraceBuilder::update_done(IID<IPid> ev) {
   for (auto it = remove_indices.end(); it != remove_indices.begin();) {
     it--;
     done.erase(done.begin() + (*it));
-  }
-}
-
-void ViewEqTraceBuilder::forbid_other_values(SOPFormula& forbidden, std::pair<IID<IPid>, int> key) {
-  for (auto it = states[current_state].leads.begin(); it != states[current_state].leads.end(); it++) {
-    if (it->key.first == key.first && it->key.second != key.second) {
-      forbidden || it->key;
-    }
   }
 }
 
