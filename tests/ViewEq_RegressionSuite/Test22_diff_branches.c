@@ -22,8 +22,8 @@ void *t2(void *arg){
 }
 
 void *t3(void *arg){
-  int a = x;
-  if (a == 1) {
+  // int a = x;
+  if (x == 1) {
     int b = y;
   }
   return NULL;
