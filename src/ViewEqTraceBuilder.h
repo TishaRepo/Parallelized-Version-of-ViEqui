@@ -46,6 +46,7 @@ public:
     virtual NODISCARD bool store(const SymData &ml) override;
     virtual NODISCARD bool atomic_store(const SymData &ml) override;
     virtual NODISCARD bool load(const SymAddrSize &ml) override;
+                      bool branch_load(const SymAddrSize &ml) override;
 
             int  find_replay_state_prefix();
     virtual bool reset() override;
@@ -136,6 +137,7 @@ protected:
         // execution sequence, all value are initialized to 0 by default
         int value;
         std::pair<unsigned, unsigned> object; // <base, offset> - offset for arrays
+        bool is_conditional = false;
 
         Event() {}
         Event(SymEv sym) {symEvent.push_back(sym); md = 0;}
@@ -166,7 +168,6 @@ protected:
         std::vector<Event> exploredInfluencers(Sequence &seq);
         std::vector<Event> exploredWitnesses(Sequence &seq);
         Sequence prefix(Sequence &seq);
-        std::vector<Event> poPrefix(Sequence &seq);
 
         std::string to_string() const;
         std::string type_to_string() const;
@@ -238,26 +239,23 @@ protected:
         /* suffix of this after prefix seq */
         Sequence suffix(Sequence &seq);
         /* program ordered prefix upto end of ev in this */
-        Sequence poPrefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
+        Sequence po_prefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
         /* program ordered prefix upto end of ev in this */
-        Sequence poPrefix_master(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
+        Sequence po_prefix_master(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
         /* prefix of this and seq that is common */
         Sequence commonPrefix(Sequence &seq);
 
-        /* this is constianed_in s upto which index of s with view adjustment */
-        std::pair<sequence_iterator, sequence_iterator> VA_equivalent_upto(Sequence s);
         /* this is prefix of s with view-adjustment */
         bool VA_isprefix(Sequence s);
         /* this may not have same reads but common reads have same values */
         bool VA_weakly_equivalent(Sequence s);
         /* same reads and same values of reads */
         bool VA_equivalent(Sequence s);
-        /* common prefix of this and s with view-adjustment */
-        Sequence VA_common_prefix(Sequence s);
         /* suffix of a view-adjusted prefix */
         Sequence VA_suffix(Sequence prefix);
         
-        /* return read -> value map of reads in sequence */
+        /* return read -> value map of reads in sequence 
+           (maps a read to 0(init value) if a write for the read is not in the sequence) */
         std::unordered_map<IID<IPid>, int> read_value_map();
         /* In the sequence attempt to shift events from thread of e1 (including e1)
            to after e2. If cannot shift an event coherently then retun false and keep
@@ -289,6 +287,7 @@ protected:
 
         void push_back(Event event) {events.push_back(event);}
         void pop_back() {events.pop_back();}
+        int  size() {return events.size();}
 
         Event& operator[](std::size_t i) {return events[i];}
         const Event& operator[](std::size_t i) const {return events[i];}

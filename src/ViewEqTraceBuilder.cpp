@@ -684,52 +684,6 @@ bool ViewEqTraceBuilder::join(int tgt_proc) {
   return true;
 }
 
-bool ViewEqTraceBuilder::load(const SymAddrSize &ml) {
-  Event event(SymEv::Load(ml));
-  event.make_read();
-  event.value = mem[event.object.first][event.object.second];
-  current_event = event;
-
-  if (current_event.is_global()) {
-    /* a global event is peeked from Execution.cpp run(), this is function
-       call is a result of the peek. Hence, a no_load_store event was not adeed 
-       by exists_non_memory_access function and thus there is no pop in case
-       of a global event.
-    */
-    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
-    threads[current_thread].push_back(current_event);
-    threads[current_thread].awaiting_load_store = true;
-
-    assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
-    Enabled.push_back(current_event.iid);
-
-    /////
-    //llvm::outs() << "inside load(): Enabled events: "; 
-    //for (auto it = Enabled.begin(); it != Enabled.end(); it++) {
-    //  Event ev = get_event(*it);
-    //  llvm::outs() << ev.to_string() << ", ";
-    //} 
-    //llvm::outs() << "\n ";
-    ////
-  } 
-  else {
-    /* exists_non_memory_access adds a no_load_store event in thread before executing
-       the next event of thread, if the next event is a non-global load or strore
-       then the no_load_store event is popped and load/store event in added to the
-       thread of the event.
-    */
-    threads[current_thread].pop_back();
-    execution_sequence.pop_back();
-
-    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
-    threads[current_thread].push_back(current_event);
-    execution_sequence.push_back(current_event.iid);
-  }
-
-
-  return true;
-}
-
 bool ViewEqTraceBuilder::store(const SymData &ml) {
   // [snj]: visitStoreInst in Execution.cpp lands in atomic_store not here
   Event event(SymEv::Store(ml));
@@ -811,6 +765,85 @@ bool ViewEqTraceBuilder::atomic_store(const SymData &ml) {
     threads[current_thread].push_back(current_event);
     execution_sequence.push_back(current_event.iid);
   }
+
+  return true;
+}
+
+bool ViewEqTraceBuilder::load(const SymAddrSize &ml) {
+  Event event(SymEv::Load(ml));
+  event.make_read();
+  event.value = mem[event.object.first][event.object.second];
+  current_event = event;
+
+  if (current_event.is_global()) {
+    /* a global event is peeked from Execution.cpp run(), this is function
+       call is a result of the peek. Hence, a no_load_store event was not adeed 
+       by exists_non_memory_access function and thus there is no pop in case
+       of a global event.
+    */
+    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    threads[current_thread].push_back(current_event);
+    threads[current_thread].awaiting_load_store = true;
+
+    assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
+    Enabled.push_back(current_event.iid);
+
+    /////
+    //llvm::outs() << "inside load(): Enabled events: "; 
+    //for (auto it = Enabled.begin(); it != Enabled.end(); it++) {
+    //  Event ev = get_event(*it);
+    //  llvm::outs() << ev.to_string() << ", ";
+    //} 
+    //llvm::outs() << "\n ";
+    ////
+  } 
+  else {
+    /* exists_non_memory_access adds a no_load_store event in thread before executing
+       the next event of thread, if the next event is a non-global load or strore
+       then the no_load_store event is popped and load/store event in added to the
+       thread of the event.
+    */
+    threads[current_thread].pop_back();
+    execution_sequence.pop_back();
+
+    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    threads[current_thread].push_back(current_event);
+    execution_sequence.push_back(current_event.iid);
+  }
+
+
+  return true;
+}
+
+bool ViewEqTraceBuilder::branch_load(const SymAddrSize &ml) {
+  Event event(SymEv::Load(ml));
+  event.make_read();
+
+  // last global event executed in the current execution sequence
+  Event last_glabal_event = get_event(execution_sequence[states[current_state].sequence_prefix]); 
+
+  assert(event.is_global());
+  assert(last_glabal_event.sym_event() == event.sym_event());
+  assert(threads[event.iid.get_pid()][event.iid.get_index()].sym_event() == event.sym_event());
+
+  // [snj]: TODO remove
+  if (!event.is_global()) {
+    llvm::outs() << "branch load must be gloabl!!\n";
+    return false;
+  }
+  if (last_glabal_event.sym_event() != event.sym_event()) {
+    llvm::outs() << "branch load:" << event.to_string() << " must be the last global executed:" << last_glabal_event.to_string() << "!!\n";
+    return false;
+  }
+  if (threads[last_glabal_event.iid.get_pid()][last_glabal_event.iid.get_index()].sym_event() != event.sym_event()) {
+    llvm::outs() << "branch event not found in thread - current thread:" << current_thread << "thread last ev:" << 
+      threads[last_glabal_event.iid.get_pid()][last_glabal_event.iid.get_index()].to_string() << 
+      " branch event:" << event.to_string() << "\n";
+    return false;
+  }
+
+  threads[last_glabal_event.iid.get_pid()][last_glabal_event.iid.get_index()].is_conditional = true;
+  llvm::outs() << "marking branch load: " << threads[last_glabal_event.iid.get_pid()][last_glabal_event.iid.get_index()].to_string() << " as condiitonal\n";
 
   return true;
 }
@@ -991,54 +1024,6 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::suffix(ViewEqTraceBui
   return ssuffix;
 }
 
-std::pair<ViewEqTraceBuilder::sequence_iterator, ViewEqTraceBuilder::sequence_iterator> ViewEqTraceBuilder::Sequence::VA_equivalent_upto(Sequence s) {
-  // for each event in this at index i try to bring the same event in s at index i in s
-  int equivalent_upto = 0; // found equivalent upto this index
-  sequence_iterator ethis;
-  for (ethis = begin(); ethis != end(); ethis++) {
-    auto ethis_in_s = s.find(*ethis);
-    if (ethis_in_s == s.end()) return std::make_pair(ethis, s.begin()+equivalent_upto); // if next event not in s then this is not a prefix
-
-    for (auto es = s.begin(); es != ethis_in_s; es++) {
-      if (ethis->get_pid() == es->get_pid()) continue; // events of a thread will always be in same order so no need to check them
-
-      Event evthis = threads->at(ethis->get_pid())[ethis->get_index()];
-      Event evs = threads->at(es->get_pid())[es->get_index()];
-      
-      if (evthis.RWpair(evs)) { // cannot reorder RW pair of same object thus not prefix
-        if (std::find(begin(), ethis, (*es)) == ethis) // RW pair not in this
-          return std::make_pair(ethis, s.begin()+equivalent_upto); 
-      }
-
-      if (evthis.same_object(evs) && evthis.is_write() && evs.is_write()) {
-        // writes of same object can be reordered in sequence only if no read reads from them
-        bool can_reorder = false;
-        for (auto sit = ethis_in_s+1; sit != s.end(); sit++) {
-          Event evsit = threads->at(sit->get_pid())[sit->get_index()];
-          if (evsit.same_object(evs)) { // found another write before a read, can reorder
-            if (evsit.is_write()) {
-              can_reorder = true;
-              break;
-            }
-            if (evsit.is_read()) { // found a read reading from the later write, cannot reorder
-              break;
-            }
-          }
-        }
-
-        if (can_reorder == false) {
-          return std::make_pair(ethis, s.begin()+equivalent_upto); 
-        } 
-      }
-    }
-
-    // control reaches here implies previous event can reorder, so move to next index
-    equivalent_upto = ethis_in_s - s.begin() + 1;
-  }
-
-  return  std::make_pair(ethis, s.begin()+equivalent_upto);
-}
-
 std::unordered_map<IID<IPid>, int> ViewEqTraceBuilder::Sequence::read_value_map() {
   std::unordered_map<IID<IPid>, int> reads; // read -> value
   std::unordered_map<unsigned, std::unordered_map<unsigned, int>> writes; // object -> last updated value
@@ -1063,24 +1048,30 @@ std::unordered_map<IID<IPid>, int> ViewEqTraceBuilder::Sequence::read_value_map(
 bool ViewEqTraceBuilder::Sequence::VA_isprefix(Sequence s) {
   if (isprefix(s)) return true; // this is a prefix wihtout needing view-adjustment
 
-  std::pair<sequence_iterator, sequence_iterator> ret = VA_equivalent_upto(s);
+  Sequence s_original = s;
 
-  llvm::outs() << to_string() << " <| " << s.to_string() << (!(ret.first != end() || ret.second == s.end())) << "\n";
-  if (ret.first != end() || ret.second == s.end()) return false; // is eqivalent not prefix
+  for (auto ethis = end(); ethis != begin();) { ethis--;
+    auto ethis_in_s = s.find(*ethis);
+    if (ethis_in_s == s.end()) return false; // if next event not in s then this is not a prefix
+
+    // pull event ethis to front of s
+    s.erase(*ethis);
+    s.push_front(*ethis);
+  }
+
+  // sequence this has been pulled to the front of s
+  
+  std::unordered_map<IID<IPid>, int> original_values_read = s_original.read_value_map(); // values read in original s
+  std::unordered_map<IID<IPid>, int> modified_values_read = s.read_value_map(); // values read in modified s
+
+  // compare if the same values were read
+  for (auto it = original_values_read.begin(); it != original_values_read.end(); it++) {
+    if (it->second != modified_values_read[it->first]) 
+      return false;
+  }
+
   return true;
 }
-
-// bool ViewEqTraceBuilder::Sequence::VA_equivalent(Sequence s) {
-//   llvm::outs() << to_string() << " = " << s.to_string() << ((*this) == s) << "\n";
-//   if ((*this) == s) return true; // this and s are equiavelent wihtout needing view-adjustment
-//   if (size() != s.size()) return false; // equivalent sequence have to be equal in size
-
-//   std::pair<sequence_iterator, sequence_iterator> ret = VA_equivalent_upto(s);
-
-//   llvm::outs() << to_string() << " ~ " << s.to_string() << (ret.first == end() && ret.second == s.end()) << "\n";
-//   if (ret.first == end() && ret.second == s.end()) return true; // is eqivalent not prefix
-//   return false;
-// }
 
 bool ViewEqTraceBuilder::Sequence::VA_weakly_equivalent(Sequence s) {
   if ((*this) == s) return true; // this and s are equiavelent wihtout needing view-adjustment
@@ -1121,18 +1112,6 @@ bool ViewEqTraceBuilder::Sequence::VA_equivalent(Sequence s) {
   }
 
   return true;
-}
-
-ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::VA_common_prefix(Sequence s) {
-  std::pair<sequence_iterator, sequence_iterator> ret = VA_equivalent_upto(s);
-  Sequence subseq1 = subsequence(begin(), ret.first);
-  
-  ret = s.VA_equivalent_upto(*this);
-  Sequence subseq2 = subsequence(s.begin(), ret.first);
-
-  if (subseq1.size() > subseq2.size())
-    return subseq1;
-  return subseq2;
 }
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::VA_suffix(Sequence prefix) {
@@ -1228,7 +1207,7 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::commonPrefix(ViewEqTr
   return comPrefix;
 }
 
-ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix_master(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end){ 
+ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::po_prefix_master(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end){ 
   std::vector<unsigned> joining_threads;
   Sequence local_suffix(threads);
   Sequence po_pre(threads);
@@ -1263,32 +1242,51 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix_master(IID<I
   return po_pre;
 }
 
-ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::poPrefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end){
+ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::po_prefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end){
   assert(has(e2));
   sequence_iterator it;
-  std::vector<IID<IPid>> poPre;
+  Sequence po_pre(threads);
+
+  std::unordered_map<unsigned, std::unordered_set<unsigned>> objects_for_source; // list of objects whose last source has not been found yet
+  std::vector<IPid> back_threads; // other threads who are a part of backseq to enable event (in case of conditionals)
 
   if (e2.get_pid() == 0) { // read event in thread 0 after join to check assertion
     llvm::outs() << "jumping to po_pre of master\n";
-    return poPrefix_master(e1, e2, begin, end);
+    return po_prefix_master(e1, e2, begin, end);
   }
 
-  for(it = begin; it != end && it != events.end(); it++){
-    if(it->get_pid() == e2.get_pid()) {
-      Event ite = threads->at(it->get_pid())[it->get_index()];
-      if (ite.is_global())
-        poPre.push_back(*it);
+  // iterate 
+  for(it = end; it != begin;){ it--;
+    Event ite = threads->at(it->get_pid())[it->get_index()];
+
+    if (it->get_pid() == e2.get_pid() || 
+      std::find(back_threads.begin(), back_threads.end(), it->get_pid()) != back_threads.end()) {
+      if (ite.is_global()) {
+        po_pre.push_front(*it);
+
+        if (ite.is_conditional) { // found a read in a condition, its source write's thread must be included in backseq
+          objects_for_source[ite.object.first].insert(ite.object.second);
+        }
+        else if (ite.is_write()) {
+          objects_for_source[ite.object.first].erase(ite.object.second);    
+        }
+      }
     }
+
+    else if (ite.is_write() && objects_for_source[ite.object.first].find(ite.object.second) != objects_for_source[ite.object.first].end()) {
+      objects_for_source[ite.object.first].erase(ite.object.second);
+      back_threads.push_back(it->get_pid());
+      po_pre.push_front(*it);
+    } 
   }
 
-  Sequence spoPrefix(poPre, threads);
-  return spoPrefix;
+  return po_pre;
 }
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1, IID<IPid> e2){
   assert(this->has(e1) && this->has(e2));
   //llvm::outs() << "in backseq e1=" << e1.to_string() << ", e2=" << e2.to_string() << "\n";
-  ViewEqTraceBuilder::Sequence po_pre = poPrefix(e1, e2, find(e1)+1, find(e2));
+  ViewEqTraceBuilder::Sequence po_pre = po_prefix(e1, e2, find(e1)+1, find(e2));
   po_pre.push_back(e2);
 
   if (e1.get_pid() == 0 || e2.get_pid() == 0) { // event from thread zero ie init write event
@@ -1858,8 +1856,9 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
         break;
       }
 
-      if ((l->forbidden == sl->forbidden && l->merged_sequence.VA_weakly_equivalent(sl->merged_sequence)) ||
-        l->merged_sequence.VA_equivalent(sl->merged_sequence)) { // new lead has the same view as an existing lead
+      // if ((l->forbidden == sl->forbidden && l->merged_sequence.VA_weakly_equivalent(sl->merged_sequence)) ||
+      //   l->merged_sequence.VA_equivalent(sl->merged_sequence)) { // new lead has the same view as an existing lead
+      if (l->merged_sequence.VA_equivalent(sl->merged_sequence)) { // new lead has the same view as an existing lead
         llvm::outs() << "VAequivalent " << sl->merged_sequence.to_string() << " and " << l->merged_sequence.to_string() << "\n";
         rem.insert(sl - states[state].leads.begin());
         SOPFormula f = l->forbidden;
@@ -1888,11 +1887,11 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
     }
 
     if (forward_lead(forward_state_leads, state, (*l))) {
-      for (auto sl = states[state].leads.begin(); sl != states[state].leads.end(); sl++) {
-        if (sl->key.first != l->key.first && l->merged_sequence.has(sl->key.first)) {
-          sl->forbidden && l->forbidden;
-        }
-      }
+      // for (auto sl = states[state].leads.begin(); sl != states[state].leads.end(); sl++) {
+      //   if (sl->key.first != l->key.first && l->merged_sequence.has(sl->key.first)) {
+      //     sl->forbidden && l->forbidden;
+      //   }
+      // }
       l = L.erase(l);
       continue;
     }
