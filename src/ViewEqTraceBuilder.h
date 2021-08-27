@@ -409,6 +409,11 @@ protected:
     // list of (thread id, next event) pairs
     std::vector<IID<IPid>> Enabled;
 
+    /* [snj]: a EW read that has been assigned a start for a value v from this execution 
+       read -> set of values   
+    */
+    std::unordered_map<IID<IPid>, std::vector<int>>  covered_read_values;
+
     /* object base -> object offset -> value
         maps object to current value in memory
     */

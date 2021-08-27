@@ -402,6 +402,9 @@ void ViewEqTraceBuilder::backward_analysis_write(Event event, SOPFormula& forbid
     if (it_val == event.value)
       continue;
 
+    if (std::find(covered_read_values[(*it)].begin(), covered_read_values[(*it)].end(), event.value) != covered_read_values[(*it)].end())
+      continue; // value covered for EW read by another write of same value in current execution
+
     int event_index = prefix_state[execution_sequence.indexof((*it))];
     Sequence start = execution_sequence.backseq((*it), event.iid);
 
@@ -424,6 +427,9 @@ void ViewEqTraceBuilder::backward_analysis_write(Event event, SOPFormula& forbid
     SOPFormula inF = states[event_index].alpha.forbidden;
     (inF || std::make_pair((*it),it_val));
     L[event_index].push_back(Lead(constraint, start, inF, std::make_pair((*it),event.value)));
+
+    // add to the list of EW reads values covered
+    covered_read_values[(*it)].push_back(event.value);
   }
 }
 
@@ -590,6 +596,7 @@ bool ViewEqTraceBuilder::reset() {
   mem.clear();
   visible.clear();
   last_write.clear();
+  covered_read_values.clear();
 
   done = states[replay_state_prefix].done;
   forbidden = states[replay_state_prefix].forbidden;
@@ -1051,18 +1058,28 @@ bool ViewEqTraceBuilder::Sequence::VA_isprefix(Sequence s) {
   Sequence s_original = s;
 
   for (auto ethis = end(); ethis != begin();) { ethis--;
-    auto ethis_in_s = s.find(*ethis);
-    if (ethis_in_s == s.end()) return false; // if next event not in s then this is not a prefix
+    if (s.find(*ethis) == s.end()) return false; // if next event not in s then this is not a prefix
 
     // pull event ethis to front of s
     s.erase(*ethis);
     s.push_front(*ethis);
   }
-
+  
   // sequence this has been pulled to the front of s
   
   std::unordered_map<IID<IPid>, int> original_values_read = s_original.read_value_map(); // values read in original s
   std::unordered_map<IID<IPid>, int> modified_values_read = s.read_value_map(); // values read in modified s
+
+  // llvm::outs() << "original s=" << s_original.to_string() << " map: ";
+  // for (auto it = original_values_read.begin(); it != original_values_read.end(); it++) {
+  //   llvm::outs() << "(" << it->first << "," << it->second << ") ";
+  // }
+  // llvm::outs() << "\n";
+  // llvm::outs() << "new s=" << to_string() << " map: ";
+  // for (auto it = modified_values_read.begin(); it != modified_values_read.end(); it++) {
+  //   llvm::outs() << "(" << it->first << "," << it->second << ") ";
+  // }
+  // llvm::outs() << "\n";
 
   // compare if the same values were read
   for (auto it = original_values_read.begin(); it != original_values_read.end(); it++) {
@@ -1103,12 +1120,12 @@ bool ViewEqTraceBuilder::Sequence::VA_equivalent(Sequence s) {
   if (thisreads.size() != sreads.size()) return false; // no of reads must be same for being equivalent
 
   for (auto it = thisreads.begin(); it != thisreads.end(); it++) {
-    if (sreads.find(it->first) != sreads.end()) { // read of this exists in s as well
-      if (it->second != sreads[it->first]) { // values must match
-        return false;
-      }
+    if (sreads.find(it->first) == sreads.end()) return false; // reads not same
+      
+    // read of this exists in s as well
+    if (it->second != sreads[it->first]) { // values must match
+      return false;
     }
-    else return false; // reads not same
   }
 
   return true;
@@ -1851,6 +1868,7 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
 
     bool combined_with_existing = false;
     for (auto sl = states[state].leads.begin(); sl != states[state].leads.end(); sl++) {
+      llvm::outs() << "checking with " << sl->to_string() << " at state " << state << "\n";
       if ((*l) == (*sl)) {
         combined_with_existing = true;
         break;
