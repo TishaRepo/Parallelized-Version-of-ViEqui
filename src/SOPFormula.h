@@ -12,7 +12,6 @@ enum class RESULT {
     TRUE,
     FALSE,
     DEPENDENT,
-    INIT
 };
 
 class ProductTerm {
@@ -21,7 +20,7 @@ class ProductTerm {
     RESULT result;
 
 public:
-    ProductTerm() {result = RESULT::INIT;}
+    ProductTerm() {result = RESULT::FALSE;}
     ProductTerm(std::pair<IID<IPid>, int> term) {terms.push_back(term); result = RESULT::DEPENDENT;}
 
     ~ProductTerm() {terms.clear();}
@@ -58,7 +57,7 @@ class SOPFormula {
     RESULT result;
 
 public:
-    SOPFormula() {result = RESULT::INIT;}
+    SOPFormula() {result = RESULT::FALSE;}
     SOPFormula(std::pair<IID<IPid>, int> term);
 
     ~SOPFormula() {terms.clear();}
@@ -92,7 +91,7 @@ public:
     void operator=(SOPFormula f) { terms = f.terms; result = f.result; }
     bool operator==(SOPFormula &f);
 
-    void clear() { terms.clear(); result = RESULT::INIT; }
+    void clear() { terms.clear(); result = RESULT::FALSE; }
 
     string to_string();
 };

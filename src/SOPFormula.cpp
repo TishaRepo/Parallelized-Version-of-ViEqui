@@ -16,7 +16,7 @@ RESULT ProductTerm::check_evaluation(std::pair<IID<IPid>, int> term) {
 }
 
 RESULT ProductTerm::evaluate(std::pair<IID<IPid>, int> term) {
-    if (result == RESULT::INIT) return result;
+    if (result == RESULT::FALSE || result == RESULT::TRUE) return result;
 
     for (auto it = terms.begin(); it != terms.end();) {
         if (it->first != term.first) {it++; continue;}
@@ -88,7 +88,6 @@ string ProductTerm::to_string() {
 
 string ProductTerm::result_to_string(RESULT result) {
     switch (result) {
-        case RESULT::INIT: return "INIT"; break;
         case RESULT::TRUE: return "TRUE"; break;
         case RESULT::FALSE: return "FALSE"; break;
         case RESULT::DEPENDENT: return "DEPENDENT"; break;
@@ -140,7 +139,7 @@ RESULT SOPFormula::check_evaluation(std::pair<IID<IPid>, int> term) {
 }
 
 RESULT SOPFormula::evaluate(std::pair<IID<IPid>, int> term) {
-    if (result == RESULT::INIT) return result;
+    if (result == RESULT::FALSE || result == RESULT::TRUE) return result;
 
     bool result_true = false;
     for (auto it = terms.begin(); it != terms.end();) {
@@ -150,7 +149,7 @@ RESULT SOPFormula::evaluate(std::pair<IID<IPid>, int> term) {
             break;
         }
 
-        if (product_term_result == RESULT::FALSE || product_term_result == RESULT::INIT) {
+        if (product_term_result == RESULT::FALSE) {
             it = terms.erase(it);
         }
         else it++;
@@ -249,6 +248,22 @@ void SOPFormula::operator||(std::pair<IID<IPid>, int> term) {
 }
 
 void SOPFormula::operator&&(SOPFormula &formula) {
+    llvm::outs() << "in &&, is formula.result=FALSE? " << (formula.result == RESULT::FALSE) << "\n";
+    if (formula.result == RESULT::TRUE) return; // formula && TRUE = formula
+    if (result == RESULT::FALSE) return; // this already FALSE, will remain FALSE after && with anything 
+
+    if (formula.result == RESULT::FALSE) { // && will FALSE, will make this FALSE
+        terms.clear();
+        result = RESULT::FALSE;
+        return;
+    }
+
+    if (result == RESULT::TRUE) { // this is TRUE so && with formula will return formula 
+        terms = formula.terms;
+        result = formula.result;
+        return;
+    }
+
     auto it = formula.begin();
     SOPFormula conjunction = (*this);
     conjunction && (*it);
@@ -289,8 +304,8 @@ bool SOPFormula::operator==(SOPFormula &formula) {
 }
 
 string SOPFormula::to_string() {
-    if (result == RESULT::INIT || result == RESULT::FALSE)
-        return "-";
+    if (result == RESULT::FALSE)
+        return "FALSE";
     if (result == RESULT::TRUE)
         return "TRUE";
 
