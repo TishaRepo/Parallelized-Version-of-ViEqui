@@ -230,12 +230,27 @@ void SOPFormula::remove_terms_of_term(std::pair<IID<IPid>, int> term) {
 }
 
 void SOPFormula::operator||(SOPFormula &formula) {
+    if (result == RESULT::TRUE || formula.result == RESULT::FALSE) return;
+    
+    if (formula.result == RESULT::TRUE) {
+        terms.clear();
+        result = RESULT::TRUE;
+        return;
+    }
+
+    if (result == RESULT::FALSE) {
+        terms = formula.terms;
+        result = formula.result;
+        return;
+    }
+
     for (auto it = formula.begin(); it != formula.end(); it++) {
         (*this) || (*it);
     }
 }
 
 void SOPFormula::operator||(ProductTerm &product_term) {
+    if (result == RESULT::TRUE) return;
     if (has_product_term(product_term)) return;
 
     terms.push_back(product_term);
@@ -281,12 +296,28 @@ void SOPFormula::operator&&(SOPFormula &formula) {
 }
 
 void SOPFormula::operator&&(ProductTerm &product_term) {
+    if (result == RESULT::FALSE) return; // will remain FALSE
+
+    if (result == RESULT::TRUE) {
+        terms.push_back(product_term);
+        result == RESULT::DEPENDENT;
+        return;
+    }
+
     for (auto it = terms.begin();  it != terms.end(); it++) {
         (*it) && product_term;
     }
 }
 
 void SOPFormula::operator&&(std::pair<IID<IPid>, int> term) {
+    if (result == RESULT::FALSE) return; // will remain FALSE
+    
+    if (result == RESULT::TRUE) {
+        terms.push_back(ProductTerm(term));
+        result == RESULT::DEPENDENT;
+        return;
+    }
+
     for (auto it = terms.begin(); it != terms.end(); it++) {
         it->add_term(term);
     }
