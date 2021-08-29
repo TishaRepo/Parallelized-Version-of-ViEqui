@@ -4244,19 +4244,6 @@ void Interpreter::run()
     ExecutionContext &SF = ECStack()->back(); // Current stack frame
     Instruction &I = *SF.CurInst++;           // Increment before execute
 
-    // //[snj]: ATTEMPTING TO GET VALUE
-    // Value *Va = I.getOperand(0);
-    // if (llvm::ConstantInt* CI = dyn_cast<llvm::ConstantInt>(Va)) {
-    //   llvm::outs() << "[" << (index++) << "] Value of <";
-    //   I.print(llvm::outs(), true);
-    //   llvm::outs() << "> is " << (*CI);
-    // }
-    // else {
-    //   llvm::outs() << "[" << (index++) << "] Value of <";
-    //   I.print(llvm::outs(), true);
-    //   llvm::outs() << "> is <no value>";
-    // }
-
     if (isUnknownIntrinsic(I))
     {
       /* This instruction is intrinsic. It will be removed from the IR
@@ -4270,7 +4257,7 @@ void Interpreter::run()
     }
     else if (checkRefuse(I))
     {
-      llvm::outs() << "[" << e << "]Refusing(" << CurrentThread << "): "; I.print(llvm::outs(), true); llvm::outs() << "\n";
+      // llvm::outs() << "[" << e << "]Refusing(" << CurrentThread << "): "; I.print(llvm::outs(), true); llvm::outs() << "\n";
       if (!ECStack()->empty())
       {
         /* Revert without executing the next instruction. */
@@ -4365,8 +4352,6 @@ void Interpreter::run()
 
       if (isa<BranchInst>(I) && cast<BranchInst>(I).isConditional()) {
         if (isGlobalLoad(*last_read)) {
-          llvm::outs() << "branch-conditional : "; I.print(llvm::outs(), true); llvm::outs() <<
-            "associated load:"; last_read->print(llvm::outs(), true); llvm::outs() << "\n";
           recordBranchLoad(*last_read);
         }
       }
@@ -4378,7 +4363,7 @@ void Interpreter::run()
         //   llvm::outs() << "Branch Instruction  : "; I.print(llvm::outs(), true); llvm::outs() << "\n";
         // }
         visit(I); // visitLoadInst, visitStoreInst modified to peek and enable event but not execute
-        llvm::outs() << "[" << p++ << "]Peeking  : "; I.print(llvm::outs(), true); llvm::outs() << "\n";
+        // llvm::outs() << "[" << p++ << "]Peeking  : "; I.print(llvm::outs(), true); llvm::outs() << "\n";
       }
     }
   }

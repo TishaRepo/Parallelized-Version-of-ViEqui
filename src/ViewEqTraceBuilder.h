@@ -239,7 +239,7 @@ protected:
         /* suffix of this after prefix seq */
         Sequence suffix(Sequence &seq);
         /* program ordered prefix upto end of ev in this */
-        Sequence po_prefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
+        std::pair<bool, Sequence> po_prefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
         /* program ordered prefix upto end of ev in this */
         Sequence po_prefix_master(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
         /* prefix of this and seq that is common */
@@ -257,6 +257,10 @@ protected:
         /* return read -> value map of reads in sequence 
            (maps a read to 0(init value) if a write for the read is not in the sequence) */
         std::unordered_map<IID<IPid>, int> read_value_map();
+        /* memory state after this sequence has executed 
+           (object -> value)
+        */
+        std::unordered_map<unsigned, std::unordered_map<unsigned, int>> mem_map();
         /* In the sequence attempt to shift events from thread of e1 (including e1)
            to after e2. If cannot shift an event coherently then retun false and keep
            original sequence. */
