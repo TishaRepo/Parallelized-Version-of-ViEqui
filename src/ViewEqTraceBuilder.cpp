@@ -1624,7 +1624,8 @@ bool ViewEqTraceBuilder::State::has_unexplored_leads() {
     bool is_unexplored = true;
     
     for (auto itd = done.begin(); itd != done.end(); itd++) {
-      if (itd->isprefix(itl->merged_sequence)) {
+      if (*itd == itl->merged_sequence) {
+      // if (itd->isprefix(itl->merged_sequence)) {
         is_unexplored = false;
         break; // itl is not unexplored
       }
@@ -1643,7 +1644,8 @@ std::vector<ViewEqTraceBuilder::Lead> ViewEqTraceBuilder::State::unexplored_lead
     bool is_unexplored = true;
     
     for (auto itd = done.begin(); itd != done.end(); itd++) {
-      if (itd->isprefix(itl->merged_sequence)) {
+        if (*itd == itl->merged_sequence) {
+      // if (itd->isprefix(itl->merged_sequence)) {
         is_unexplored = false;
         break; // itl is not unexplored
       }
@@ -1662,7 +1664,8 @@ ViewEqTraceBuilder::Lead ViewEqTraceBuilder::State::next_unexplored_lead() {
     bool is_unexplored = true;
     
     for (auto itd = done.begin(); itd != done.end(); itd++) {
-      if (itd->isprefix(itl->merged_sequence)) {
+      if (*itd == itl->merged_sequence) {
+      // if (itd->isprefix(itl->merged_sequence)) {
         is_unexplored = false;
         break; // itl is not unexplored
       }
@@ -1779,11 +1782,11 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
     }
     
     if (forward_lead(forward_state_leads, state, (*l))) {
-      for (auto sl = states[state].leads.begin(); sl != states[state].leads.end(); sl++) {
-        if (sl->key.first != l->key.first && l->merged_sequence.has(sl->key.first)) {
-          sl->forbidden && l->forbidden;
-        }
-      }
+      // for (auto sl = states[state].leads.begin(); sl != states[state].leads.end(); sl++) {
+      //   if (sl->key.first != l->key.first && l->merged_sequence.has(sl->key.first)) {
+      //     sl->forbidden && l->forbidden;
+      //   }
+      // }
       l = L.erase(l);
       continue;
     }
