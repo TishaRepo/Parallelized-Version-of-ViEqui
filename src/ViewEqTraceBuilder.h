@@ -239,7 +239,7 @@ protected:
         /* suffix of this after prefix seq */
         Sequence suffix(Sequence &seq);
         /* program ordered prefix upto end of ev in this */
-        std::pair<bool, Sequence> po_prefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
+        std::pair<std::pair<bool, bool>, Sequence> po_prefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
         /* program ordered prefix upto end of ev in this */
         Sequence po_prefix_master(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
         /* prefix of this and seq that is common */

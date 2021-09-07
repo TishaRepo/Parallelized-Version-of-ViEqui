@@ -1150,33 +1150,36 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::po_prefix_master(IID<
   return po_pre;
 }
 
-std::pair<bool, ViewEqTraceBuilder::Sequence> ViewEqTraceBuilder::Sequence::po_prefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end){
+std::pair<std::pair<bool, bool>, ViewEqTraceBuilder::Sequence> ViewEqTraceBuilder::Sequence::po_prefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end){
   assert(has(e2));
   sequence_iterator it;
   Sequence po_pre(threads);
 
   bool included_e1 = false;
+  bool included_e1_thread_events = false;
 
   std::unordered_map<unsigned, std::unordered_set<unsigned>> objects_for_source; // list of objects whose last source has not been found yet
   std::vector<IPid> back_threads; // other threads who are a part of backseq to enable event (in case of conditionals)
 
   if (e2.get_pid() == 0) { // read event in thread 0 after join to check assertion
-    return std::make_pair(included_e1, po_prefix_master(e1, e2, begin, end));
+    return std::make_pair(std::make_pair(included_e1, included_e1_thread_events), po_prefix_master(e1, e2, begin, end));
   }
 
   // iterate 
   for(it = end; it != begin;){ it--;
     if (it->get_pid() == 0) continue; // init or non-global event
+    llvm::outs() << "making po_pre - next event=" << it->to_string() << "\n";
     Event ite = threads->at(it->get_pid())[it->get_index()];
 
     if (it->get_pid() == e2.get_pid() || 
       std::find(back_threads.begin(), back_threads.end(), it->get_pid()) != back_threads.end()) {
+      llvm::outs() << "making po_pre - found thread\n";
       if (ite.is_global()) {
         if ((*it) == e1) included_e1 = true;
         po_pre.push_front(*it);
 
-        if (ite.is_conditional) { // found a read in a condition, its source write's thread must be included in backseq
-        // if (ite.is_read()) {
+        // if (ite.is_conditional) { // found a read in a condition, its source write's thread must be included in backseq
+        if (ite.is_read()) {
           objects_for_source[ite.object.first].insert(ite.object.second);
         }
         else if (ite.is_write()) {
@@ -1186,6 +1189,11 @@ std::pair<bool, ViewEqTraceBuilder::Sequence> ViewEqTraceBuilder::Sequence::po_p
     }
 
     else if (ite.is_write() && objects_for_source[ite.object.first].find(ite.object.second) != objects_for_source[ite.object.first].end()) {
+      if (it->get_pid() == e1.get_pid()) { // e2 dependent on events of e1
+        included_e1_thread_events = true;
+      }
+
+      llvm::outs() << "making po_pre - adding thread\n";
       objects_for_source[ite.object.first].erase(ite.object.second);
       back_threads.push_back(it->get_pid());
       po_pre.push_front(*it);
@@ -1193,14 +1201,15 @@ std::pair<bool, ViewEqTraceBuilder::Sequence> ViewEqTraceBuilder::Sequence::po_p
     } 
   }
 
-  return std::make_pair(included_e1, po_pre);
+  return std::make_pair(std::make_pair(included_e1, included_e1_thread_events), po_pre);
 }
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1, IID<IPid> e2){
   assert(this->has(e1) && this->has(e2));
   
-  std::pair<bool, ViewEqTraceBuilder::Sequence> po_pre_return = po_prefix(e1, e2, find(e1)+1, find(e2));
-  bool included_e1 = po_pre_return.first;
+  std::pair<std::pair<bool, bool>, ViewEqTraceBuilder::Sequence> po_pre_return = po_prefix(e1, e2, find(e1)+1, find(e2));
+  bool included_e1 = po_pre_return.first.first;
+  bool has_e1_thread_events = po_pre_return.first.second;
   ViewEqTraceBuilder::Sequence po_pre = po_pre_return.second;
   po_pre.push_back(e2);
 
@@ -1231,7 +1240,14 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1,
     }
     po_pre.push_at(loc, e1);
   }
-  else po_pre.push_back(e1);
+  else {
+    if (has_e1_thread_events) { // events po after e1 are in po_pre then its not prefix of e1
+      Sequence empty_sequence(threads); 
+      return empty_sequence;
+    }
+
+    po_pre.push_back(e1);
+  }
 
   return po_pre;
 }

@@ -31,3 +31,7 @@ int main(int argc, char *argv[]){
 
   return 0;
 }
+
+// T1 - Rx(0).Ry(0).Wy=1.Wx=1  1.2.1.2   po_pre = 2:Ry
+// T2 - Rx(0).Wy=1.Ry(1).Wx=1  1.1.2.2   po_pre = 1:Rx.1:Wy.2:Ry
+// T3 - Ry(0).Wx=1.Rx(1).Wy=1  2.2.1.1
