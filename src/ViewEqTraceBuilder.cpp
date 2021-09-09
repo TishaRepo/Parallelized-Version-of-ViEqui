@@ -741,7 +741,7 @@ Trace* ViewEqTraceBuilder::get_trace() const {
 //  - Load(Global(object_id)(block_size))(Event::value)
 //  - Store(Global(object_id)(block_size),value)(Event::value)
 void ViewEqTraceBuilder::debug_print() const {
-  llvm::outs() << "Debug_print: execution_sequence.size()=" << execution_sequence.size() << "\n";
+  // llvm::outs() << "Debug_print: execution_sequence.size()=" << execution_sequence.size() << "\n";
   for (int i = 0; i < execution_sequence.size(); i++) {
     int thread = execution_sequence[i].get_pid();
     Event event = threads[thread][execution_sequence[i].get_index()];

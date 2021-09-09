@@ -487,7 +487,6 @@ DPORDriver::Result DPORDriver::run(){
         1. form hb relations in the events of the sequence
         2. look for race based on the computed hb
     */
-    std::cout << "Running Trace " << (count++) << "\n"; 
     Trace *t = run_once(*TB, mod.get(), assume_blocked);
     
     if (handle_trace(TB, t, &computation_count, res, assume_blocked)) break;
@@ -495,6 +494,7 @@ DPORDriver::Result DPORDriver::run(){
       estimate = std::round(TB->estimate_trace_count());
     }
     if (conf.dpor_algorithm == Configuration::VIEW_EQ && conf.print_progress) {
+      std::cout << "\nTrace #" << (count++) << "\n"; 
       TB->debug_print();
     }
   }while(TB->reset()); /* snj:
