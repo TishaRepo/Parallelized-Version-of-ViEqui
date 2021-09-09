@@ -68,7 +68,6 @@ public:
     
     void update_leads(IID<IPid> event_id, SOPFormula& forbidden) {update_leads(get_event(event_id), forbidden);}
     void update_leads(Event event, SOPFormula& forbidden);
-    void update_done(IID<IPid> ev);
     
     void forward_analysis(Event event, SOPFormula& forbidden);
     void backward_analysis_read(Event event, SOPFormula& forbidden, std::unordered_map<int, std::vector<Lead>>& L);
@@ -310,6 +309,7 @@ protected:
         SOPFormula forbidden;             // objXval pairs that must not be explored
         Sequence merged_sequence;         // cmerge(start, constraint) sequence to explore while a=maintaining constraint
         std::pair<IID<IPid>, int> key;    // (read venet, value) to be achieved by this lead
+        bool is_done = false;             // whether the lead has been explored
 
         Lead() {}
         Lead(Sequence c, Sequence s, SOPFormula f, std::pair<IID<IPid>, int> k) {
@@ -344,9 +344,8 @@ protected:
         // index of sequence explored corresponding to current state
         int sequence_prefix;                                       // index in execution sequence corresponding to this state
         std::vector<Lead> leads;                                   // leads(configurations) to be explored from this state
-        std::vector<Sequence> done;                                // sequences prefixes that are done
         SOPFormula forbidden;                                      // (read,value pairs that must not be seen after this state)
-        Lead alpha;                                                // current lead being explored
+        int alpha = -1;                                            // current lead being explored
         
         int lead_head_execution_prefix = -1;                       // idx in execution sequence where alpha lead starts (-1 if not a part of a lead)
         bool executing_alpha_lead = false;                         // state is a part of alpha
@@ -354,15 +353,13 @@ protected:
         State() {}
         State(int prefix_idx) : sequence_prefix(prefix_idx) {};
         // State(int i, Lead a, SOPFormula f) {sequence_prefix = i; alpha = a; forbidden = f; alpha_sequence = alpha.start + alpha.constraint;};
-
-        void add_done(Sequence d);
-        bool is_done(Sequence seq);
         
         bool has_unexplored_leads();
         std::vector<Lead> unexplored_leads();
         Lead next_unexplored_lead();
 
-        Sequence alpha_sequence() {return alpha.merged_sequence;}
+        bool alpha_empty() {return (alpha == -1);}
+        Sequence alpha_sequence() {if (alpha == -1) {llvm::outs() << "MUST NOT BE HERE\n"; return Sequence();} return leads[alpha].merged_sequence;}
         std::string print_leads();
     };
 
@@ -448,8 +445,7 @@ protected:
     /* [snj]: key (read,value) pair for the current trace */
     std::pair<IID<IPid>, int> key;
 
-    /* [snj]: sequences already explored after the current trace prefix */
-    std::vector<Sequence> done;
+    int reset_limit = 0;
 };
 
 #endif
