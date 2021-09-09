@@ -162,7 +162,7 @@ void ViewEqTraceBuilder::compute_new_leads() {
     
     if (!states[current_state].has_unexplored_leads()) {
       Sequence seq(next_event, &threads);
-      Lead l(seq, forbidden, dummy_key); 
+      Lead l(seq, forbidden); 
       consistent_union(current_state, l);
       states[current_state].lead_head_execution_prefix = prefix_idx;
       alpha_head = prefix_idx;
@@ -172,7 +172,7 @@ void ViewEqTraceBuilder::compute_new_leads() {
     states[current_state].executing_alpha_lead = true;
     states[current_state].lead_head_execution_prefix = alpha_head;
 
-    Lead l(to_explore, forbidden, dummy_key);
+    Lead l(to_explore, forbidden);
     consistent_union(current_state, l);
     to_explore.pop_front();
   }
@@ -251,7 +251,7 @@ void ViewEqTraceBuilder::forward_analysis(Event event, SOPFormula& forbidden) {
   std::vector<Lead> L;
 
   if (!(forbidden.check_evaluation(std::make_pair(event.iid, mem[event.object.first][event.object.second])) == RESULT::TRUE))
-    L.push_back(Lead(empty_sequence, uiseq, fui_all, std::make_pair(event.iid, mem[event.object.first][event.object.second])));
+    L.push_back(Lead(empty_sequence, uiseq, fui_all));
 
   for (auto it = ui.begin(); it != ui.end(); it++) {
     if (get_event(*it).value == mem[event.object.first][event.object.second]) 
@@ -268,7 +268,7 @@ void ViewEqTraceBuilder::forward_analysis(Event event, SOPFormula& forbidden) {
         fui || std::make_pair(event.iid, get_event((*it2)).value);
     }
 
-    Lead l(empty_sequence, start, fui, std::make_pair(event.iid, get_event((*it)).value));
+    Lead l(empty_sequence, start, fui);
     L.push_back(l);
   }
 
@@ -329,7 +329,7 @@ void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula& forbidd
     SOPFormula inF = states[event_index].leads[states[event_index].alpha].forbidden;
     
     inF || fui; inF || fei;
-    L[event_index].push_back(Lead(constraint, start, inF, std::make_pair(event.iid, get_event((*it)).value)));  
+    L[event_index].push_back(Lead(constraint, start, inF));  
   }
 }
 
@@ -364,7 +364,7 @@ void ViewEqTraceBuilder::backward_analysis_write(Event event, SOPFormula& forbid
     Sequence constraint = states[event_index].alpha_sequence();
     SOPFormula inF = states[event_index].leads[states[event_index].alpha].forbidden;
     (inF || std::make_pair((*it),it_val));
-    L[event_index].push_back(Lead(constraint, start, inF, std::make_pair((*it),event.value)));
+    L[event_index].push_back(Lead(constraint, start, inF));
 
     // add to the list of EW reads values covered
     covered_read_values[(*it)].push_back(event.value);
@@ -1543,7 +1543,7 @@ bool ViewEqTraceBuilder::forward_lead(std::unordered_map<int, std::vector<Lead>>
     SOPFormula f = (lead.forbidden);
     f || states[fwd_state].forbidden; // combine forbidden with forbidden of the state after current start
     
-    Lead fwd_lead(states[fwd_state].alpha_sequence(), (lead.merged_sequence).VA_suffix(states[state].alpha_sequence()), f, lead.key);
+    Lead fwd_lead(states[fwd_state].alpha_sequence(), (lead.merged_sequence).VA_suffix(states[state].alpha_sequence()), f);
     forward_state_leads[fwd_state].push_back(std::move(fwd_lead));
 
     return true;
@@ -1602,7 +1602,7 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
           rem.insert(sl - states[state].leads.begin());
           SOPFormula f = l->forbidden;
           f || sl->forbidden;
-            add.push_back(Lead(sl->constraint, sl->start, f, l->key));
+            add.push_back(Lead(sl->constraint, sl->start, f));
         }
 
         combined_with_existing = true;
@@ -1615,7 +1615,7 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
           rem.insert(sl - states[state].leads.begin());
           SOPFormula f = l->forbidden;
           f && sl->forbidden;
-            add.push_back(Lead(sl->constraint, sl->start, f, sl->key));
+            add.push_back(Lead(sl->constraint, sl->start, f));
         }
 
         combined_with_existing = true;

@@ -290,19 +290,18 @@ protected:
 
     public:
         Sequence constraint;              // sequence from previous trace to be maintained
-        Sequence start;                   // new to explore to get key value
-        SOPFormula forbidden;             // objXval pairs that must not be explored
-        Sequence merged_sequence;         // cmerge(start, constraint) sequence to explore while a=maintaining constraint
-        std::pair<IID<IPid>, int> key;    // (read venet, value) to be achieved by this lead
+        Sequence start;                   // new sequence to be explore to get the intended (read,value) pair
+        SOPFormula forbidden;             // (read,value) pairs that must not be explored
+        Sequence merged_sequence;         // cmerge(start, constraint) sequence to explore while maintaining constraint
         bool is_done = false;             // whether the lead has been explored
 
         Lead() {}
-        Lead(Sequence c, Sequence s, SOPFormula f, std::pair<IID<IPid>, int> k) {
-            constraint = c; start = s; forbidden = f; key = k;
+        Lead(Sequence c, Sequence s, SOPFormula f) {
+            constraint = c; start = s; forbidden = f;
             merged_sequence = cmerge(s, c);
         }
-        Lead(Sequence s, SOPFormula f, std::pair<IID<IPid>, int> k) {
-            start = s; forbidden = f; key = k;
+        Lead(Sequence s, SOPFormula f) {
+            start = s; forbidden = f;
             merged_sequence = s;
         }
         
@@ -318,7 +317,6 @@ protected:
     /* [snj]: dummy event */
     Event no_load_store;
     IID<IPid> dummy_id;
-    std::pair<IID<IPid>, int> dummy_key;
 
     /* [rmnt]: The CPids of threads in the current execution. */
     CPidSystem CPS;
@@ -423,9 +421,6 @@ protected:
 
     /* [snj]: forbidden values for the current trace */
     SOPFormula forbidden;
-
-    /* [snj]: key (read,value) pair for the current trace */
-    std::pair<IID<IPid>, int> key;
 };
 
 #endif
