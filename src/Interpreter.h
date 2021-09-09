@@ -350,7 +350,6 @@ namespace llvm
     virtual void visitLoadInst(LoadInst &I);
             void completeLoadInst(LoadInst &I);
             bool isGlobalLoad(Instruction &I);
-            void recordBranchLoad(Instruction &I);
     virtual void visitStoreInst(StoreInst &I);
             void completeStoreInst(StoreInst &I);
             bool isGlobalStore(Instruction &I);

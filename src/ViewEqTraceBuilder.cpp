@@ -714,22 +714,6 @@ bool ViewEqTraceBuilder::load(const SymAddrSize &ml) {
   return true;
 }
 
-bool ViewEqTraceBuilder::branch_load(const SymAddrSize &ml) {
-  Event event(SymEv::Load(ml));
-  event.make_read();
-
-  // last global event executed in the current execution sequence
-  Event last_glabal_event = get_event(execution_sequence[states[current_state].sequence_prefix]); 
-
-  assert(event.is_global());
-  assert(last_glabal_event.sym_event() == event.sym_event());
-  assert(threads[last_glabal_event.iid.get_pid()][last_glabal_event.iid.get_index()].sym_event() == event.sym_event());
-
-  threads[last_glabal_event.iid.get_pid()][last_glabal_event.iid.get_index()].is_conditional = true;
-  
-  return true;
-}
-
 bool ViewEqTraceBuilder::fence() {
   // [snj]: invoked at pthread create
   return true;
@@ -1157,7 +1141,6 @@ std::pair<std::pair<bool, bool>, ViewEqTraceBuilder::Sequence> ViewEqTraceBuilde
         if ((*it) == e1) included_e1 = true;
         po_pre.push_front(*it);
 
-        // if (ite.is_conditional) { // found a read in a condition, its source write's thread must be included in backseq
         if (ite.is_read()) {
           objects_for_source[ite.object.first].insert(ite.object.second);
         }

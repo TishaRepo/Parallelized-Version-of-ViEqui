@@ -1590,25 +1590,6 @@ bool Interpreter ::isGlobalStore(Instruction &I) {
   return false;      
 }
 
-void Interpreter::recordBranchLoad(Instruction &Inst) 
-{
-  LoadInst &I = static_cast<llvm::LoadInst&>(Inst);
-  ExecutionContext &SF = ECStack()->back();
-  GenericValue SRC = getOperandValue(I.getPointerOperand(), SF);
-  GenericValue *Ptr = (GenericValue *)GVTOP(SRC);
-  GenericValue Result;
-
-  Option<SymAddrSize> Ptr_sas = GetSymAddrSize(Ptr, I.getType());
-  if (!Ptr_sas)
-    return;
-  if (!TB.branch_load(*Ptr_sas))
-  {
-      abort();
-      return;
-  }
-}
-
-
 void Interpreter::visitAtomicCmpXchgInst(AtomicCmpXchgInst &I)
 {
   ExecutionContext &SF = ECStack()->back();
@@ -4350,20 +4331,8 @@ void Interpreter::run()
       ExecutionContext &SF = ECStack()->back(); // Current stack frame
       Instruction &I = *SF.CurInst;
 
-      if (isa<BranchInst>(I) && cast<BranchInst>(I).isConditional()) {
-        if (isGlobalLoad(*last_read)) {
-          recordBranchLoad(*last_read);
-        }
-      }
-      
       if (isGlobalLoad(I) || isGlobalStore(I)) {
-        // if (isa<IndirectBrInst>(I)) {
-        // // if (cast<BranchInst>(I).isConditional()) {
-        // // if (isa<BranchInst>(I)) {
-        //   llvm::outs() << "Branch Instruction  : "; I.print(llvm::outs(), true); llvm::outs() << "\n";
-        // }
         visit(I); // visitLoadInst, visitStoreInst modified to peek and enable event but not execute
-        // llvm::outs() << "[" << p++ << "]Peeking  : "; I.print(llvm::outs(), true); llvm::outs() << "\n";
       }
     }
   }

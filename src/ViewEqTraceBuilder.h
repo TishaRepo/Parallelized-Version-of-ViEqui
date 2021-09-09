@@ -46,7 +46,6 @@ public:
     virtual NODISCARD bool store(const SymData &ml) override;
     virtual NODISCARD bool atomic_store(const SymData &ml) override;
     virtual NODISCARD bool load(const SymAddrSize &ml) override;
-                      bool branch_load(const SymAddrSize &ml) override;
 
             int  find_replay_state_prefix();
     virtual bool reset() override;
@@ -136,8 +135,7 @@ protected:
         // execution sequence, all value are initialized to 0 by default
         int value;
         std::pair<unsigned, unsigned> object; // <base, offset> - offset for arrays
-        bool is_conditional = false;
-
+        
         Event() {}
         Event(SymEv sym) {symEvent.push_back(sym); md = 0;}
         Event(const IID<IPid> &iid, sym_ty sym = {}) : iid(iid), symEvent(std::move(sym)), md(0){};

@@ -164,7 +164,6 @@ public:
    * Returns true on success, false if an error has been generated.
    */
   virtual NODISCARD bool load(const SymAddrSize &ml) = 0;
-  virtual bool branch_load(const SymAddrSize &ml) {return false;}
   /* Perform an action that conflicts with all memory accesses and all
    * other full memory conflicts.
    *
