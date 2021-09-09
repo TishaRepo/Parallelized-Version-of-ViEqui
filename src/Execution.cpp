@@ -4278,7 +4278,7 @@ void Interpreter::run()
       else if (isGlobalStore(I)) completeStoreInst(static_cast<llvm::StoreInst&>(I));
       else visit(I);
 
-      llvm::outs() << "[" << e++ << "]Executing: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
+      // llvm::outs() << "[" << e++ << "]Executing: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
     }
     else {
     /* 

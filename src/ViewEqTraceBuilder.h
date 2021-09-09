@@ -210,6 +210,7 @@ protected:
         void pop_back() {events.pop_back();} 
         void pop_front() {events.erase(events.begin());};
         void erase(IID<IPid> event) {events.erase(events.begin() + indexof(event));}
+        sequence_iterator erase(sequence_iterator it) {return events.erase(it);}
         void erase(sequence_iterator begin, sequence_iterator end) {events.erase(begin, end);}
         void clear() {events.clear();}
         bool has(IID<IPid> event) {return std::find(events.begin(), events.end(), event) != events.end();}
@@ -229,23 +230,13 @@ protected:
 
         /* if this is prefix of seq */
         bool isprefix(Sequence &seq);
-        /* prefix of this upto (but not including) ev */
-        Sequence prefix(IID<IPid> ev);
-        /* suffix of this after (not including) ev */ 
-        Sequence suffix(IID<IPid> ev);
-        /* suffix of this after prefix seq */
-        Sequence suffix(Sequence &seq);
         /* program ordered prefix upto end of ev in this */
         std::pair<std::pair<bool, bool>, Sequence> po_prefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
         /* program ordered prefix upto end of ev in this */
         Sequence po_prefix_master(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
-        /* prefix of this and seq that is common */
-        Sequence commonPrefix(Sequence &seq);
-
+        
         /* this is prefix of s with view-adjustment */
         bool VA_isprefix(Sequence s);
-        /* this may not have same reads but common reads have same values */
-        bool VA_weakly_equivalent(Sequence s);
         /* same reads and same values of reads */
         bool VA_equivalent(Sequence s);
         /* suffix of a view-adjusted prefix */
@@ -254,10 +245,6 @@ protected:
         /* return read -> value map of reads in sequence 
            (maps a read to 0(init value) if a write for the read is not in the sequence) */
         std::unordered_map<IID<IPid>, int> read_value_map();
-        /* memory state after this sequence has executed 
-           (object -> value)
-        */
-        std::unordered_map<unsigned, std::unordered_map<unsigned, int>> mem_map();
         /* In the sequence attempt to shift events from thread of e1 (including e1)
            to after e2. If cannot shift an event coherently then retun false and keep
            original sequence. */
@@ -389,9 +376,6 @@ protected:
     /* [snj]: executions states of current trace */
     std::vector<State> states;
 
-    /* [snj]: leads with same prefix with current alpha */
-    std::vector<Lead> parallel_leads;
-
     /* [snj]: Thread id of the thr(current event) */
     int current_thread;
 
@@ -442,8 +426,6 @@ protected:
 
     /* [snj]: key (read,value) pair for the current trace */
     std::pair<IID<IPid>, int> key;
-
-    int reset_limit = 0;
 };
 
 #endif

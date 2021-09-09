@@ -19,10 +19,6 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun) {
   *aux = -1; *alt = 0; *DryRun = false;
 
   assert(execution_sequence.size() == prefix_state.size());
-  // ////
-  // if (prefix_idx > 0)
-  //   llvm::outs() << "[prefix_idx,states_id] = [" << (prefix_idx-1) << "," << prefix_state[prefix_idx-1] << "] replay_point=" << replay_point << "\n";
-  // ////
   if (is_replaying()) {
     // llvm::outs() << "REPLAYING: ";
     replay_schedule(proc);
@@ -858,31 +854,6 @@ std::string ViewEqTraceBuilder::Event::to_string() const {
   return ("[" + std::to_string(get_pid()) + ":" + std::to_string(get_id()) + "] (" + type_to_string() + ":thread" + std::to_string(object.first) + ")");
 }
 
-ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::prefix(IID<IPid> ev) {
-  assert(this->has(ev));
-  sequence_iterator it = find(ev);
-  std::vector<IID<IPid>> pre(begin(), it);
-  Sequence sprefix(pre, threads);
-  assert(!sprefix.has(ev));
-  return sprefix;
-}
-
-ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::suffix(IID<IPid> ev) {
-  assert(this->has(ev));
-  sequence_iterator it = find(ev);
-  std::vector<IID<IPid>> suf(it+1, end());
-  Sequence ssuffix(suf, threads);
-  return ssuffix;
-}
-
-ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::suffix(ViewEqTraceBuilder::Sequence &seq) {
-  sequence_iterator it = find(*(seq.end()-1));
-  std::vector<IID<IPid>> suf(it+1, end());
-  
-  Sequence ssuffix(suf, threads);
-  return ssuffix;
-}
-
 std::unordered_map<IID<IPid>, int> ViewEqTraceBuilder::Sequence::read_value_map() {
   std::unordered_map<IID<IPid>, int> reads; // read -> value
   std::unordered_map<unsigned, std::unordered_map<unsigned, int>> writes; // object -> last updated value
@@ -902,19 +873,6 @@ std::unordered_map<IID<IPid>, int> ViewEqTraceBuilder::Sequence::read_value_map(
   }
 
   return reads;
-}
-
-std::unordered_map<unsigned, std::unordered_map<unsigned, int>> ViewEqTraceBuilder::Sequence::mem_map() {
-  std::unordered_map<unsigned, std::unordered_map<unsigned, int>> mem;
-  
-  for (auto it = begin(); it != end(); it++) {
-    Event ite = threads->at(it->get_pid())[it->get_index()];
-    if (ite.is_write()) {
-      mem[ite.object.first][ite.object.second] = ite.value;
-    }
-  }
-
-  return mem;
 }
 
 bool ViewEqTraceBuilder::Sequence::VA_isprefix(Sequence s) {
@@ -945,26 +903,6 @@ bool ViewEqTraceBuilder::Sequence::VA_isprefix(Sequence s) {
   return true;
 }
 
-bool ViewEqTraceBuilder::Sequence::VA_weakly_equivalent(Sequence s) {
-  if ((*this) == s) return true; // this and s are equiavelent wihtout needing view-adjustment
-  
-  std::unordered_map<IID<IPid>, int> thisreads, sreads; // read -> value
-  thisreads = read_value_map();
-  sreads = s.read_value_map();
-
-  if (thisreads.size() != sreads.size()) return false; // no of reads must be same for being equivalent
-
-  for (auto it = thisreads.begin(); it != thisreads.end(); it++) {
-    if (sreads.find(it->first) != sreads.end()) { // read of this exists in s as well
-      if (it->second != sreads[it->first]) { // values must match
-        return false;
-      }
-    } 
-  }
-
-  return true;
-}
-
 bool ViewEqTraceBuilder::Sequence::VA_equivalent(Sequence s) {
   if ((*this) == s) return true; // this and s are equiavelent wihtout needing view-adjustment
   
@@ -986,20 +924,19 @@ bool ViewEqTraceBuilder::Sequence::VA_equivalent(Sequence s) {
 }
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::VA_suffix(Sequence prefix) {
-  Sequence suffix(threads);
+  assert(prefix.VA_prefix(*this)); // 'prefix' is a VA prefix of *this (suffix is only called after this check)
+  Sequence suffix = *this;
 
-  sequence_iterator it = begin();
-  for (auto pit = prefix.begin(); pit != prefix.end(); it++) {
-    if ((*it) == (*pit)) { // VA prefix not a part of the suffix
-      pit++; 
+  /* since wkt 'prefix' is a prefix of *this, thus we only need to remove
+     the events of 'prefix' to get the suffix
+  */
+  for (auto it = suffix.begin(); it != suffix.end();) {
+    if (prefix.has(*it)) {
+      it = suffix.erase(it);
       continue;
     }
 
-    suffix.push_back(*it);
-  }
-
-  for (auto sit = it; sit != end(); sit++) {
-    suffix.push_back(*sit);
+    it++;
   }
 
   return suffix;
@@ -1065,17 +1002,6 @@ bool ViewEqTraceBuilder::Sequence::isprefix(ViewEqTraceBuilder::Sequence &seq){
     if(events[i] != seq.events[i]) return false;
   }
   return true;
-}
-
-ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::commonPrefix(ViewEqTraceBuilder::Sequence &seq){
-  int i = 0;
-  for( ; i < size() && i < seq.size(); i++){
-    if(events[i] != seq.events[i]) break;
-  }
-  std::vector<IID<IPid>> cPre(events.begin(), events.begin() + i);
-  Sequence comPrefix(cPre, threads);
-  assert(comPrefix.isprefix(*this) && comPrefix.isprefix(seq));
-  return comPrefix;
 }
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::po_prefix_master(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end){ 
@@ -1670,8 +1596,6 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
         break;
       }
 
-      // if ((l->forbidden == sl->forbidden && l->merged_sequence.VA_weakly_equivalent(sl->merged_sequence)) ||
-      //   l->merged_sequence.VA_equivalent(sl->merged_sequence)) { // new lead has the same view as an existing lead
       if (l->merged_sequence.VA_equivalent(sl->merged_sequence)) { // new lead has the same view as an existing lead
         // llvm::outs() << "VAequivalent " << sl->merged_sequence.to_string() << " and " << l->merged_sequence.to_string() << "\n";
         if (!sl->is_done) {
