@@ -283,7 +283,7 @@ protected:
 
     class Lead {
     private:
-        // [snj]: required by cmerge function
+        // [snj]: required by consistent_merge function
         std::tuple<Sequence, Sequence, Sequence> join(Sequence &primary, Sequence &other, IID<IPid> delim, Sequence &joined);
         // [snj]: projects tuple projectsions on the thress sequqnces respectively
         void project(std::tuple<Sequence, Sequence, Sequence> &triple, Sequence &seq1, Sequence &seq2, Sequence &seq3);
@@ -292,13 +292,13 @@ protected:
         Sequence constraint;              // sequence from previous trace to be maintained
         Sequence start;                   // new sequence to be explore to get the intended (read,value) pair
         SOPFormula forbidden;             // (read,value) pairs that must not be explored
-        Sequence merged_sequence;         // cmerge(start, constraint) sequence to explore while maintaining constraint
+        Sequence merged_sequence;         // consistent_merge(start, constraint) sequence to explore while maintaining constraint
         bool is_done = false;             // whether the lead has been explored
 
         Lead() {}
         Lead(Sequence c, Sequence s, SOPFormula f) {
             constraint = c; start = s; forbidden = f;
-            merged_sequence = cmerge(s, c);
+            merged_sequence = consistent_merge(s, c);
         }
         Lead(Sequence s, SOPFormula f) {
             start = s; forbidden = f;
@@ -310,7 +310,7 @@ protected:
         
         // [snj]: consistent merge, merges 2 sequences such that all read events maitain their sources
         //          i.e, reads-from relation remain unchanged
-        Sequence cmerge(Sequence &primary_seq, Sequence &other_seq);
+        Sequence consistent_merge(Sequence &primary_seq, Sequence &other_seq);
         std::string to_string();
     };
 

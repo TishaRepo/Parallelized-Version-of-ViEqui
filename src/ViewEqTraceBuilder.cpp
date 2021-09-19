@@ -243,23 +243,23 @@ void ViewEqTraceBuilder::forward_analysis(Event event, SOPFormula& forbidden) {
   SOPFormula fui_all = forbidden;
   for (auto it = ui.begin(); it != ui.end(); it++) {
     if (threads[(*it).get_pid()][(*it).get_index()].value == mem[event.object.first][event.object.second]) 
-      continue; // current value is not forbidden 
+      continue; // ui value = current value and current value is not forbidden 
     fui_all || std::make_pair(event.iid, threads[(*it).get_pid()][(*it).get_index()].value);
   }
 
-  uiseq.push_front(event.iid);
+  uiseq.push_front(event.iid); // first forward lead : (read event).(sequence of ui)
   std::vector<Lead> L;
 
   if (!(forbidden.check_evaluation(std::make_pair(event.iid, mem[event.object.first][event.object.second])) == RESULT::TRUE))
     L.push_back(Lead(empty_sequence, uiseq, fui_all));
-
+   
   for (auto it = ui.begin(); it != ui.end(); it++) {
     if (get_event(*it).value == mem[event.object.first][event.object.second]) 
-      continue;
+      continue; // ui value = curretn value, this value already seen in first forward lead
 
-    Sequence start = uiseq;
-    start.erase((*it));
-    start.push_front((*it));
+    Sequence start = uiseq;  // start = read.ui1.ui2...it...uin
+    start.erase((*it));      // start = read.ui1.ui2...uin
+    start.push_front((*it)); // start = it.read.ui1.ui2...uin
 
     SOPFormula fui = forbidden; 
     fui || (std::make_pair(event.iid, mem[event.object.first][event.object.second]));
@@ -329,7 +329,7 @@ void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula& forbidd
     SOPFormula inF = states[event_index].leads[states[event_index].alpha].forbidden;
     
     inF || fui; inF || fei;
-    L[event_index].push_back(Lead(constraint, start, inF));  
+    L[event_index].push_back(Lead(constraint, start, inF));
   }
 }
 
@@ -1106,7 +1106,7 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1,
 
   if (included_e1) return po_pre;
   
-  // if !included_e1 then include at appropriate location
+  // if !included_e1 then include at appropriate location ie after any write/read of same object but diff value
   Event event = threads->at(e1.get_pid())[e1.get_index()];
   if(event.is_write()) {
     bool conflict = false;
@@ -1127,8 +1127,8 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1,
     }
     po_pre.push_at(loc, e1);
   }
-  else {
-    if (has_e1_thread_events) { // events po after e1 are in po_pre then its not prefix of e1
+  else { // event.is_read()
+    if (has_e1_thread_events) { // events po after e1 are in 'po_pre' then e1 cannot be added later for reading, infeasible (read, value) pair
       Sequence empty_sequence(threads); 
       return empty_sequence;
     }
@@ -1152,7 +1152,7 @@ ViewEqTraceBuilder::Lead::join(Sequence &primary, Sequence &other, IID<IPid> del
 {
   std::vector<Thread>* threads = primary.threads;
   typedef std::tuple<Sequence, Sequence, Sequence> return_type;
-  
+
   if (primary.empty()) {
     joined.concatenate(other);
     primary.clear();
@@ -1220,8 +1220,15 @@ ViewEqTraceBuilder::Lead::join(Sequence &primary, Sequence &other, IID<IPid> del
             return std::make_tuple(primary, other, joined);
 
           project(triple, other, primary, joined);
-          if (!joined.has(er)) joined.push_back(er); 
-          if (!joined.has(e)) joined.push_back(e); 
+          if (!joined.has(er)) { 
+            assert(other.head() == er);
+            other.pop_front();
+            joined.push_back(er);
+          }
+          if (!joined.has(e)) {
+            primary.pop_front();
+            joined.push_back(e);
+          }
         }
       }
       else { // there does not exist a read er that is not in primary s.t. obj(e) == obj(er)
@@ -1272,7 +1279,7 @@ ViewEqTraceBuilder::Lead::join(Sequence &primary, Sequence &other, IID<IPid> del
   return join(primary, other, delim, joined);
 }
 
-ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Lead::cmerge(Sequence &primary_seq, Sequence &other_seq) {
+ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Lead::consistent_merge(Sequence &primary_seq, Sequence &other_seq) {
   std::vector<Thread>* threads = primary_seq.threads;
   
   assert(!primary_seq.empty());
@@ -1602,7 +1609,7 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
           rem.insert(sl - states[state].leads.begin());
           SOPFormula f = l->forbidden;
           f || sl->forbidden;
-            add.push_back(Lead(sl->constraint, sl->start, f));
+          add.push_back(Lead(sl->constraint, sl->start, f));
         }
 
         combined_with_existing = true;
@@ -1615,7 +1622,7 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
           rem.insert(sl - states[state].leads.begin());
           SOPFormula f = l->forbidden;
           f && sl->forbidden;
-            add.push_back(Lead(sl->constraint, sl->start, f));
+          add.push_back(Lead(sl->constraint, sl->start, f));
         }
 
         combined_with_existing = true;
@@ -1636,12 +1643,12 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
     l++;
   }
 
-  ////
+  // //
   // llvm::outs() << "remaining state " << state << " leads:\n";
   // for (auto it = states[state].leads.begin(); it != states[state].leads.end(); it++) {
   //   llvm::outs() << it->to_string() << "\n";
   // }
-  ////
+  // //
 
   for (auto it = rem.begin(); it != rem.end(); it++) {
     // llvm::outs() << "removing index=" << (*it) << ": " << (states[state].leads.begin() + (*it))->to_string() << "\n";
@@ -1649,12 +1656,12 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
   }
 
   for (auto it = add.begin(); it != add.end(); it++) {
-    // llvm::outs() << "adding lead: " << it->to_string() << "\n";
+    // llvm::outs() << "1.adding lead: " << it->to_string() << "\n";
     states[state].leads.push_back(*it);
   }
 
   for (auto it = L.begin(); it != L.end(); it++) {
-    // llvm::outs() << "adding lead: " << it->to_string() << "\n";
+    // llvm::outs() << "2.adding lead: " << it->to_string() << "\n";
     states[state].leads.push_back(*it);
   }
 
