@@ -4331,6 +4331,7 @@ void Interpreter::run()
       ExecutionContext &SF = ECStack()->back(); // Current stack frame
       Instruction &I = *SF.CurInst;
 
+      // llvm::outs() << "[" << p++ << "]Peeking: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
       if (isGlobalLoad(I) || isGlobalStore(I)) {
         visit(I); // visitLoadInst, visitStoreInst modified to peek and enable event but not execute
       }

@@ -263,7 +263,6 @@ void SOPFormula::operator||(std::pair<IID<IPid>, int> term) {
 }
 
 void SOPFormula::operator&&(SOPFormula &formula) {
-    llvm::outs() << "in &&, is formula.result=FALSE? " << (formula.result == RESULT::FALSE) << "\n";
     if (formula.result == RESULT::TRUE) return; // formula && TRUE = formula
     if (result == RESULT::FALSE) return; // this already FALSE, will remain FALSE after && with anything 
 
