@@ -1548,9 +1548,15 @@ bool ViewEqTraceBuilder::forward_lead(std::unordered_map<int, std::vector<Lead>>
     assert(fwd_state >= 0 && fwd_state < states.size());
     
     SOPFormula f = (lead.forbidden);
-    f || states[fwd_state].forbidden; // combine forbidden with forbidden of the state after current start
-    
-    Lead fwd_lead(states[fwd_state].alpha_sequence(), (lead.merged_sequence).VA_suffix(states[state].alpha_sequence()), f);
+    Sequence fwd_const(&threads);
+    if (fwd_state == current_state) { // treat it as a forward analysis lead
+      f || forbidden; // combine with current forbidden
+    }
+    else {
+      f || states[fwd_state].forbidden; // combine forbidden with forbidden of the state after current start
+      fwd_const = states[fwd_state].alpha_sequence();
+    }
+    Lead fwd_lead(fwd_const, (lead.merged_sequence).VA_suffix(states[state].alpha_sequence()), f);
     forward_state_leads[fwd_state].push_back(std::move(fwd_lead));
 
     return true;
