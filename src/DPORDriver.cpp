@@ -191,7 +191,7 @@ Trace *DPORDriver::run_once(TraceBuilder &TB, llvm::Module *mod,
   std::unique_ptr<DPORInterpreter> EE(create_execution_engine(TB,mod,conf));
 
   // Run main.
-  /* snj: 
+  /* [snj]: 
   
     llvm::ExecutionEngine::runFunctionAsMain(*function, (argc,argv), env_var)
     further calls,
@@ -205,7 +205,7 @@ Trace *DPORDriver::run_once(TraceBuilder &TB, llvm::Module *mod,
 
     llvm::interpreter::runFunction(*function, (argc,argv), env_var)
     further calls,
-    llvm::interpreter::run() @ Execution.cpp:line no. 4121
+    llvm::interpreter::run() @ Execution.cpp
   */
   EE->runFunctionAsMain(mod->getFunction("main"), conf.argv, 0);
 

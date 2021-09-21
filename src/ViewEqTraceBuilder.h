@@ -346,6 +346,9 @@ protected:
         std::string print_leads();
     };
 
+    /* stream for debug printing on stdout */
+    llvm::raw_ostream &out = llvm::outs();
+
     /* The index into prefix corresponding to the last event that was
     * scheduled. Has the value -1 when no events have been scheduled.
     */

@@ -10,6 +10,8 @@ ViewEqTraceBuilder::ViewEqTraceBuilder(const Configuration &conf) : TSOPSOTraceB
   replay_point = -1;
   prefix_idx = 0;
   execution_sequence.update_threads(&threads);
+  empty_sequence.update_threads(&threads);
+  empty_sequence.clear();
 }
 
 ViewEqTraceBuilder::~ViewEqTraceBuilder() {}
@@ -20,13 +22,13 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun) {
 
   assert(execution_sequence.size() == prefix_state.size());
   if (is_replaying()) {
-    // llvm::outs() << "REPLAYING: ";
+    // out << "REPLAYING: ";
     replay_schedule(proc);
     return true;
   }
 
   if (at_replay_point()) {
-    // llvm::outs() << "AT REPLAY PT: \n";
+    // out << "AT REPLAY PT: \n";
     
     current_state = prefix_state[prefix_idx];
     assert(states[current_state].has_unexplored_leads());
@@ -53,11 +55,15 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun) {
   }
 
   // [snj]: Explore Algo function
+  // out << "next RW\n";
   make_new_state(); 
+  // out << "made new state\n";
   compute_new_leads(); 
+  // out << "made new leads\n";
   
   if (states[current_state].has_unexplored_leads()) { // [snj]: TODO should be assert not check
     execute_next_lead();
+    // out << "executed lead\n";
     // [snj]: execute current event from Interpreter::run() in Execution.cpp
     *proc = current_thread;
     return true;
@@ -148,19 +154,24 @@ void ViewEqTraceBuilder::make_new_state() {
 
 void ViewEqTraceBuilder::compute_new_leads() {
   if (to_explore.empty()) {
+    // out << "empty to explore\n";
     IID<IPid> next_event;
     std::pair<bool, IID<IPid>> enabled_read_of_RW = enabaled_RWpair_read();
     if (enabled_read_of_RW.first == true) {
+      // out << "got enabled RW pair\n";
       next_event = enabled_read_of_RW.second; // read event of RW pair (event removed from enabled)
       analyse_unexplored_influenecers(next_event);
     }
     else { //no read of RW-pair available in enabled
+      // out << "NO enabled RW pair\n";
       next_event = Enabled.front(); // pick any event from enabled
     }
 
     update_leads(next_event, forbidden);
+    // out << "updated leads\n";
     
     if (!states[current_state].has_unexplored_leads()) {
+      // out << "no unexplored leads\n";
       Sequence seq(next_event, &threads);
       Lead l(seq, forbidden); 
       consistent_union(current_state, l);
@@ -169,6 +180,7 @@ void ViewEqTraceBuilder::compute_new_leads() {
     }
   }
   else { // has a lead to explore
+    // out << "has to_explore\n";
     states[current_state].executing_alpha_lead = true;
     states[current_state].lead_head_execution_prefix = alpha_head;
 
@@ -180,13 +192,13 @@ void ViewEqTraceBuilder::compute_new_leads() {
 
 void ViewEqTraceBuilder::execute_next_lead() {
   // ////
-  // llvm::outs() << "has unexplored leads\n";
+  // out << "has unexplored leads\n";
   // // [snj]: TODO remove - only for debug
-  // llvm::outs() << "unexplored leads:\n";
+  // out << "unexplored leads:\n";
   // std::vector<Lead> unexl = states[current_state].unexplored_leads();
   // for (auto it = unexl.begin(); it != unexl.end(); it++) {
-  //   llvm::outs() << "lead: ";
-  //   llvm::outs() << (*it).to_string() << "\n";
+  //   out << "lead: ";
+  //   out << (*it).to_string() << "\n";
   // }
   // ////
   Lead next_lead = states[current_state].next_unexplored_lead();
@@ -229,16 +241,21 @@ void ViewEqTraceBuilder::execute_next_lead() {
 
 void ViewEqTraceBuilder::analyse_unexplored_influenecers(IID<IPid> read_event) {
   std::unordered_set<IID<IPid>> ui = unexploredInfluencers(get_event(read_event), forbidden);
+  // out << "got ui\n";
 
   for (auto it = ui.begin(); it != ui.end(); it++) {
     Event ui_event = threads[it->get_pid()][it->get_index()];
+    // out << "updating lead for ui: " << (*it) << "\n";
     update_leads(ui_event, forbidden);
+    // out << "updated lead for ui: " << (*it) << "\n";
   }
 }
 
 void ViewEqTraceBuilder::forward_analysis(Event event, SOPFormula& forbidden) {
+  // out << "fwd_analysis\n";
   std::unordered_set<IID<IPid>> ui = unexploredInfluencers(event, forbidden);
   Sequence uiseq(ui, &threads);
+  // out << "uiseq=" << uiseq.to_string() << "\n";
 
   SOPFormula fui_all = forbidden;
   for (auto it = ui.begin(); it != ui.end(); it++) {
@@ -246,6 +263,7 @@ void ViewEqTraceBuilder::forward_analysis(Event event, SOPFormula& forbidden) {
       continue; // ui value = current value and current value is not forbidden 
     fui_all || std::make_pair(event.iid, threads[(*it).get_pid()][(*it).get_index()].value);
   }
+  // out << "fui_all=" << fui_all.to_string() << "\n";
 
   uiseq.push_front(event.iid); // first forward lead : (read event).(sequence of ui)
   std::vector<Lead> L;
@@ -254,6 +272,7 @@ void ViewEqTraceBuilder::forward_analysis(Event event, SOPFormula& forbidden) {
     L.push_back(Lead(empty_sequence, uiseq, fui_all));
    
   for (auto it = ui.begin(); it != ui.end(); it++) {
+    // out << "in loop for ui=" << (*it) << "\n";
     if (get_event(*it).value == mem[event.object.first][event.object.second]) 
       continue; // ui value = curretn value, this value already seen in first forward lead
 
@@ -267,11 +286,14 @@ void ViewEqTraceBuilder::forward_analysis(Event event, SOPFormula& forbidden) {
       if (it2 != it)
         fui || std::make_pair(event.iid, get_event((*it2)).value);
     }
+    // out << "in loop fui=" << fui.to_string() << "\n";
 
     Lead l(empty_sequence, start, fui);
     L.push_back(l);
+    // out << "in loop l=" << l.to_string() << "\n";
   }
 
+  // out << "calling cunion\n";
   consistent_union(current_state, L); // add leads at current state
 }
 
@@ -304,6 +326,8 @@ void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula& forbidd
 
     int event_index = prefix_state[es_idx];
     Sequence start = execution_sequence.backseq((*it), event.iid);
+    if (start.empty()) // cannot form view-start for (*it --rf--> event)
+      continue;
 
     if (states[event_index].executing_alpha_lead) { // part of of alpha, alpha cannot be modified, move to head of alpha      
       Sequence alpha_prefix(execution_sequence[states[event_index].lead_head_execution_prefix], &threads);
@@ -335,8 +359,10 @@ void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula& forbidd
 
 void ViewEqTraceBuilder::backward_analysis_write(Event event, SOPFormula& forbidden, std::unordered_map<int, std::vector<Lead>>& L) {
   std::unordered_set<IID<IPid>> ew = exploredWitnesses(event, forbidden);
+  // out << "got ew for " << event.iid.to_string() << "\n";
 
   for (auto it = ew.begin(); it != ew.end(); it++) {
+    // out << "in loop for ew=" << (*it) << "\n";
     int it_val = get_event((*it)).value;
     if (it_val == event.value)
       continue;
@@ -346,6 +372,8 @@ void ViewEqTraceBuilder::backward_analysis_write(Event event, SOPFormula& forbid
 
     int event_index = prefix_state[execution_sequence.indexof((*it))];
     Sequence start = execution_sequence.backseq((*it), event.iid);
+    if (start.empty()) // cannot form view start for (event --rf--> *it)
+      continue;
 
     if (states[event_index].executing_alpha_lead) { // part of of alpha, alpha cannot be modified, move to head of alpha      
       Sequence alpha_prefix(execution_sequence[states[event_index].lead_head_execution_prefix], &threads);
@@ -361,13 +389,17 @@ void ViewEqTraceBuilder::backward_analysis_write(Event event, SOPFormula& forbid
       start = alpha_prefix;
     }
 
+    // out << "event_index=" << event_index << ", current_state=" << current_state << "\n";
     Sequence constraint = states[event_index].alpha_sequence();
     SOPFormula inF = states[event_index].leads[states[event_index].alpha].forbidden;
     (inF || std::make_pair((*it),it_val));
     L[event_index].push_back(Lead(constraint, start, inF));
+    // out << "const=" << constraint.to_string() << ", start=" << start.to_string() << "\n";
+    // out << "lead=" << (Lead(constraint, start, inF)).to_string() << "\n";
 
     // add to the list of EW reads values covered
     covered_read_values[(*it)].push_back(event.value);
+    // out << "added" << event.value << "to covered read values of " << (*it) << "\n";
   }
 }
 
@@ -375,9 +407,11 @@ void ViewEqTraceBuilder::backward_analysis(Event event, SOPFormula& forbidden) {
   std::unordered_map<int, std::vector<Lead>> L; // map of execution index -> leads to be added at state[execution index]
 
   if (event.is_read()) {
+    // out << "calling backward analysis read\n";
     backward_analysis_read(event, forbidden, L);
   }
-  else if (event.is_write())  {
+  else if (event.is_write()) {
+    // out << "calling backward analysis write\n";
     backward_analysis_write(event, forbidden, L);
   }
 
@@ -390,9 +424,11 @@ void ViewEqTraceBuilder::update_leads(Event event, SOPFormula& forbidden) {
   assert(event.is_read() || event.is_write());
   
   if (event.is_read()) {
+    // out << "calling forward analysis\n";
     forward_analysis(event, forbidden); // add leads at current state
   }
   
+  // out << "calling backward analysis\n";
   backward_analysis(event, forbidden); // add leads at previous states
 }
 
@@ -451,7 +487,7 @@ void ViewEqTraceBuilder::metadata(const llvm::MDNode *md)
 
 bool ViewEqTraceBuilder::record_symbolic(SymEv event)
 {
-  llvm::outs() << "in record symbolic\n";
+  out << "in record symbolic\n";
   assert(false);
   return false;
 }
@@ -507,6 +543,8 @@ bool ViewEqTraceBuilder::reset() {
   last_md = 0; // [snj]: TODO ??
   reset_cond_branch_log();
 
+  out.flush();
+
   return true;
 }
 
@@ -516,7 +554,7 @@ IID<CPid> ViewEqTraceBuilder::get_iid() const{
 }
 
 void ViewEqTraceBuilder::refuse_schedule() {
-  // llvm::outs() << "refuse schedule\n";
+  // out << "refuse schedule\n";
   execution_sequence.pop_back();
   prefix_state.pop_back();
   prefix_idx--;
@@ -741,50 +779,54 @@ Trace* ViewEqTraceBuilder::get_trace() const {
 //  - Load(Global(object_id)(block_size))(Event::value)
 //  - Store(Global(object_id)(block_size),value)(Event::value)
 void ViewEqTraceBuilder::debug_print() const {
-  // llvm::outs() << "Debug_print: execution_sequence.size()=" << execution_sequence.size() << "\n";
+  // out.SetUnbuffered(); // flush every write immediately, no bufferring
+
+  // out << "Debug_print: execution_sequence.size()=" << execution_sequence.size() << "\n";
   for (int i = 0; i < execution_sequence.size(); i++) {
     int thread = execution_sequence[i].get_pid();
     Event event = threads[thread][execution_sequence[i].get_index()];
    
-    if (i < 10) llvm::outs() << " [" << i << "]: "; 
-    else llvm::outs() << "[" << i << "]: ";
+    if (i < 10) out << " [" << i << "]: "; 
+    else out << "[" << i << "]: ";
 
     if (event.symEvent.size() < 1) {
-      llvm::outs() << "--\n";
+      out << "--\n";
       continue;
     }
     if (event.sym_event().addr().addr.block.is_stack()) {
-      llvm::outs() << "Stack Operation \n";
+      out << "Stack Operation \n";
       continue;
     }
     if (event.sym_event().addr().addr.block.is_heap()) {
-      llvm::outs() << "Heap Operation \n";
+      out << "Heap Operation \n";
       continue;
     }
-    llvm::outs() << event.to_string() << " = ";
-    llvm::outs() << event.sym_event().to_string() << "\n";
+    out << event.to_string() << " = ";
+    out << event.sym_event().to_string() << "\n";
+
+    if (i==100) out.flush();
   }
 } 
 
 bool ViewEqTraceBuilder::compare_exchange(const SymData &sd, const SymData::block_type expected, bool success)
-                                                    {llvm::outs() << "[snj]: cmp_exch being invoked!!\n"; assert(false); return false;}
-bool ViewEqTraceBuilder::sleepset_is_empty() const{llvm::outs() << "[snj]: sleepset_is_empty being invoked!!\n"; assert(false); return true;}
-bool ViewEqTraceBuilder::check_for_cycles(){llvm::outs() << "[snj]: check_for_cycles being invoked!!\n"; assert(false); return false;}
-bool ViewEqTraceBuilder::mutex_lock(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_lock being invoked!!\n"; assert(false); return true;}
-bool ViewEqTraceBuilder::mutex_lock_fail(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_lock_fail being invoked!!\n"; assert(false); return false;}
-bool ViewEqTraceBuilder::mutex_trylock(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_trylock being invoked!!\n"; assert(false); return false;}
-bool ViewEqTraceBuilder::mutex_unlock(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_unlock being invoked!!\n"; assert(false); return false;}
-bool ViewEqTraceBuilder::mutex_init(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_init being invoked!!\n"; assert(false); return false;}
-bool ViewEqTraceBuilder::mutex_destroy(const SymAddrSize &ml){llvm::outs() << "[snj]: mutex_ destroy being invoked!!\n"; assert(false); return false;}
-bool ViewEqTraceBuilder::cond_init(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_init being invoked!!\n"; assert(false); return false;}
-bool ViewEqTraceBuilder::cond_signal(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_signal being invoked!!\n"; assert(false); return false;}
-bool ViewEqTraceBuilder::cond_broadcast(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_broadcast being invoked!!\n"; assert(false); return false;}
+                                                    {out << "[snj]: cmp_exch being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::sleepset_is_empty() const{out << "[snj]: sleepset_is_empty being invoked!!\n"; assert(false); return true;}
+bool ViewEqTraceBuilder::check_for_cycles(){out << "[snj]: check_for_cycles being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::mutex_lock(const SymAddrSize &ml){out << "[snj]: mutex_lock being invoked!!\n"; assert(false); return true;}
+bool ViewEqTraceBuilder::mutex_lock_fail(const SymAddrSize &ml){out << "[snj]: mutex_lock_fail being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::mutex_trylock(const SymAddrSize &ml){out << "[snj]: mutex_trylock being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::mutex_unlock(const SymAddrSize &ml){out << "[snj]: mutex_unlock being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::mutex_init(const SymAddrSize &ml){out << "[snj]: mutex_init being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::mutex_destroy(const SymAddrSize &ml){out << "[snj]: mutex_ destroy being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::cond_init(const SymAddrSize &ml){out << "[snj]: cond_init being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::cond_signal(const SymAddrSize &ml){out << "[snj]: cond_signal being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::cond_broadcast(const SymAddrSize &ml){out << "[snj]: cond_broadcast being invoked!!\n"; assert(false); return false;}
 bool ViewEqTraceBuilder::cond_wait(const SymAddrSize &cond_ml,
-                        const SymAddrSize &mutex_ml){llvm::outs() << "[snj]: cond_wait being invoked!!\n"; assert(false); return false;}
+                        const SymAddrSize &mutex_ml){out << "[snj]: cond_wait being invoked!!\n"; assert(false); return false;}
 bool ViewEqTraceBuilder::cond_awake(const SymAddrSize &cond_ml,
-                        const SymAddrSize &mutex_ml){llvm::outs() << "[snj]: cond_awake being invoked!!\n"; assert(false); return false;}
-int ViewEqTraceBuilder::cond_destroy(const SymAddrSize &ml){llvm::outs() << "[snj]: cond_destroy being invoked!!\n"; assert(false); return false;}
-bool ViewEqTraceBuilder::register_alternatives(int alt_count){llvm::outs() << "[snj]: register_alternatives being invoked!!\n"; assert(false); return false;}
+                        const SymAddrSize &mutex_ml){out << "[snj]: cond_awake being invoked!!\n"; assert(false); return false;}
+int ViewEqTraceBuilder::cond_destroy(const SymAddrSize &ml){out << "[snj]: cond_destroy being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::register_alternatives(int alt_count){out << "[snj]: register_alternatives being invoked!!\n"; assert(false); return false;}
 
 void ViewEqTraceBuilder::Event::make_spawn() {
   type = SPAWN;
@@ -1099,7 +1141,7 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1,
   bool has_e1_thread_events = po_pre_return.first.second;
   ViewEqTraceBuilder::Sequence po_pre = po_pre_return.second;
   po_pre.push_back(e2);
-
+  
   if (e1.get_pid() == 0 || e2.get_pid() == 0) { // event from thread zero ie init write event
     return po_pre; // init event is not added to backseq
   }
@@ -1129,8 +1171,8 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1,
   }
   else { // event.is_read()
     if (has_e1_thread_events) { // events po after e1 are in 'po_pre' then e1 cannot be added later for reading, infeasible (read, value) pair
-      Sequence empty_sequence(threads); 
-      return empty_sequence;
+      po_pre.clear();
+      return po_pre;
     }
 
     po_pre.push_back(e1);
@@ -1287,6 +1329,10 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Lead::consistent_merge(Sequence
 
   if (primary_seq.last().get_pid() == 0) return primary_seq; // lead created for assert check in master thread
 
+  Sequence original_primary_seq = primary_seq;
+  Sequence original_other_seq   = other_seq;
+
+  // pair(bool has_conglicting_pair , pair(conflicting event 1, conflicting event2))
   std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> conflictingRWpair = primary_seq.conflicts_with(other_seq, true);
   while (conflictingRWpair.first) { // primary_seq and other_seq conflict
     if (primary_seq.view_adjust(conflictingRWpair.second.first, conflictingRWpair.second.second)) { // other_seq adjusted ensuring same view of reads
@@ -1296,8 +1342,11 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Lead::consistent_merge(Sequence
       conflictingRWpair = primary_seq.conflicts_with(other_seq, true);
     }
     else { // conflicting and cannot be adjusted
-      Sequence dummy(threads);
-      return dummy;
+      primary_seq = original_primary_seq;
+      other_seq   = original_other_seq;
+      
+      original_primary_seq.clear(); // dummy seq for returning empty sequence
+      return original_primary_seq;
     }
   }
   
@@ -1550,6 +1599,7 @@ bool ViewEqTraceBuilder::forward_lead(std::unordered_map<int, std::vector<Lead>>
     SOPFormula f = (lead.forbidden);
     Sequence fwd_const(&threads);
     if (fwd_state == current_state) { // treat it as a forward analysis lead
+    // [snj]: TODO must it reach here?
       f || forbidden; // combine with current forbidden
     }
     else {
@@ -1610,7 +1660,7 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
       }
 
       if (l->merged_sequence.VA_equivalent(sl->merged_sequence)) { // new lead has the same view as an existing lead
-        // llvm::outs() << "VAequivalent " << sl->merged_sequence.to_string() << " and " << l->merged_sequence.to_string() << "\n";
+        // out << "VAequivalent " << sl->merged_sequence.to_string() << " and " << l->merged_sequence.to_string() << "\n";
         if (!sl->is_done) {
           rem.insert(sl - states[state].leads.begin());
           SOPFormula f = l->forbidden;
@@ -1623,7 +1673,7 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
       }
 
       if (sl->merged_sequence != states[state].alpha_sequence() && sl->merged_sequence.VA_isprefix(l->merged_sequence)) {
-        // llvm::outs() << "prefix " << sl->merged_sequence.to_string() << " of " << l->merged_sequence.to_string() << "\n";
+        // out << "prefix " << sl->merged_sequence.to_string() << " of " << l->merged_sequence.to_string() << "\n";
         if (!sl->is_done) {
           rem.insert(sl - states[state].leads.begin());
           SOPFormula f = l->forbidden;
@@ -1650,24 +1700,24 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
   }
 
   // //
-  // llvm::outs() << "remaining state " << state << " leads:\n";
+  // out << "remaining state " << state << " leads:\n";
   // for (auto it = states[state].leads.begin(); it != states[state].leads.end(); it++) {
-  //   llvm::outs() << it->to_string() << "\n";
+  //   out << it->to_string() << "\n";
   // }
   // //
 
   for (auto it = rem.begin(); it != rem.end(); it++) {
-    // llvm::outs() << "removing index=" << (*it) << ": " << (states[state].leads.begin() + (*it))->to_string() << "\n";
+    // out << "removing index=" << (*it) << ": " << (states[state].leads.begin() + (*it))->to_string() << "\n";
     states[state].leads.erase(states[state].leads.begin() + (*it));
   }
 
   for (auto it = add.begin(); it != add.end(); it++) {
-    // llvm::outs() << "1.adding lead: " << it->to_string() << "\n";
+    // out << "1.adding lead: " << it->to_string() << "\n";
     states[state].leads.push_back(*it);
   }
 
   for (auto it = L.begin(); it != L.end(); it++) {
-    // llvm::outs() << "2.adding lead: " << it->to_string() << "\n";
+    // out << "2.adding lead: " << it->to_string() << "\n";
     states[state].leads.push_back(*it);
   }
 
