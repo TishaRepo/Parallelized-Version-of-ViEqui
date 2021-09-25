@@ -23,6 +23,7 @@ protected:
 
 public:
     typedef int IPid;
+    // typedef std::pair<unsigned, unsigned> Object; // [snj]: TODO use this
 
     ViewEqTraceBuilder(const Configuration &conf = Configuration::default_conf);
     virtual ~ViewEqTraceBuilder() override;
@@ -53,32 +54,53 @@ public:
     virtual bool is_replaying() const override;
             bool at_replay_point();
 
+    // get id of an event
     virtual IID<CPid> get_iid() const override;
-            Event get_event(IID<IPid> event_id) {return threads[event_id.get_pid()][event_id.get_index()];}
-            Event get_event(IID<IPid> event_id) const {return threads[event_id.get_pid()][event_id.get_index()];}
+    // get event from id
+    Event get_event(IID<IPid> event_id) {return threads[event_id.get_pid()][event_id.get_index()];}
+    Event get_event(IID<IPid> event_id) const {return threads[event_id.get_pid()][event_id.get_index()];}
 
+    // verbose information of a trace
     virtual Trace *get_trace() const override;
     virtual void debug_print() const override;
 
+    // current value in memory for an object
     int current_value(std::pair<unsigned, unsigned> obj);
+
+    // returns a list of dependent (R-W, W-R) and non-forbidden events for an event
     std::unordered_set<IID<IPid>> unexploredInfluencers(Event er, SOPFormula& f);
     std::unordered_set<IID<IPid>> exploredInfluencers(Event er, SOPFormula &f);
     std::unordered_set<IID<IPid>> exploredWitnesses(Event ew, SOPFormula &f);
     
+    // update leads at for a new encountered event (calls forward and backward analysis)
     void update_leads(IID<IPid> event_id, SOPFormula& forbidden) {update_leads(get_event(event_id), forbidden);}
     void update_leads(Event event, SOPFormula& forbidden);
     
+    // helper functions of backward analysis
+    // compute the start of the next lead and compute the state to add it to
+    int  union_state_start(int prefix_idx, IID<IPid> event, Sequence& start);
+    // check if an event in a start has different causal dependence in different extensions
+    bool indepenent_event_in_leads(int state, IID<IPid> event);
+    // check if the causal dependence all events in the lead start remains the same for all extensions
+    bool is_independent_EW_lead(Sequence& start);
+    // perform union of state leads with pending EW_leads
+    void add_EW_leads(int state);
+
+    // forward and backward analysis for builfing view-starts
     void forward_analysis(Event event, SOPFormula& forbidden);
     void backward_analysis_read(Event event, SOPFormula& forbidden, std::unordered_map<int, std::vector<Lead>>& L);
     void backward_analysis_write(Event event, SOPFormula& forbidden, std::unordered_map<int, std::vector<Lead>>& L);
     void backward_analysis(Event event, SOPFormula& forbidden);
 
+    // combining new leads with existing leads of a state
     void consistent_union(int state, Lead& l);
     void consistent_union(int state, std::vector<Lead>& L);
 
+    // forwardind a lead from a state S_i to a states S_{i+x} because alpha of S_i is a prefix of the lead
     bool forward_lead(std::unordered_map<int, std::vector<Lead>>& forward_state_leads, int state, Lead lead);
     void forward_suffix_leads(std::unordered_map<int, std::vector<Lead>>& forward_state_leads, int state, std::vector<Lead>& L);    
 
+    // basic steps followed bu scedule
     bool exists_non_memory_access(int * proc);
     void make_new_state();
     void compute_new_leads();
@@ -209,12 +231,14 @@ protected:
         void push_at(sequence_iterator loc, IID<IPid> event) {events.insert(loc, event);}
         void pop_back() {events.pop_back();} 
         void pop_front() {events.erase(events.begin());};
-        void erase(IID<IPid> event) {events.erase(events.begin() + indexof(event));}
+        void erase(IID<IPid> event) {events.erase(events.begin() + index_of(event));}
         sequence_iterator erase(sequence_iterator it) {return events.erase(it);}
         void erase(sequence_iterator begin, sequence_iterator end) {events.erase(begin, end);}
         void clear() {events.clear();}
+        
         bool has(IID<IPid> event) {return std::find(events.begin(), events.end(), event) != events.end();}
-        int  indexof(IID<IPid> event) {return (std::find(events.begin(), events.end(), event) - events.begin());}
+        int  index_of(IID<IPid> event) {return (std::find(events.begin(), events.end(), event) - events.begin());}
+        int  value_of(IID<IPid> event);
         sequence_iterator find(IID<IPid> event) {return std::find(events.begin(), events.end(), event);}
 
         Sequence subsequence(sequence_iterator begin, sequence_iterator end);
@@ -393,10 +417,17 @@ protected:
     // list of (thread id, next event) pairs
     std::vector<IID<IPid>> Enabled;
 
-    /* [snj]: a EW read that has been assigned a start for a value v from this execution 
+    /* [snj]: a EW read that has been assigned a start for a value v from 
+       its execution suffixes
        read -> set of values   
     */
     std::unordered_map<IID<IPid>, std::vector<int>>  covered_read_values;
+
+    /* [snj]: a set of leads that generated from different extensions
+       of a EW read for a value v.
+       state -> read -> value -> list of leads to get the rv pair (read,value)
+    */
+    std::unordered_map<int, std::unordered_map<IID<IPid>, std::unordered_map<int, std::vector<Lead>>>> EW_leads;
 
     /* object base -> object offset -> value
         maps object to current value in memory
@@ -424,6 +455,11 @@ protected:
 
     /* [snj]: forbidden values for the current trace */
     SOPFormula forbidden;
+
+    /* [snj]: initial values of objects 
+       object -> value
+    */
+    // std::unordered_map<Object, int> INIT_VALUES; // [snj]: TODO use this
 };
 
 #endif
