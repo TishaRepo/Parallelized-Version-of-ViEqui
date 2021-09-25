@@ -2,8 +2,7 @@
 
 typedef int IPid;
 
-ViewEqTraceBuilder::ViewEqTraceBuilder(const Configuration &conf) : TSOPSOTraceBuilder(conf)
-{
+ViewEqTraceBuilder::ViewEqTraceBuilder(const Configuration &conf) : TSOPSOTraceBuilder(conf) {
   threads.push_back(Thread(CPid(), -1));
   current_thread = -1;
   current_state = -1;
@@ -86,7 +85,9 @@ void ViewEqTraceBuilder::replay_memory_access(int next_replay_thread, IID<IPid> 
   assert(next_replay_event.get_index() == (threads[next_replay_thread].size()-1));
 
   auto it = std::find(Enabled.begin(), Enabled.end(), next_replay_event);
-  assert(it != Enabled.end());
+  if (it == Enabled.end()) {
+    out << "replay event: " << next_replay_event << " not in Enabled\n";
+  }
   Enabled.erase(it);
 
   current_state = prefix_state[prefix_idx];
@@ -297,6 +298,95 @@ void ViewEqTraceBuilder::forward_analysis(Event event, SOPFormula& forbidden) {
   consistent_union(current_state, L); // add leads at current state
 }
 
+int ViewEqTraceBuilder::union_state_start (int prefix_idx, IID<IPid> event, Sequence& start) {
+  int event_index = prefix_state[prefix_idx];
+
+  if (states[event_index].executing_alpha_lead) { // part of of alpha, alpha cannot be modified, move to head of alpha      
+    Sequence alpha_prefix(execution_sequence[states[event_index].lead_head_execution_prefix], &threads);
+    int ex_idx = states[event_index].lead_head_execution_prefix + 1;
+    while (execution_sequence[ex_idx] != event) {
+      if (prefix_state[ex_idx] >= 0) // this event has a state => this event is a global R/W
+        alpha_prefix.push_back(execution_sequence[ex_idx]);
+      ex_idx++;
+    }
+    
+    event_index = prefix_state[states[event_index].lead_head_execution_prefix];
+    alpha_prefix.concatenate(start);
+    start = alpha_prefix;
+  }
+
+  return event_index;
+}
+
+bool ViewEqTraceBuilder::indepenent_event_in_leads(int state, IID<IPid> event) {
+  bool found_event_in_another_lead = false;
+  int  previously_found_value = 0;
+
+  for (auto l = states[state].leads.begin(); l != states[state].leads.end(); l++) {
+    bool found = false;
+    int  value = 0;
+
+    if (l->constraint.has(event)) {
+      found = true;
+      value = l->constraint.value_of(event);
+    }
+    else if (l->start.has(event)) {
+      found = true;
+      value = l->start.value_of(event);
+    }
+    
+    if (found && found_event_in_another_lead) { // event found in more than 1 leads at this state
+      if (value != previously_found_value) { // if values don't match then 
+        return false;
+      }
+    }
+    else if (found) { // event not found in any other lead yet
+      found_event_in_another_lead = true;
+      previously_found_value = value;
+    }
+  }
+
+  return true;
+}
+
+bool ViewEqTraceBuilder::is_independent_EW_lead(Sequence& start) {
+  assert(get_event(start.last()).is_read());
+
+  int e = execution_sequence.size()-1; // last executed event
+  int s = start.size()-3;              // s = s'.(new write).(ew read) - s = last event of s'
+  for (int e = execution_sequence.size()-1, s = start.size()-3; e >= 0 && s >= 0; e--) {
+    if (execution_sequence[e] != start[s]) continue;
+
+    int state = prefix_state[e];
+    assert (state >= 0);
+
+    if (states[state].leads.size() > 1) {
+      if (!indepenent_event_in_leads(state, execution_sequence[e])) {
+        return false;
+      }
+    }
+
+    s--;
+  }
+
+  return true;
+}
+
+void ViewEqTraceBuilder::add_EW_leads(int state) {
+  if (EW_leads.find(state) == EW_leads.end()) return; // no pending EW leads
+
+  // EW_leads[state] = read -> value -> list of leads 
+  for (auto it = EW_leads[state].begin(); it != EW_leads[state].end(); it++) {
+    // it = (read, value -> list of leads)
+    for (auto it2 = it->second.begin(); it2 != it->second.end(); it2++) {
+      // it2 = (value, list of leads)
+      consistent_union(state, it2->second);
+    }
+  }
+
+  EW_leads.erase(state);
+}
+
 void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula& forbidden, std::unordered_map<int, std::vector<Lead>>& L) {
   std::unordered_set<IID<IPid>> ui = unexploredInfluencers(event, forbidden);
   std::unordered_set<IID<IPid>> ei = exploredInfluencers(event, forbidden);
@@ -313,7 +403,7 @@ void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula& forbidd
         || ui_values.find(get_event((*it)).value) != ui_values.end())
       continue; // skip current value, it is covered in fwd analysis
 
-    int es_idx = execution_sequence.indexof((*it)); // index in execution_sequnce of ei
+    int es_idx = execution_sequence.index_of((*it)); // index in execution_sequnce of ei
     if (execution_sequence[es_idx].get_pid() == 0) { // if ei is init event
       while (execution_sequence[es_idx].get_pid() != event.get_pid()) { // move down to state id where thread of event created
         es_idx++;
@@ -324,24 +414,11 @@ void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula& forbidd
       es_idx++;
     }
 
-    int event_index = prefix_state[es_idx];
     Sequence start = execution_sequence.backseq((*it), event.iid);
     if (start.empty()) // cannot form view-start for (*it --rf--> event)
       continue;
 
-    if (states[event_index].executing_alpha_lead) { // part of of alpha, alpha cannot be modified, move to head of alpha      
-      Sequence alpha_prefix(execution_sequence[states[event_index].lead_head_execution_prefix], &threads);
-      int ex_idx = states[event_index].lead_head_execution_prefix + 1;
-      while (execution_sequence[ex_idx] != (*it)) {
-        if (prefix_state[ex_idx] >= 0) // this event has a state => this event is a global R/W
-          alpha_prefix.push_back(execution_sequence[ex_idx]);
-        ex_idx++;
-      }
-      
-      event_index = prefix_state[states[event_index].lead_head_execution_prefix];
-      alpha_prefix.concatenate(start);
-      start = alpha_prefix;
-    }
+    int event_index = union_state_start(es_idx, (*it), start);
     
     Sequence constraint = states[event_index].alpha_sequence();
     SOPFormula fei;
@@ -370,36 +447,34 @@ void ViewEqTraceBuilder::backward_analysis_write(Event event, SOPFormula& forbid
     if (std::find(covered_read_values[(*it)].begin(), covered_read_values[(*it)].end(), event.value) != covered_read_values[(*it)].end())
       continue; // value covered for EW read by another write of same value in current execution
 
-    int event_index = prefix_state[execution_sequence.indexof((*it))];
     Sequence start = execution_sequence.backseq((*it), event.iid);
     if (start.empty()) // cannot form view start for (event --rf--> *it)
       continue;
 
-    if (states[event_index].executing_alpha_lead) { // part of of alpha, alpha cannot be modified, move to head of alpha      
-      Sequence alpha_prefix(execution_sequence[states[event_index].lead_head_execution_prefix], &threads);
-      int ex_idx = states[event_index].lead_head_execution_prefix + 1;
-      while (execution_sequence[ex_idx] != (*it)) {
-        if (prefix_state[ex_idx] >= 0) // this event has a state => this event is a global R/W
-          alpha_prefix.push_back(execution_sequence[ex_idx]);
-        ex_idx++;
-      }
-      
-      event_index = prefix_state[states[event_index].lead_head_execution_prefix];
-      alpha_prefix.concatenate(start);
-      start = alpha_prefix;
-    }
+    int event_index = union_state_start(execution_sequence.index_of((*it)), (*it), start);
 
     // out << "event_index=" << event_index << ", current_state=" << current_state << "\n";
     Sequence constraint = states[event_index].alpha_sequence();
     SOPFormula inF = states[event_index].leads[states[event_index].alpha].forbidden;
     (inF || std::make_pair((*it),it_val));
-    L[event_index].push_back(Lead(constraint, start, inF));
-    // out << "const=" << constraint.to_string() << ", start=" << start.to_string() << "\n";
-    // out << "lead=" << (Lead(constraint, start, inF)).to_string() << "\n";
 
-    // add to the list of EW reads values covered
-    covered_read_values[(*it)].push_back(event.value);
-    // out << "added" << event.value << "to covered read values of " << (*it) << "\n";
+    if (is_independent_EW_lead(start)) {
+      // the events in start are equivalent in all extensions from event_index state
+      L[event_index].push_back(Lead(constraint, start, inF));
+      // out << "const=" << constraint.to_string() << ", start=" << start.to_string() << "\n";
+      // out << "lead=" << (Lead(constraint, start, inF)).to_string() << "\n";
+
+      EW_leads[event_index][(*it)].erase(event.value);
+
+      // add to the list of EW reads values covered
+      covered_read_values[(*it)].push_back(event.value);
+      // out << "added" << event.value << "to covered read values of " << (*it) << "\n";
+    }
+    else {
+      // the events in start are Not equivalent in all extensions from event_index state
+      // the ew read may need different leads to get the valuei under different contexts
+      EW_leads[event_index][(*it)][event.value].push_back(Lead(constraint, start, inF));
+    }
   }
 }
 
@@ -496,6 +571,7 @@ int ViewEqTraceBuilder::find_replay_state_prefix() {
   int replay_state_prefix = states.size() - 1;
   for (auto it = states.end(); it != states.begin();) {
     it--;
+    add_EW_leads(replay_state_prefix);
     
     if (it->has_unexplored_leads()) { // found replay state      
       break;
@@ -530,7 +606,6 @@ bool ViewEqTraceBuilder::reset() {
   mem.clear();
   visible.clear();
   last_write.clear();
-  covered_read_values.clear();
 
   forbidden = states[replay_state_prefix].forbidden;
 
@@ -966,7 +1041,7 @@ bool ViewEqTraceBuilder::Sequence::VA_equivalent(Sequence s) {
 }
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::VA_suffix(Sequence prefix) {
-  assert(prefix.VA_prefix(*this)); // 'prefix' is a VA prefix of *this (suffix is only called after this check)
+  assert(prefix.VA_isprefix(*this)); // 'prefix' is a VA prefix of *this (suffix is only called after this check)
   Sequence suffix = *this;
 
   /* since wkt 'prefix' is a prefix of *this, thus we only need to remove
@@ -990,8 +1065,8 @@ bool ViewEqTraceBuilder::Sequence::view_adjust(IID<IPid> e1, IID<IPid> e2) {
   Event ev1 = threads->at(e1.get_pid())[e1.get_index()];
   Event ev2 = threads->at(e2.get_pid())[e2.get_index()];
 
-  int n2 = indexof(e2);
-  int n1 = indexof(e1);
+  int n2 = index_of(e2);
+  int n1 = index_of(e1);
   for (int i = n2 - 1, delim = 0; i >= n1; i--) { // from before e2 till e1
     if (events[i].get_pid() != e1.get_pid()) continue; // shift only events from e1's thread
 
@@ -1375,6 +1450,24 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Lead::consistent_merge(Sequence
   return std::get<2>(triple);
 }
 
+int ViewEqTraceBuilder::Sequence::value_of(IID<IPid> event_id) {
+  int last_value = 0;
+  Event event = threads->at(event_id.get_pid())[event_id.get_index()];
+
+  if (event.is_write()) return event.value;
+
+  for (auto it = begin(); it != end(); it++) {
+    if ((*it) == event_id) break;
+
+    Event event_it =  threads->at(it->get_pid())[it->get_index()];
+    if (event_it.same_object(event) && event_it.is_write()) {
+      last_value = event_it.value;
+    }
+  }
+
+  return last_value;
+}
+
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::subsequence(ViewEqTraceBuilder::sequence_iterator begin, ViewEqTraceBuilder::sequence_iterator end) {
   Sequence s(threads);
 
@@ -1593,7 +1686,7 @@ bool ViewEqTraceBuilder::forward_lead(std::unordered_map<int, std::vector<Lead>>
   if (states[state].alpha_empty()) return false;
 
   if (states[state].alpha_sequence().VA_isprefix(lead.merged_sequence)) { // alpha sequence is prefix
-    int fwd_state = prefix_state[execution_sequence.indexof(states[state].alpha_sequence().last())] + 1;
+    int fwd_state = prefix_state[execution_sequence.index_of(states[state].alpha_sequence().last())] + 1;
     assert(fwd_state >= 0 && fwd_state < states.size());
     
     SOPFormula f = (lead.forbidden);

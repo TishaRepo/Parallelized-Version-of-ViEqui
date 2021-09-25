@@ -4208,8 +4208,6 @@ void Interpreter::run()
   bool rerun = false;
 
   int p=0,e=0;
-  Instruction *last_read;
-
   while (rerun || TB.schedule(&CurrentThread, &aux, &CurrentAlt, &DryRun))
   {
     assert(0 <= CurrentThread && CurrentThread < long(Threads.size()));
@@ -4271,9 +4269,6 @@ void Interpreter::run()
     }
 
     if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ) {
-      if (isa<LoadInst>(I))
-        last_read = &I;
-
       if (isGlobalLoad(I)) completeLoadInst(static_cast<llvm::LoadInst&>(I));
       else if (isGlobalStore(I)) completeStoreInst(static_cast<llvm::StoreInst&>(I));
       else visit(I);
@@ -4307,7 +4302,9 @@ void Interpreter::run()
 
     if (ECStack()->empty())
     { // The thread has terminated
-      if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ && Blocked) break; // snj: assert fail
+    
+      // snj: assert fail
+      if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ && Blocked) break;
 
       if (CurrentThread == 0 && AtExitHandlers.size())
       {
