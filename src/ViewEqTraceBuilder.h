@@ -213,6 +213,7 @@ protected:
         Sequence(std::unordered_set<IID<IPid>> a, std::vector<Thread>* t) {events.insert(events.begin(), a.begin(), a.end()); threads = t;}
         
         void update_threads(std::vector<Thread>* t) {threads = t;}
+        std::vector<Event> to_event_sequence();
 
         bool empty() {return (size() == 0);}
         std::size_t size() const {return events.size();}
@@ -258,17 +259,16 @@ protected:
         std::pair<std::pair<bool, bool>, Sequence> po_prefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
         /* program ordered prefix upto end of ev in this */
         Sequence po_prefix_master(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
-        
-        /* this is prefix of s with view-adjustment */
-        bool VA_isprefix(Sequence s);
-        /* same reads and same values of reads */
-        bool VA_equivalent(Sequence s);
-        /* suffix of a view-adjusted prefix */
-        Sequence VA_suffix(Sequence prefix);
+        bool VA_isprefixS(Sequence s);
+        Sequence VA_suffixS(Sequence prefix);
         
         /* return read -> value map of reads in sequence 
            (maps a read to 0(init value) if a write for the read is not in the sequence) */
         std::unordered_map<IID<IPid>, int> read_value_map();
+        /* return read -> value and write -> value maps of events in sequence 
+           (maps a read to 0(init value) if a write for the read is not in the sequence) */
+        void event_value_map(std::unordered_map<IID<IPid>, int>& read_value_map, 
+                             std::unordered_map<IID<IPid>, int>& write_value_map);
         /* In the sequence attempt to shift events from thread of e1 (including e1)
            to after e2. If cannot shift an event coherently then retun false and keep
            original sequence. */
@@ -319,15 +319,48 @@ protected:
         Sequence merged_sequence;         // consistent_merge(start, constraint) sequence to explore while maintaining constraint
         bool is_done = false;             // whether the lead has been explored
 
+        // (read -> value read) map on read events of merged sequence
+        std::unordered_map<IID<IPid>, int> read_value_map; 
+        // (write -> value written) map on write events of merged sequence
+        std::unordered_map<IID<IPid>, int> write_value_map; 
+        
         Lead() {}
         Lead(Sequence c, Sequence s, SOPFormula f) {
             constraint = c; start = s; forbidden = f;
             merged_sequence = consistent_merge(s, c);
+            merged_sequence.event_value_map(read_value_map, write_value_map);
+            llvm::outs() << "read map:\n";
+            for (auto it = read_value_map.begin(); it != read_value_map.end(); it++) 
+                llvm::outs() << it->first << " --> " << it->second << "\n";
+            llvm::outs() << "write map:\n";
+            for (auto it = write_value_map.begin(); it != write_value_map.end(); it++) 
+                llvm::outs() << it->first << " --> " << it->second << "\n";
         }
         Lead(Sequence s, SOPFormula f) {
             start = s; forbidden = f;
             merged_sequence = s;
+            merged_sequence.event_value_map(read_value_map, write_value_map);
+            llvm::outs() << "read map:\n";
+            for (auto it = read_value_map.begin(); it != read_value_map.end(); it++) 
+                llvm::outs() << it->first << " --> " << it->second << "\n";
+            llvm::outs() << "write map:\n";
+            for (auto it = write_value_map.begin(); it != write_value_map.end(); it++) 
+                llvm::outs() << it->first << " --> " << it->second << "\n";
         }
+        Lead(Sequence s, SOPFormula f, std::unordered_map<IID<IPid>, int> rv_map, 
+                                        std::unordered_map<IID<IPid>, int> wv_map) {
+            start = s; forbidden = f;
+            merged_sequence = s;
+            read_value_map = rv_map;
+            write_value_map = wv_map;
+        }
+
+        /* this is prefix of l with view-adjustment */
+        bool VA_isprefix(Lead& l);
+        /* same reads and same values of reads */
+        bool VA_equivalent(Lead& l);
+        /* suffix of a view-adjusted prefix */
+        Sequence VA_suffix(Lead& l);
         
         bool operator==(Lead l);
         std::ostream &operator<<(std::ostream &os){return os << to_string();}
@@ -349,13 +382,13 @@ protected:
     {
     public:
         // index of sequence explored corresponding to current state
-        int sequence_prefix;                                       // index in execution sequence corresponding to this state
-        std::vector<Lead> leads;                                   // leads(configurations) to be explored from this state
-        SOPFormula forbidden;                                      // (read,value pairs that must not be seen after this state)
-        int alpha = -1;                                            // current lead being explored
+        int sequence_prefix;                 // index in execution sequence corresponding to this state
+        std::vector<Lead> leads;             // leads(configurations) to be explored from this state
+        SOPFormula forbidden;                // (read,value pairs that must not be seen after this state)
+        int alpha = -1;                      // current lead being explored
         
-        int lead_head_execution_prefix = -1;                       // idx in execution sequence where alpha lead starts (-1 if not a part of a lead)
-        bool executing_alpha_lead = false;                         // state is a part of alpha
+        int lead_head_execution_prefix = -1; // idx in execution sequence where alpha lead starts (-1 if not a part of a lead)
+        bool executing_alpha_lead = false;   // state is a part of alpha
 
         State() {}
         State(int prefix_idx) : sequence_prefix(prefix_idx) {};
