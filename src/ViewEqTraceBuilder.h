@@ -12,6 +12,14 @@
 
 typedef llvm::SmallVector<SymEv, 1> sym_ty;
 
+class HashFn{
+    public:
+        size_t operator()(const std::pair<unsigned, unsigned> p) const{
+            return ( ((p.first + p.second) * (p.first + p.second + 1))/2 + p.second);
+        }
+};
+
+
 class ViewEqTraceBuilder : public TSOPSOTraceBuilder
 {
 protected:
@@ -432,17 +440,16 @@ protected:
     /* object base -> object offset -> value
         maps object to current value in memory
     */
-    std::unordered_map<unsigned, std::unordered_map<unsigned, int>> mem;
+    std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn> mem;
 
     /* object base -> object offset -> event id
         maps object to event that performed the latest write on the object
     */
-    std::unordered_map<unsigned, std::unordered_map<unsigned, IID<IPid>>> last_write;
-    
+   std::unordered_map<std::pair<unsigned, unsigned>, IID<IPid>, HashFn> last_write;
     /* object base -> object offset -> Visible (vpo)
         maps object to its visible-partial-order
     */
-    std::unordered_map<unsigned, std::unordered_map<unsigned, Visible>> visible;
+    std::unordered_map<std::pair<unsigned, unsigned>, Visible, HashFn> visible;
 
     /* [snj]: state corresponding to execution sequence prefix */
     std::vector<int> prefix_state;
