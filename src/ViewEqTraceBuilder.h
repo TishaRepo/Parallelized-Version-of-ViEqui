@@ -259,16 +259,17 @@ protected:
         std::pair<std::pair<bool, bool>, Sequence> po_prefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
         /* program ordered prefix upto end of ev in this */
         Sequence po_prefix_master(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
-        bool VA_isprefixS(Sequence s);
-        Sequence VA_suffixS(Sequence prefix);
         
         /* return read -> value map of reads in sequence 
            (maps a read to 0(init value) if a write for the read is not in the sequence) */
         std::unordered_map<IID<IPid>, int> read_value_map();
         /* return read -> value and write -> value maps of events in sequence 
-           (maps a read to 0(init value) if a write for the read is not in the sequence) */
+           (maps a read to 0(init value) if a write for the read is not in the sequence) 
+           Also returns the object -> value map representing the final values of objects 
+           after the sequence, modified from within the sequence */
         void event_value_map(std::unordered_map<IID<IPid>, int>& read_value_map, 
-                             std::unordered_map<IID<IPid>, int>& write_value_map);
+                             std::unordered_map<IID<IPid>, int>& write_value_map,
+                             std::unordered_map<unsigned, std::unordered_map<unsigned, int>>& post_memory);
         /* In the sequence attempt to shift events from thread of e1 (including e1)
            to after e2. If cannot shift an event coherently then retun false and keep
            original sequence. */
@@ -323,12 +324,15 @@ protected:
         std::unordered_map<IID<IPid>, int> read_value_map; 
         // (write -> value written) map on write events of merged sequence
         std::unordered_map<IID<IPid>, int> write_value_map; 
+        // (object -> value) memory map after lead
+        std::unordered_map<unsigned, std::unordered_map<unsigned, int>> post_lead_memory_map;
         
         Lead() {}
         Lead(Sequence c, Sequence s, SOPFormula f) {
             constraint = c; start = s; forbidden = f;
             merged_sequence = consistent_merge(s, c);
-            merged_sequence.event_value_map(read_value_map, write_value_map);
+            merged_sequence.event_value_map(read_value_map, write_value_map, post_lead_memory_map);
+
             llvm::outs() << "read map:\n";
             for (auto it = read_value_map.begin(); it != read_value_map.end(); it++) 
                 llvm::outs() << it->first << " --> " << it->second << "\n";
@@ -339,7 +343,8 @@ protected:
         Lead(Sequence s, SOPFormula f) {
             start = s; forbidden = f;
             merged_sequence = s;
-            merged_sequence.event_value_map(read_value_map, write_value_map);
+            merged_sequence.event_value_map(read_value_map, write_value_map, post_lead_memory_map);
+
             llvm::outs() << "read map:\n";
             for (auto it = read_value_map.begin(); it != read_value_map.end(); it++) 
                 llvm::outs() << it->first << " --> " << it->second << "\n";
@@ -348,11 +353,13 @@ protected:
                 llvm::outs() << it->first << " --> " << it->second << "\n";
         }
         Lead(Sequence s, SOPFormula f, std::unordered_map<IID<IPid>, int> rv_map, 
-                                        std::unordered_map<IID<IPid>, int> wv_map) {
+                                        std::unordered_map<IID<IPid>, int> wv_map,
+                                        std::unordered_map<unsigned, std::unordered_map<unsigned, int>> memory_map) {
             start = s; forbidden = f;
             merged_sequence = s;
             read_value_map = rv_map;
             write_value_map = wv_map;
+            post_lead_memory_map = memory_map;
         }
 
         /* this is prefix of l with view-adjustment */
