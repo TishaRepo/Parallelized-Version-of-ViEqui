@@ -317,10 +317,11 @@ protected:
     class Lead {
     private:
         // [snj]: required by consistent_merge function
-        std::tuple<Sequence, Sequence, Sequence> join(Sequence &primary, Sequence &other, IID<IPid> delim, Sequence &joined);
-        // [snj]: projects tuple projectsions on the thress sequqnces respectively
-        void project(std::tuple<Sequence, Sequence, Sequence> &triple, Sequence &seq1, Sequence &seq2, Sequence &seq3);
-
+        Sequence join(Sequence& primary_seq, Sequence& other_seq);
+        // auxiliary function for join
+        void join_prefix(Sequence&, std::vector<IID<IPid>>::iterator, std::vector<IID<IPid>>::iterator,
+                                    std::vector<IID<IPid>>::iterator, std::vector<IID<IPid>>::iterator);
+        
     public:
         Sequence constraint;              // sequence from previous trace to be maintained
         Sequence start;                   // new sequence to be explore to get the intended (read,value) pair
@@ -340,25 +341,11 @@ protected:
             constraint = c; start = s; forbidden = f;
             merged_sequence = consistent_merge(s, c);
             merged_sequence.event_value_map(read_value_map, write_value_map, post_lead_memory_map);
-
-            llvm::outs() << "read map:\n";
-            for (auto it = read_value_map.begin(); it != read_value_map.end(); it++) 
-                llvm::outs() << it->first << " --> " << it->second << "\n";
-            llvm::outs() << "write map:\n";
-            for (auto it = write_value_map.begin(); it != write_value_map.end(); it++) 
-                llvm::outs() << it->first << " --> " << it->second << "\n";
         }
         Lead(Sequence s, SOPFormula f) {
             start = s; forbidden = f;
             merged_sequence = s;
             merged_sequence.event_value_map(read_value_map, write_value_map, post_lead_memory_map);
-
-            llvm::outs() << "read map:\n";
-            for (auto it = read_value_map.begin(); it != read_value_map.end(); it++) 
-                llvm::outs() << it->first << " --> " << it->second << "\n";
-            llvm::outs() << "write map:\n";
-            for (auto it = write_value_map.begin(); it != write_value_map.end(); it++) 
-                llvm::outs() << it->first << " --> " << it->second << "\n";
         }
         Lead(Sequence s, SOPFormula f, std::unordered_map<IID<IPid>, int> rv_map, 
                                         std::unordered_map<IID<IPid>, int> wv_map,
