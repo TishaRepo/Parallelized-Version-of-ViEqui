@@ -4207,7 +4207,7 @@ void Interpreter::run()
   int aux;
   bool rerun = false;
 
-  int p=0,e=0;
+  // int p=0,e=0;
   while (rerun || TB.schedule(&CurrentThread, &aux, &CurrentAlt, &DryRun))
   {
     assert(0 <= CurrentThread && CurrentThread < long(Threads.size()));

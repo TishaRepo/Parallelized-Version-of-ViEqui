@@ -100,8 +100,11 @@ public:
     void backward_analysis_write(Event event, SOPFormula& forbidden, std::unordered_map<int, std::vector<Lead>>& L);
     void backward_analysis(Event event, SOPFormula& forbidden);
 
-    // combining new leads with existing leads of a state
+    // remove duplicate occurances in the vector
+    void remove_duplicate_leads(std::vector<Lead>& L);
+    // combining new lead with existing leads of a state
     void consistent_union(int state, Lead& l);
+    // combining new leads with existing leads of a state
     void consistent_union(int state, std::vector<Lead>& L);
 
     // forwardind a lead from a state S_i to a states S_{i+x} because alpha of S_i is a prefix of the lead

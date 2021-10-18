@@ -1314,6 +1314,8 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Lead::consistent_merge(Sequence
     }
   }
 
+  // llvm::outs() << primary_seq.to_string() << " (+) " << other_seq.to_string() << " = ";
+  // llvm::outs() << join(primary_seq, other_seq).to_string() << "\n";
   return join(primary_seq, other_seq);;
 }
 
@@ -1679,8 +1681,23 @@ void ViewEqTraceBuilder::consistent_union(int state, Lead& l) {
   consistent_union(state, L);
 }
 
+void ViewEqTraceBuilder::remove_duplicate_leads(std::vector<Lead>& L) {
+  for (auto it = L.begin(); it != L.end(); it++) {
+    for (auto it2 = it+1; it2 != L.end();) {
+      if (*it == *it2) { // found two instances of the same lead
+        it2 = L.erase(it2); // remove one instance
+        continue;
+      }
+
+      it2++; // lead it2 is not a duplicate of lead it, move to next
+    }
+  }
+}
+
 void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
   std::unordered_map<int, std::vector<Lead>> forward_state_leads;
+
+  remove_duplicate_leads(L); // remove any duplicate leads
 
   if(states[state].leads.empty()) {
     forward_suffix_leads(forward_state_leads, state, L);
