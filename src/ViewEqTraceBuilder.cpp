@@ -396,16 +396,7 @@ void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula& forbidd
       continue; // skip current value, it is covered in fwd analysis
 
     int es_idx = execution_sequence.index_of((*it)); // index in execution_sequnce of ei
-    if (execution_sequence[es_idx].get_pid() == 0) { // if ei is init event
-      while (execution_sequence[es_idx].get_pid() != event.get_pid()) { // move down to state id where thread of event created
-        es_idx++;
-      }
-    }
-
-    while (prefix_state[es_idx] == -1) { // next state to add lead
-      es_idx++;
-    }
-
+    
     Sequence start = execution_sequence.backseq((*it), event.iid);
     if (start.empty()) // cannot form view-start for (*it --rf--> event)
       continue;
@@ -451,6 +442,8 @@ void ViewEqTraceBuilder::backward_analysis_write(Event event, SOPFormula& forbid
     if (is_independent_EW_lead(start)) {
       // the events in start are equivalent in all extensions from event_index state
       L[event_index].push_back(Lead(constraint, start, inF));
+      // out << "made backward leadt at " << event_index << " : " << Lead(constraint, start, inF).to_string() << 
+      //   " = " << Lead(constraint, start, inF).merged_sequence.to_string() << "\n";
   
       EW_leads[event_index][(*it)].erase(event.value);
 
@@ -643,7 +636,7 @@ bool ViewEqTraceBuilder::spawn()
   threads[current_thread].pop_back();
   execution_sequence.pop_back();
   
-  // [snj]: create event in thread that is spawning a new event
+  // [snj]: create-event in thread that is spawning a new event
   current_event = event;
   current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
   
@@ -1054,121 +1047,193 @@ bool ViewEqTraceBuilder::Sequence::isprefix(ViewEqTraceBuilder::Sequence &seq){
   return true;
 }
 
-ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::po_prefix_master(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end){ 
-  std::vector<unsigned> joining_threads;
-  Sequence local_suffix(threads);
-  Sequence po_pre(threads);
-  
-  for (auto it = end; it != begin; it--) {
-    auto i = it-1;
-    Event event = threads->at(i->get_pid())[i->get_index()];
+// return: (delim event ie event beyond which e1 cannot be placed, causal prefix sequence (not including e1 or e2))
+// delim event could be either event from e1's thread or join of e1's thread
+// prefix of e2 upto e1 that includes events of e2 and events that are prefixed due to rf or join
+std::pair<IID<IPid>, ViewEqTraceBuilder::Sequence>
+ViewEqTraceBuilder::Sequence::causal_prefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end) {
+  Sequence causal_prefix_by_join(threads); // causal prefix of events whose threads join in thread of e2 (does not include thread of e1)
+  Sequence causal_prefix_by_join_of_e1_thread(threads); // causal prefix of events of thread of e1 given e1 joins in thread of e2
+  Sequence causal_prefix(threads); // causal prefix of events of e2 (not including causal dependence sue to join events)
 
-    if (i->get_pid() == e2.get_pid()) {
-      if (event.is_global())
-        local_suffix.push_front(*i);
-      if (event.type == Event::ACCESS_TYPE::JOIN) {
-        joining_threads.push_back(event.object.first);
-      }
-    }
-    else if (i->get_pid() == e1.get_pid()) {
-      if (event.is_global())
-        local_suffix.push_front(*i);
-    }
-    else {
-      if (std::find(joining_threads.begin(), joining_threads.end(), i->get_pid()) != joining_threads.end()) {
-        // events from joined threads, not from thread of e1
-        if (event.is_global())
-          po_pre.push_front(*i);
-      }
-    }
-  }
+  std::vector<unsigned> threads_of_join_prefix; // list of threads that join in e2's thread and threads causally prefixed to them
+  std::vector<unsigned> threads_of_e1_join_prefix;  // list of threads causally related to e1's thread events, given e1 joins in e2's thread
+  std::vector<unsigned> threads_of_causal_prefix; // list of threads that have events causally prefixed to e2 (no due to join)
 
-  local_suffix.push_front(e1);
-  po_pre.concatenate(local_suffix);
-  
-  return po_pre;
-}
+  // objects whose read has been included in the prefix and the corresponding source write is to be included if found
+  std::unordered_map<unsigned, std::unordered_set<unsigned>> objects_for_source_join;
+  std::unordered_map<unsigned, std::unordered_set<unsigned>> objects_for_source_join_e1;
+  std::unordered_map<unsigned, std::unordered_set<unsigned>> objects_for_source;
 
-std::pair<std::pair<bool, bool>, ViewEqTraceBuilder::Sequence> ViewEqTraceBuilder::Sequence::po_prefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end){
-  assert(has(e2));
-  sequence_iterator it;
-  Sequence po_pre(threads);
+  IID<IPid> join_at = e2; // default delim event 
+  threads_of_causal_prefix.push_back(e2.get_pid()); // prefix contains events from e2's thread
 
-  bool included_e1 = false;
-  bool included_e1_thread_events = false;
-
-  std::unordered_map<unsigned, std::unordered_set<unsigned>> objects_for_source; // list of objects whose last source has not been found yet
-  std::vector<IPid> back_threads; // other threads who are a part of backseq to enable event (in case of conditionals)
-
-  if (e2.get_pid() == 0) { // read event in thread 0 after join to check assertion
-    return std::make_pair(std::make_pair(included_e1, included_e1_thread_events), po_prefix_master(e1, e2, begin, end));
-  }
-
-  // iterate 
-  for(it = end; it != begin;){ it--;
-    if (it->get_pid() == 0) continue; // init or non-global event
-    
+  for (auto it = end; it != begin;) { it--;
     Event ite = threads->at(it->get_pid())[it->get_index()];
 
-    if (it->get_pid() == e2.get_pid() || 
-      std::find(back_threads.begin(), back_threads.end(), it->get_pid()) != back_threads.end()) {
-      
-      if (ite.is_global()) {
-        if ((*it) == e1) included_e1 = true;
-        po_pre.push_front(*it);
-
-        if (ite.is_read()) {
-          objects_for_source[ite.object.first].insert(ite.object.second);
+    if (ite.type == Event::ACCESS_TYPE::JOIN) {
+      if (it->get_pid() == e2.get_pid()) { // joins in e2's thread
+        if (ite.object.first == e1.get_pid()) { // join of e1's thread
+          if (!causal_prefix.empty()) 
+            join_at = causal_prefix.head(); // next event in causal prefix is the delim event
+          threads_of_e1_join_prefix.push_back(e1.get_pid());
         }
-        else if (ite.is_write()) {
-          objects_for_source[ite.object.first].erase(ite.object.second);    
+        else { // join of a thread that is not e1's thread
+          threads_of_join_prefix.push_back(ite.object.first); // tid of thread that joined
         }
       }
+      else {
+        if (std::find(threads_of_join_prefix.begin(), threads_of_join_prefix.end(), it->get_pid()) != 
+          threads_of_join_prefix.end()) { // joining thread joins in a thread in the list threads_of_join_prefix
+          if (ite.object.first == e1.get_pid()) {
+            if (!causal_prefix_by_join.empty())
+              join_at = causal_prefix_by_join.head();
+            else if (!causal_prefix.empty())
+              join_at = causal_prefix.head();
+          }
+          // add joining thread to the list, as its events are causally prefixed due to join
+          threads_of_join_prefix.push_back(ite.object.first); 
+
+          if (std::find(threads_of_e1_join_prefix.begin(), threads_of_e1_join_prefix.end(), it->get_pid()) !=
+            threads_of_e1_join_prefix.end()) // join parent in this list as well
+            threads_of_e1_join_prefix.clear(); // prefix of the two lists is common from here on
+
+          if (std::find(threads_of_causal_prefix.begin(), threads_of_causal_prefix.end(), it->get_pid()) !=
+            threads_of_causal_prefix.end()) // join parent in this list as well
+            threads_of_causal_prefix.clear(); // prefix of the two lists is common from here on
+        }
+        else if (std::find(threads_of_e1_join_prefix.begin(), threads_of_e1_join_prefix.end(), it->get_pid()) !=
+          threads_of_e1_join_prefix.end()) { // joining thread joins in a thread in the list
+          // add joining thread to the list, as its events are causally prefixed due to join
+          threads_of_e1_join_prefix.push_back(ite.object.first);
+
+          if (std::find(threads_of_causal_prefix.begin(), threads_of_causal_prefix.end(), it->get_pid()) !=
+            threads_of_causal_prefix.end()) // join parent in this list as well
+            threads_of_causal_prefix.clear(); // prefix of the two lists is common from here on
+        }
+        else if (std::find(threads_of_causal_prefix.begin(), threads_of_causal_prefix.end(), it->get_pid()) !=
+          threads_of_causal_prefix.end()) {
+          if (ite.object.first == e1.get_pid()) {
+            if (!causal_prefix_by_join.empty())
+              join_at = causal_prefix_by_join.head();
+          }
+          threads_of_causal_prefix.push_back(ite.object.first);
+        }
+      }
+      continue; // nothing else to be done for a join event (it is not added to prefix)
     }
 
-    else if (ite.is_write() && objects_for_source[ite.object.first].find(ite.object.second) != objects_for_source[ite.object.first].end()) {
-      if (it->get_pid() == e1.get_pid()) { // e2 dependent on events of e1
-        included_e1_thread_events = true;
+    if (!ite.is_global()) continue; // causal prefix contains only reads and writes
+    
+    bool added_to_prefix = false;
+
+    // events causal to threads that join in e2's thread
+    if (std::find(threads_of_join_prefix.begin(), threads_of_join_prefix.end(), it->get_pid()) != 
+      threads_of_join_prefix.end()) {
+      causal_prefix_by_join.push_front(*it);
+      added_to_prefix = true;
+
+      if (ite.is_read()) {
+        objects_for_source_join[ite.object.first].insert(ite.object.second);
+      }
+      else if (ite.is_write()) {
+        objects_for_source_join[ite.object.first].erase(ite.object.second);    
       }
 
-      objects_for_source[ite.object.first].erase(ite.object.second);
-      back_threads.push_back(it->get_pid());
-      po_pre.push_front(*it);
-      if ((*it) == e1) included_e1 = true;
-    } 
+      if (it->get_pid() == e1.get_pid())
+        join_at = (*it);
+    }
+
+    // events causal to e1's thread if e1's thread joins in e2's thread
+    if (std::find(threads_of_e1_join_prefix.begin(), threads_of_e1_join_prefix.end(), it->get_pid()) != 
+      threads_of_e1_join_prefix.end()) {
+      causal_prefix_by_join_of_e1_thread.push_front(*it);
+      added_to_prefix = true;
+
+      if (ite.is_read()) {
+        objects_for_source_join_e1[ite.object.first].insert(ite.object.second);
+      }
+      else if (ite.is_write()) {
+        objects_for_source_join_e1[ite.object.first].erase(ite.object.second);    
+      }
+
+      if (it->get_pid() == e1.get_pid())
+        join_at = (*it);
+    }
+
+    // events causal to e2
+    if (std::find(threads_of_causal_prefix.begin(), threads_of_causal_prefix.end(), it->get_pid()) != 
+      threads_of_causal_prefix.end()) {
+      causal_prefix.push_front(*it);
+      added_to_prefix = true;
+
+      if (ite.is_read()) {
+        objects_for_source[ite.object.first].insert(ite.object.second);
+      }
+      else if (ite.is_write()) {
+        objects_for_source[ite.object.first].erase(ite.object.second);    
+      }
+
+      if (it->get_pid() == e1.get_pid()) 
+        join_at = (*it);      
+    }
+
+    // write whose object's read was seen and thus rf write is to be included in prefix
+    else if (!added_to_prefix && ite.is_write()) { 
+      if (objects_for_source_join[ite.object.first].find(ite.object.second) != 
+        objects_for_source_join[ite.object.first].end()) {
+        objects_for_source_join[ite.object.first].erase(ite.object.second);
+        threads_of_join_prefix.push_back(it->get_pid());
+        causal_prefix_by_join.push_front(*it);
+        added_to_prefix = true;
+      }
+
+      if (objects_for_source_join_e1[ite.object.first].find(ite.object.second) != 
+        objects_for_source_join_e1[ite.object.first].end()) {
+        objects_for_source_join_e1[ite.object.first].erase(ite.object.second);
+        threads_of_e1_join_prefix.push_back(it->get_pid());
+        causal_prefix_by_join_of_e1_thread.push_front(*it);
+        added_to_prefix = true;
+      }
+
+      if (objects_for_source[ite.object.first].find(ite.object.second) != objects_for_source[ite.object.first].end()) {
+        objects_for_source[ite.object.first].erase(ite.object.second);
+        threads_of_causal_prefix.push_back(it->get_pid());
+        causal_prefix.push_front(*it);
+        added_to_prefix = true;
+      }
+
+      if (added_to_prefix && it->get_pid() == e1.get_pid()) {
+        join_at = (*it);
+      }
+    }
   }
 
-  return std::make_pair(std::make_pair(included_e1, included_e1_thread_events), po_pre);
+  Sequence result = causal_prefix_by_join.consistent_merge(causal_prefix_by_join_of_e1_thread);
+  result = result.consistent_merge(causal_prefix);
+
+  return std::make_pair(join_at, result);
 }
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1, IID<IPid> e2){
   assert(this->has(e1) && this->has(e2));
   
-  std::pair<std::pair<bool, bool>, ViewEqTraceBuilder::Sequence> po_pre_return = po_prefix(e1, e2, find(e1)+1, find(e2));
-  bool included_e1 = po_pre_return.first.first;
-  bool has_e1_thread_events = po_pre_return.first.second;
-  ViewEqTraceBuilder::Sequence po_pre = po_pre_return.second;
-  po_pre.push_back(e2);
-  
-  if (e1.get_pid() == 0 || e2.get_pid() == 0) { // event from thread zero ie init write event
-    return po_pre; // init event is not added to backseq
-  }
+  std::pair<IID<IPid>, Sequence> causal_prefix_result = causal_prefix(e1, e2, find(e1)+1, find(e2));
 
-  if (included_e1) return po_pre;
+  IID<IPid> e1_delim = causal_prefix_result.first;  
+  Sequence causal_prefix  = causal_prefix_result.second; // prefix including causal events by join and rf
+  causal_prefix.push_back(e2);
   
-  // if !included_e1 then include at appropriate location ie after any write/read of same object but diff value
+  // if !included_e1 then include at appropriate location ie after any write/read 
+  // of same object but diff value but before join
   Event event = threads->at(e1.get_pid())[e1.get_index()];
   if(event.is_write()) {
-    sequence_iterator loc = po_pre.begin(); // assuming the write can be placed at the very begining
-    sequence_iterator loc_of_same_thread_event = po_pre.end(); // assuming there is no event from same thread
-
+    sequence_iterator loc = causal_prefix.begin(); // assuming the write can be placed at the very begining
+    sequence_iterator delim_loc = causal_prefix.end(); // assuming e1 has no causal after event in the sequence
+    
     bool found_racing_write = false;
-    for (auto it = po_pre.begin(); it != po_pre.end()-1; it++) {
-      if (it->get_pid() == e1.get_pid()) {
-        if (loc_of_same_thread_event == po_pre.end()) // this is the first event from the same thread
-          loc_of_same_thread_event = it; // e1 cannot be placed beyond this location
-        continue;
-      }
+    for (auto it = causal_prefix.begin(); it != causal_prefix.end()-1; it++) {
+      if ((*it) == e1_delim) delim_loc = it;
 
       Event eit = threads->at(it->get_pid())[it->get_index()];
       if (event.same_object(eit)) {
@@ -1182,26 +1247,145 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1,
       } 
     }
 
-    if (loc_of_same_thread_event < loc) { 
+    if (delim_loc < loc) { 
       // cannot form sequence for the expected read value
       // because there is a write of another value but an event of same thread before the write
       // so e1 cannot be placed after the write
-      po_pre.clear();
-      return po_pre;
+      causal_prefix.clear();
+      return causal_prefix;
     }
 
-    po_pre.push_at(loc, e1);
+    causal_prefix.push_at(loc, e1);
   }
   else { // event.is_read()
-    if (has_e1_thread_events) { // events po after e1 are in 'po_pre' then e1 cannot be added later for reading, infeasible (read, value) pair
-      po_pre.clear();
-      return po_pre;
+    if (e1_delim != e2) { // events causal after e1 are in 'causal_prefix' then e1 cannot be added later for reading, infeasible (read, value) pair
+      causal_prefix.clear();
+      return causal_prefix;
     }
 
-    po_pre.push_back(e1);
+    causal_prefix.push_back(e1);
   }
 
-  return po_pre;
+  // llvm::outs() << "backseq=" << causal_prefix.to_string() << "\n";
+  return causal_prefix;
+}
+
+void ViewEqTraceBuilder::Sequence::join_prefix(
+                  std::vector<IID<IPid>>::iterator primary_begin, std::vector<IID<IPid>>::iterator primary_end,
+                  std::vector<IID<IPid>>::iterator other_begin,   std::vector<IID<IPid>>::iterator other_end) {
+
+  Sequence &merged_sequence = *this;
+
+  auto primary_next = primary_begin;
+  for (auto ito = other_begin; ito != other_end; ito++) {
+    Event eo = threads->at(ito->get_pid())[ito->get_index()];
+
+    if (eo.is_write()) { // next event of other is a write
+      // look for reads of same object in primary, if such reads exist then push them first
+      for (auto itp = primary_next; itp != primary_end; itp++) {
+        Event ep = threads->at(itp->get_pid())[itp->get_index()];
+
+        if (eo.RWpair(ep)) { // ep is a read of same object
+          // push till ep first
+          for (auto itp2 = primary_next; itp2 != itp; itp2++) {
+            Event ep2 = threads->at(itp2->get_pid())[itp2->get_index()];
+
+            if (ep2.is_write()) { // next event of other is a write
+              // look for reads of same object in other after the write eo, 
+              // if such reads exist then they must be pushed before ep2 but 
+              // that would crearte a cyclic dependency so ABORT
+              for (auto ito2 = ito+1; ito2 != other_end; ito2++) {
+                Event eo2 = threads->at(ito2->get_pid())[ito2->get_index()];
+
+                if (ep2.RWpair(eo2)) { // eo2 is a read of same object as ep2
+                  // no feasible merge possible ABORT
+                  merged_sequence.clear();
+                  return;
+                }
+              }
+            }
+
+            merged_sequence.push_back(*itp2);
+          }
+
+          merged_sequence.push_back(*itp); // pushed events untill read itp, now push itp
+          primary_next = itp+1;
+        }
+      }
+    }
+
+    merged_sequence.push_back(*ito);
+  }
+
+  // push remaining events of primary
+  for (auto it = primary_next; it != primary_end; it++) {
+    merged_sequence.push_back(*it);
+  }
+}
+
+ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::join(Sequence& other_seq) {
+  Sequence& primary_seq = *this;
+  Sequence merged_sequence(threads);
+
+  std::vector<IID<IPid>>::iterator next_index_primary = primary_seq.begin();
+  std::vector<IID<IPid>>::iterator next_index_other   = other_seq.begin();
+
+  // list of iterators to common events in both sequences [type: vector(seq_iterator, seq_iterator)]
+  // std::vector<std::pair<std::vector<IID<IPid>>::iterator, std::vector<IID<IPid>>::iterator>> common_events;
+  for (auto it = primary_seq.begin(); it != primary_seq.end(); it++) {
+    auto it_in_other = other_seq.find(*it);
+    if (it_in_other == other_seq.end()) // other_seq does not have *it
+      continue;
+
+    merged_sequence.join_prefix(next_index_primary, it, next_index_other, it_in_other);
+    merged_sequence.push_back(*it);
+    next_index_primary = it+1;
+    next_index_other   = it_in_other+1;
+  }
+
+  merged_sequence.join_prefix(next_index_primary, primary_seq.end(), next_index_other, other_seq.end());
+  return merged_sequence;
+}
+
+ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::consistent_merge(Sequence &other_seq) {
+  Sequence &primary_seq = *this;
+  
+  assert(!primary_seq.empty());
+  if (other_seq.empty()) return primary_seq;
+
+  if (primary_seq.last().get_pid() == 0) return primary_seq; // lead created for assert check in master thread
+
+  Sequence original_primary_seq = primary_seq;
+  Sequence original_other_seq   = other_seq;
+
+  // look for a conflicting RW pair (conflict: RW pair (e1,e2) st e1 < e2 in primary and e2 < e1 in other)
+  // pair(bool has_conglicting_pair , pair(conflicting event 1, conflicting event2))
+  std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> conflictingRWpair = primary_seq.conflicts_with(other_seq, true);
+  while (conflictingRWpair.first) { // primary_seq and other_seq conflict
+    if (primary_seq.view_adjust(conflictingRWpair.second.first, conflictingRWpair.second.second)) {
+      // other_seq adjusted ensuring same view of reads
+      // now look for next conflicting RW pair
+      conflictingRWpair = primary_seq.conflicts_with(other_seq, true);
+    } 
+    else if(other_seq.view_adjust(conflictingRWpair.second.second, conflictingRWpair.second.first)) {
+      // primary_seq adjusted ensuring same view of reads
+      // now look for next conflicting RW pair
+      conflictingRWpair = primary_seq.conflicts_with(other_seq, true);
+    }
+    else { // conflicting and cannot be adjusted
+      // restrore original sequences (before any view-adjusts) and 
+      // return empty sequence representing no feasible merge
+      primary_seq = original_primary_seq;
+      other_seq   = original_other_seq;
+      
+      original_primary_seq.clear(); // dummy seq for returning empty sequence
+      return original_primary_seq;
+    }
+  }
+
+  // llvm::outs() << primary_seq.to_string() << " (+) " << other_seq.to_string() << " = ";
+  // llvm::outs() << join(primary_seq, other_seq).to_string() << "\n";
+  return primary_seq.join(other_seq);;
 }
 
 void ViewEqTraceBuilder::Lead::join_prefix(Sequence& merged_sequence, 
@@ -1763,12 +1947,12 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
     l++;
   }
 
-  // //
+  // ////
   // out << "remaining state " << state << " leads:\n";
   // for (auto it = states[state].leads.begin(); it != states[state].leads.end(); it++) {
   //   out << it->to_string() << "\n";
   // }
-  // //
+  // ////
 
   for (auto it = rem.begin(); it != rem.end(); it++) {
     // out << "removing index=" << (*it) << ": " << (states[state].leads.begin() + (*it))->to_string() << "\n";

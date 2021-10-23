@@ -213,6 +213,12 @@ protected:
     
     class Sequence
     {
+    private:
+        // [snj]: required by consistent_merge function
+        Sequence join(Sequence& other_seq);
+        // auxiliary function for join
+        void join_prefix(std::vector<IID<IPid>>::iterator, std::vector<IID<IPid>>::iterator,
+                         std::vector<IID<IPid>>::iterator, std::vector<IID<IPid>>::iterator);
     public:
         std::vector<IID<IPid>> events;
         std::vector<Thread> *threads;
@@ -266,6 +272,8 @@ protected:
 
         /* if this is prefix of seq */
         bool isprefix(Sequence &seq);
+        /* execution subsequence from e1 to e2 including events between e1 and e2 that causally preceed e2 */
+        std::pair<IID<IPid>, Sequence> causal_prefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
         /* program ordered prefix upto end of ev in this */
         std::pair<std::pair<bool, bool>, Sequence> po_prefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
         /* program ordered prefix upto end of ev in this */
@@ -290,6 +298,10 @@ protected:
         std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> conflicts_with(Sequence &other_seq, bool returnRWpair);
         /* poprefix(e1).(write out of e1, e2).(read out of e1, e2) */
         Sequence backseq(IID<IPid> e1, IID<IPid> e2);
+
+        // [snj]: consistent merge, merges 2 sequences such that all read events maitain their sources
+        //          i.e, reads-from relation remain unchanged
+        Sequence consistent_merge(Sequence &other_seq);
 
         std::string to_string();
 
