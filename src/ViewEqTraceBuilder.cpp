@@ -1071,53 +1071,63 @@ ViewEqTraceBuilder::Sequence::causal_prefix(IID<IPid> e1, IID<IPid> e2, sequence
   for (auto it = end; it != begin;) { it--;
     Event ite = threads->at(it->get_pid())[it->get_index()];
 
-    if (ite.type == Event::ACCESS_TYPE::JOIN) {
-      if (it->get_pid() == e2.get_pid()) { // joins in e2's thread
-        if (ite.object.first == e1.get_pid()) { // join of e1's thread
+    if (ite.type == Event::ACCESS_TYPE::SPAWN || ite.type == Event::ACCESS_TYPE::JOIN) {
+      IPid causal_before, causal_after;
+      if (ite.type == Event::ACCESS_TYPE::SPAWN) {
+        causal_before = it->get_pid();    // thread calling spawn
+        causal_after  = ite.object.first; // thread spawned
+      }
+      else { // ite.type == Event::ACCESS_TYPE::JOIN
+        causal_before = ite.object.first; // thread joined
+        causal_after  = it->get_pid();    // thread calling join
+      }
+      
+      if (causal_after == e2.get_pid()) { // spawn of/joins in e2's thread
+        if (causal_before == e1.get_pid()) { // spwan from/join of e1's thread
           if (!causal_prefix.empty()) 
             join_at = causal_prefix.head(); // next event in causal prefix is the delim event
           threads_of_e1_join_prefix.push_back(e1.get_pid());
         }
-        else { // join of a thread that is not e1's thread
-          threads_of_join_prefix.push_back(ite.object.first); // tid of thread that joined
+        else { // spwan from/join of a thread that is not e1's thread
+          threads_of_join_prefix.push_back(causal_before); // tid of thread that joined
         }
       }
       else {
-        if (std::find(threads_of_join_prefix.begin(), threads_of_join_prefix.end(), it->get_pid()) != 
-          threads_of_join_prefix.end()) { // joining thread joins in a thread in the list threads_of_join_prefix
-          if (ite.object.first == e1.get_pid()) {
+        if (std::find(threads_of_join_prefix.begin(), threads_of_join_prefix.end(), causal_after) != 
+          threads_of_join_prefix.end()) { // spawning/joining thread spwans/joins in a thread in the list threads_of_join_prefix
+          if (causal_before == e1.get_pid()) {
             if (!causal_prefix_by_join.empty())
               join_at = causal_prefix_by_join.head();
             else if (!causal_prefix.empty())
               join_at = causal_prefix.head();
           }
-          // add joining thread to the list, as its events are causally prefixed due to join
-          threads_of_join_prefix.push_back(ite.object.first); 
+          // add spawning/joining thread to the list, as its events are causally prefixed due to spawn/join
+          threads_of_join_prefix.push_back(causal_before); 
 
-          if (std::find(threads_of_e1_join_prefix.begin(), threads_of_e1_join_prefix.end(), it->get_pid()) !=
-            threads_of_e1_join_prefix.end()) // join parent in this list as well
+          if (std::find(threads_of_e1_join_prefix.begin(), threads_of_e1_join_prefix.end(), causal_after) !=
+            threads_of_e1_join_prefix.end()) // spawn/join parent in this list as well
             threads_of_e1_join_prefix.clear(); // prefix of the two lists is common from here on
 
-          if (std::find(threads_of_causal_prefix.begin(), threads_of_causal_prefix.end(), it->get_pid()) !=
-            threads_of_causal_prefix.end()) // join parent in this list as well
+          if (std::find(threads_of_causal_prefix.begin(), threads_of_causal_prefix.end(), causal_after) !=
+            threads_of_causal_prefix.end()) // spawn/join parent in this list as well
             threads_of_causal_prefix.clear(); // prefix of the two lists is common from here on
         }
-        else if (std::find(threads_of_e1_join_prefix.begin(), threads_of_e1_join_prefix.end(), it->get_pid()) !=
-          threads_of_e1_join_prefix.end()) { // joining thread joins in a thread in the list
-          // add joining thread to the list, as its events are causally prefixed due to join
-          threads_of_e1_join_prefix.push_back(ite.object.first);
+        else if (std::find(threads_of_e1_join_prefix.begin(), threads_of_e1_join_prefix.end(), causal_after) !=
+          threads_of_e1_join_prefix.end()) { // spawning/joining thread spawns/joins in a thread in the list
+          // add spawning/joining thread to the list, as its events are causally prefixed due to spawn/join
+          threads_of_e1_join_prefix.push_back(causal_before);
 
-          if (std::find(threads_of_causal_prefix.begin(), threads_of_causal_prefix.end(), it->get_pid()) !=
-            threads_of_causal_prefix.end()) // join parent in this list as well
+          if (std::find(threads_of_causal_prefix.begin(), threads_of_causal_prefix.end(), causal_after) !=
+            threads_of_causal_prefix.end()) // spawn/join parent in this list as well
             threads_of_causal_prefix.clear(); // prefix of the two lists is common from here on
         }
-        else if (std::find(threads_of_causal_prefix.begin(), threads_of_causal_prefix.end(), it->get_pid()) !=
+        else if (std::find(threads_of_causal_prefix.begin(), threads_of_causal_prefix.end(), causal_after) !=
           threads_of_causal_prefix.end()) {
-          if (ite.object.first == e1.get_pid()) {
+          if (causal_before == e1.get_pid()) {
             if (!causal_prefix_by_join.empty())
               join_at = causal_prefix_by_join.head();
           }
-          threads_of_causal_prefix.push_back(ite.object.first);
+          threads_of_causal_prefix.push_back(causal_before);
         }
       }
       continue; // nothing else to be done for a join event (it is not added to prefix)
@@ -1266,7 +1276,7 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1,
     causal_prefix.push_back(e1);
   }
 
-  // llvm::outs() << "backseq=" << causal_prefix.to_string() << "\n";
+  // llvm::outs() << "backseq (e1=" << e1 << ", e2=" << e2 << ") =" << causal_prefix.to_string() << "\n";
   return causal_prefix;
 }
 
@@ -1352,8 +1362,6 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::consistent_merge(Sequ
   
   assert(!primary_seq.empty());
   if (other_seq.empty()) return primary_seq;
-
-  if (primary_seq.last().get_pid() == 0) return primary_seq; // lead created for assert check in master thread
 
   Sequence original_primary_seq = primary_seq;
   Sequence original_other_seq   = other_seq;
@@ -1467,8 +1475,6 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Lead::consistent_merge(Sequence
   
   assert(!primary_seq.empty());
   if (other_seq.empty()) return primary_seq;
-
-  if (primary_seq.last().get_pid() == 0) return primary_seq; // lead created for assert check in master thread
 
   Sequence original_primary_seq = primary_seq;
   Sequence original_other_seq   = other_seq;
