@@ -26,6 +26,7 @@ protected:
     class Event;
     class Thread;
     class Sequence;
+    class EventSequence;
     class Lead;
     class State;
 
@@ -89,8 +90,8 @@ public:
     int  union_state_start(int prefix_idx, IID<IPid> event, Sequence& start);
     // check if an event in a start has different causal dependence in different extensions
     bool indepenent_event_in_leads(int state, IID<IPid> event);
-    // check if the causal dependence all events in the lead start remains the same for all extensions
-    bool is_independent_EW_lead(Sequence& start);
+    // check if the causal dependence all events in the lead-start remain the same for all extensions
+    bool is_independent_EW_lead(Sequence& start, IID<IPid> write_event, IID<IPid> read_event);
     // perform union of state leads with pending EW_leads
     void add_EW_leads(int state);
 
@@ -178,6 +179,7 @@ protected:
         void make_write();
         SymEv sym_event() const {return symEvent[0];}
 
+        // [snj]: TODO use ACCESS_TYPE
         bool is_spawn() {return type == SPAWN;}
         /* is read of shared object */
         bool is_read() {return (symEvent.size()==1 && sym_event().addr().addr.block.is_global() && type == READ);}
@@ -206,6 +208,7 @@ protected:
 
         bool operator==(Event event);
         bool operator!=(Event event);
+        // [snj]: TODO why is thus operator commented?
         // std::string   operator<<() {to_string();}
     };
 
@@ -230,7 +233,8 @@ protected:
         Sequence(std::unordered_set<IID<IPid>> a, std::vector<Thread>* t) {events.insert(events.begin(), a.begin(), a.end()); threads = t;}
         
         void update_threads(std::vector<Thread>* t) {threads = t;}
-        std::vector<Event> to_event_sequence();
+        EventSequence to_event_sequence(std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn>& mem);
+        EventSequence to_event_sequence(EventSequence& source, std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn>& mem);
 
         bool empty() {return (size() == 0);}
         std::size_t size() const {return events.size();}
@@ -279,16 +283,6 @@ protected:
         /* program ordered prefix upto end of ev in this */
         Sequence po_prefix_master(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
         
-        /* return read -> value map of reads in sequence 
-           (maps a read to 0(init value) if a write for the read is not in the sequence) */
-        std::unordered_map<IID<IPid>, int> read_value_map();
-        /* return read -> value and write -> value maps of events in sequence 
-           (maps a read to 0(init value) if a write for the read is not in the sequence) 
-           Also returns the object -> value map representing the final values of objects 
-           after the sequence, modified from within the sequence */
-        void event_value_map(std::unordered_map<IID<IPid>, int>& read_value_map, 
-                             std::unordered_map<IID<IPid>, int>& write_value_map,
-                             std::unordered_map<unsigned, std::unordered_map<unsigned, int>>& post_memory);
         /* In the sequence attempt to shift events from thread of e1 (including e1)
            to after e2. If cannot shift an event coherently then retun false and keep
            original sequence. */
@@ -307,6 +301,48 @@ protected:
 
     };
     Sequence empty_sequence;
+
+    typedef std::vector<Event>::iterator event_sequence_iterator;
+
+    class EventSequence {
+    public:
+        std::vector<Event> events;
+
+        bool empty() {return (size() == 0);}
+        int size() {return events.size();}
+        void clear() {events.clear();}
+        
+        event_sequence_iterator begin() {return events.begin();}
+        event_sequence_iterator end() {return events.end();}
+        Event last() {if (empty()) return Event(); return events.back();}
+        Event head() {return events.front();}
+        EventSequence tail() {
+            EventSequence tl = *this;
+            tl.erase(tl.begin());
+            return tl;
+        }
+       
+        bool has(Event event) {return std::find(events.begin(), events.end(), event) != events.end();}
+        event_sequence_iterator find(Event event) {return std::find(events.begin(), events.end(), event);}
+        event_sequence_iterator find_iid(IID<IPid> iid);
+        int  index_of(Event event) {return (std::find(events.begin(), events.end(), event) - events.begin());}
+
+        void push_back(Event event) {events.push_back(event);}
+        void pop_front() {events.erase(events.begin());};
+        
+        void erase(Event event) {events.erase(events.begin() + index_of(event));}
+        void erase(IID<IPid> event_id) {erase(find_iid(event_id));}
+        event_sequence_iterator erase(event_sequence_iterator it) {return events.erase(it);}
+
+        Sequence to_iid_sequence();
+        Sequence to_iid_sequence(std::vector<Thread>* t);
+        std::unordered_map<IID<IPid>, int> read_value_map();
+
+        bool operator==(EventSequence seq);
+        bool operator!=(EventSequence seq);
+
+        std::string to_string();
+    };
 
 
     class Thread
@@ -338,38 +374,30 @@ protected:
                                     std::vector<IID<IPid>>::iterator, std::vector<IID<IPid>>::iterator);
         
     public:
-        Sequence constraint;              // sequence from previous trace to be maintained
-        Sequence start;                   // new sequence to be explore to get the intended (read,value) pair
-        SOPFormula forbidden;             // (read,value) pairs that must not be explored
-        Sequence merged_sequence;         // consistent_merge(start, constraint) sequence to explore while maintaining constraint
-        bool is_done = false;             // whether the lead has been explored
+        Sequence constraint;           // sequence from previous trace to be maintained
+        Sequence start;                // new sequence to be explore to get the intended (read,value) pair
+        SOPFormula forbidden;          // (read,value) pairs that must not be explored
+        EventSequence merged_sequence; // consistent_merge(start, constraint) sequence to explore while maintaining constraint
+        bool is_done = false;          // whether the lead has been explored
 
-        // (read -> value read) map on read events of merged sequence
-        std::unordered_map<IID<IPid>, int> read_value_map; 
-        // (write -> value written) map on write events of merged sequence
-        std::unordered_map<IID<IPid>, int> write_value_map; 
-        // (object -> value) memory map after lead
-        std::unordered_map<unsigned, std::unordered_map<unsigned, int>> post_lead_memory_map;
-        
         Lead() {}
-        Lead(Sequence c, Sequence s, SOPFormula f) {
-            constraint = c; start = s; forbidden = f;
-            merged_sequence = consistent_merge(s, c);
-            merged_sequence.event_value_map(read_value_map, write_value_map, post_lead_memory_map);
+        Lead(const Lead &l, SOPFormula f) {
+            constraint = l.constraint; start = l.start; forbidden = f; 
+            merged_sequence = l.merged_sequence;
         }
-        Lead(Sequence s, SOPFormula f) {
-            start = s; forbidden = f;
-            merged_sequence = s;
-            merged_sequence.event_value_map(read_value_map, write_value_map, post_lead_memory_map);
+        Lead(EventSequence c, Sequence s, SOPFormula f, std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn>& mem) {
+            constraint = c.to_iid_sequence(s.threads); start = s; forbidden = f;
+            Sequence merged_sequence_id = consistent_merge(start, constraint);
+            merged_sequence = merged_sequence_id.to_event_sequence(c, mem);
+            llvm::outs() << "lead: " << to_string() << " = " << merged_sequence.to_string() << "\n";
         }
-        Lead(Sequence s, SOPFormula f, std::unordered_map<IID<IPid>, int> rv_map, 
-                                        std::unordered_map<IID<IPid>, int> wv_map,
-                                        std::unordered_map<unsigned, std::unordered_map<unsigned, int>> memory_map) {
+        Lead(Sequence s, SOPFormula f, std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn>& mem) {
             start = s; forbidden = f;
+            merged_sequence = s.to_event_sequence(mem);
+        }
+        Lead(EventSequence s, SOPFormula f) {
+            start = s.to_iid_sequence(); forbidden = f;
             merged_sequence = s;
-            read_value_map = rv_map;
-            write_value_map = wv_map;
-            post_lead_memory_map = memory_map;
         }
 
         /* this is prefix of l with view-adjustment */
@@ -382,6 +410,7 @@ protected:
         bool operator==(Lead l);
         std::ostream &operator<<(std::ostream &os){return os << to_string();}
         
+        // [snj]: TODO why here?
         // [snj]: consistent merge, merges 2 sequences such that all read events maitain their sources
         //          i.e, reads-from relation remain unchanged
         Sequence consistent_merge(Sequence &primary_seq, Sequence &other_seq);
@@ -407,6 +436,9 @@ protected:
         int lead_head_execution_prefix = -1; // idx in execution sequence where alpha lead starts (-1 if not a part of a lead)
         bool executing_alpha_lead = false;   // state is a part of alpha
 
+        // shared memory values at this state of execution ( object -> value map )
+        std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn> mem; 
+
         State() {}
         State(int prefix_idx) : sequence_prefix(prefix_idx) {};
         // State(int i, Lead a, SOPFormula f) {sequence_prefix = i; alpha = a; forbidden = f; alpha_sequence = alpha.start + alpha.constraint;};
@@ -416,7 +448,7 @@ protected:
         Lead next_unexplored_lead();
 
         bool alpha_empty() {return (alpha == -1);}
-        Sequence alpha_sequence() {if (alpha == -1) {llvm::outs() << "MUST NOT BE HERE\n"; return Sequence();} return leads[alpha].merged_sequence;}
+        EventSequence alpha_sequence() {if (alpha == -1) {llvm::outs() << "MUST NOT BE HERE\n"; return EventSequence();} return leads[alpha].merged_sequence;}
         std::string print_leads();
     };
 
@@ -500,7 +532,7 @@ protected:
     Sequence execution_sequence;
 
     /* [snj]: sequence of events to explore from current state */
-    Sequence to_explore;
+    EventSequence to_explore;
 
     /* [snj]: forbidden values for the current trace */
     SOPFormula forbidden;
