@@ -4082,7 +4082,6 @@ bool Interpreter::isPthreadMutexLock(Instruction &I, GenericValue **ptr)
   return true;
 }
 
-// [rmnt] : Checks if I is a thread join instruction, and if the joining thread has not completed, returns true
 bool Interpreter::checkRefuse(Instruction &I)
 {
   {

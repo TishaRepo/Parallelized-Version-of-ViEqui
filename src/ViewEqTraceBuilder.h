@@ -386,7 +386,6 @@ protected:
             constraint = c.to_iid_sequence(s.container); start = s; forbidden = f;
             Sequence merged_sequence_id = start.consistent_merge(constraint);
             merged_sequence = merged_sequence_id.to_event_sequence(c, mem);
-            llvm::outs() << "lead: " << to_string() << " = " << merged_sequence.to_string() << "\n";
         }
         Lead(Sequence s, SOPFormula f, std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn>& mem) {
             start = s; forbidden = f;
