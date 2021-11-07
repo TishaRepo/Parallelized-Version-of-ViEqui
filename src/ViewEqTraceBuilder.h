@@ -101,6 +101,11 @@ public:
     void backward_analysis_write(Event event, SOPFormula& forbidden, std::unordered_map<int, std::vector<Lead>>& L);
     void backward_analysis(Event event, SOPFormula& forbidden);
 
+    // is e1 ordered before due to a corresponding join event
+    bool ordered_by_join(IID<IPid> e1, IID<IPid> e2);
+    // is e1 ordered before due to a corresponding spawn event
+    bool ordered_by_spawn(IID<IPid> e1, IID<IPid> e2);
+
     // remove duplicate occurances in the vector
     void remove_duplicate_leads(std::vector<Lead>& L);
     // combining new lead with existing leads of a state
@@ -224,15 +229,15 @@ protected:
                          std::vector<IID<IPid>>::iterator, std::vector<IID<IPid>>::iterator);
     public:
         std::vector<IID<IPid>> events;
-        std::vector<Thread> *threads;
+        ViewEqTraceBuilder* container;
 
         Sequence(){assert(false);}
-        Sequence(std::vector<Thread>* t){threads = t;}
-        Sequence(std::vector<IID<IPid>> &seq, std::vector<Thread>* t){events = seq; threads = t;}
-        Sequence(IID<IPid>& e, std::vector<Thread>* t) {events.push_back(e); threads = t;}
-        Sequence(std::unordered_set<IID<IPid>> a, std::vector<Thread>* t) {events.insert(events.begin(), a.begin(), a.end()); threads = t;}
+        Sequence(ViewEqTraceBuilder* c){container = c;}
+        Sequence(std::vector<IID<IPid>> &seq, ViewEqTraceBuilder* c){events = seq; container = c;}
+        Sequence(IID<IPid>& e, ViewEqTraceBuilder* c) {events.push_back(e); container = c;}
+        Sequence(std::unordered_set<IID<IPid>> a, ViewEqTraceBuilder* c) {events.insert(events.begin(), a.begin(), a.end()); container = c;}
         
-        void update_threads(std::vector<Thread>* t) {threads = t;}
+        void set_container_reference(ViewEqTraceBuilder* c) {container = c;}
         EventSequence to_event_sequence(std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn>& mem);
         EventSequence to_event_sequence(EventSequence& source, std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn>& mem);
 
@@ -243,7 +248,7 @@ protected:
         std::vector<IID<IPid>>::iterator end() {return events.end();}
         IID<IPid> head() {return events.front();}
         Sequence tail() {
-            Sequence tl(events, threads);
+            Sequence tl(events, container);
             tl.pop_front();
             return tl;
         }
@@ -260,7 +265,6 @@ protected:
         
         bool has(IID<IPid> event) {return std::find(events.begin(), events.end(), event) != events.end();}
         int  index_of(IID<IPid> event) {return (std::find(events.begin(), events.end(), event) - events.begin());}
-        int  value_of(IID<IPid> event);
         sequence_iterator find(IID<IPid> event) {return std::find(events.begin(), events.end(), event);}
 
         Sequence subsequence(sequence_iterator begin, sequence_iterator end);
@@ -279,9 +283,6 @@ protected:
         /* execution subsequence from e1 to e2 including events between e1 and e2 that causally preceed e2 */
         std::pair<IID<IPid>, Sequence> causal_prefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
         /* program ordered prefix upto end of ev in this */
-        std::pair<std::pair<bool, bool>, Sequence> po_prefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
-        /* program ordered prefix upto end of ev in this */
-        Sequence po_prefix_master(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
         
         /* In the sequence attempt to shift events from thread of e1 (including e1)
            to after e2. If cannot shift an event coherently then retun false and keep
@@ -335,7 +336,7 @@ protected:
         event_sequence_iterator erase(event_sequence_iterator it) {return events.erase(it);}
 
         Sequence to_iid_sequence();
-        Sequence to_iid_sequence(std::vector<Thread>* t);
+        Sequence to_iid_sequence(ViewEqTraceBuilder *container);
         std::unordered_map<IID<IPid>, int> read_value_map();
 
         bool operator==(EventSequence seq);
@@ -366,13 +367,6 @@ protected:
     };
 
     class Lead {
-    private:
-        // [snj]: required by consistent_merge function
-        Sequence join(Sequence& primary_seq, Sequence& other_seq);
-        // auxiliary function for join
-        void join_prefix(Sequence&, std::vector<IID<IPid>>::iterator, std::vector<IID<IPid>>::iterator,
-                                    std::vector<IID<IPid>>::iterator, std::vector<IID<IPid>>::iterator);
-        
     public:
         Sequence constraint;           // sequence from previous trace to be maintained
         Sequence start;                // new sequence to be explore to get the intended (read,value) pair
@@ -386,8 +380,8 @@ protected:
             merged_sequence = l.merged_sequence;
         }
         Lead(EventSequence c, Sequence s, SOPFormula f, std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn>& mem) {
-            constraint = c.to_iid_sequence(s.threads); start = s; forbidden = f;
-            Sequence merged_sequence_id = consistent_merge(start, constraint);
+            constraint = c.to_iid_sequence(s.container); start = s; forbidden = f;
+            Sequence merged_sequence_id = start.consistent_merge(constraint);
             merged_sequence = merged_sequence_id.to_event_sequence(c, mem);
             llvm::outs() << "lead: " << to_string() << " = " << merged_sequence.to_string() << "\n";
         }
@@ -409,11 +403,7 @@ protected:
         
         bool operator==(Lead l);
         std::ostream &operator<<(std::ostream &os){return os << to_string();}
-        
-        // [snj]: TODO why here?
-        // [snj]: consistent merge, merges 2 sequences such that all read events maitain their sources
-        //          i.e, reads-from relation remain unchanged
-        Sequence consistent_merge(Sequence &primary_seq, Sequence &other_seq);
+
         std::string to_string();
     };
 
@@ -510,6 +500,16 @@ protected:
        state -> read -> value -> list of leads to get the rv pair (read,value)
     */
     std::unordered_map<int, std::unordered_map<IID<IPid>, std::unordered_map<int, std::vector<Lead>>>> EW_leads;
+
+    /* [snj]: information of spawns occured in current execution sequence
+       thread_id(t) -> thread_ids that spawned from t -> event index of the corresponding spawn event
+    */
+    std::unordered_map<IPid, std::unordered_map<IPid, int>> spawn_summary;
+
+    /* [snj]: information of joins occured in current execution sequence
+       thread_id(t) -> thread_ids that joined in t -> event index of the corresponding join event
+    */
+    std::unordered_map<IPid, std::unordered_map<IPid, int>> join_summary;
 
     /* object base -> object offset -> value
         maps object to current value in memory
