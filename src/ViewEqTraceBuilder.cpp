@@ -103,7 +103,7 @@ void ViewEqTraceBuilder::replay_memory_access(int next_replay_thread, IID<IPid> 
   if(current_event.is_read()) { 
     visible[current_event.object].execute_read(current_event.get_pid(), last_write[current_event.object], mem[current_event.object]);
     current_event.value = mem[current_event.object];
-    threads[current_thread][current_event.get_id()].value = current_event.value;
+    threads[current_thread][current_event.get_index()].value = current_event.value;
   }
 
   if (prefix_idx == states[current_state].lead_head_execution_prefix)
@@ -241,7 +241,7 @@ void ViewEqTraceBuilder::execute_next_lead() {
   if(current_event.is_read()) { 
     visible[current_event.object].execute_read(current_event.get_pid(), last_write[current_event.object], mem[current_event.object]);
     current_event.value = mem[current_event.object];
-    threads[current_thread][current_event.get_id()].value = current_event.value;    
+    threads[current_thread][current_event.get_index()].value = current_event.value;    
   }
   out << "is read\n";
 
@@ -692,6 +692,34 @@ void ViewEqTraceBuilder::cancel_replay() { replay_point = -1; }
 
 bool ViewEqTraceBuilder::full_memory_conflict() {return false;} //[snj]: TODO
 
+void ViewEqTraceBuilder::update_join_summary(Event event) {
+  int joined_thread = event.object.first;
+  if (join_summary[event.get_pid()].find(joined_thread) != join_summary[event.get_pid()].end())
+    return; // already joined directly or indirectly
+
+  // direct join : join event of joined_thread is in event's thread
+  join_summary[event.get_pid()][joined_thread] = event.get_index();
+
+  // indirect join : join event of thread t is in joined_thread
+  for (auto it = join_summary[joined_thread].begin(); it != join_summary[joined_thread].end(); it++) {
+    if (join_summary[event.get_pid()].find(it->first) == join_summary[event.get_pid()].end()) {
+      join_summary[event.get_pid()][it->first] = event.get_index();
+    }
+  }
+}
+
+void ViewEqTraceBuilder::update_spawn_summary(Event event) { // t0 -> (t1 -> t2)
+  int spawned_thread = event.object.first;
+  spawn_summary[event.get_pid()][spawned_thread] = event.get_index();
+
+  for (auto it = spawn_summary.begin(); it != spawn_summary.end(); it++) {
+    auto t = it->second.find(event.get_pid());
+    if (t != it->second.end()) { // event's thread was spawned by it
+      spawn_summary[it->first][spawned_thread] = t->second;
+    }
+  }
+}
+
 bool ViewEqTraceBuilder::spawn()
 {
   Event event(SymEv::Spawn(threads.size()));
@@ -706,9 +734,8 @@ bool ViewEqTraceBuilder::spawn()
   // [snj]: create-event in thread that is spawning a new event
   current_event = event;
   current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
-  spawn_summary[current_thread][event.object.first] = current_event.iid.get_index();
-  out << "recorded spawn[" << current_thread << "][" << event.object.first << "]=" << spawn_summary[current_thread][event.object.first] << "\n";
-  
+  update_spawn_summary(current_event);
+
   threads[current_thread].push_back(current_event);
   execution_sequence.push_back(current_event.iid);
 
@@ -736,8 +763,7 @@ bool ViewEqTraceBuilder::join(int tgt_proc) {
 
   current_event = event;
   current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
-  join_summary[current_thread][tgt_proc] = current_event.iid.get_index();
-  out << "recorded joni[" << current_thread << "][" << tgt_proc << "]=" << spawn_summary[current_thread][event.object.first] << "\n";
+  update_join_summary(current_event);
   
   threads[current_thread].push_back(current_event);
   execution_sequence.push_back(current_event.iid);
@@ -1008,14 +1034,17 @@ std::string ViewEqTraceBuilder::Event::type_to_string() const {
 std::string ViewEqTraceBuilder::Event::to_string() const {
   if (type == READ || type == WRITE) {
     if (object.second == 0)
-      return ("[" + std::to_string(get_pid()) + ":" + std::to_string(get_id()) + "] (" + type_to_string() + "(" + std::to_string(object.first) + "," + std::to_string(value) + "))");
-    return ("[" + std::to_string(get_pid()) + ":" + std::to_string(get_id()) + "] (" + type_to_string() + "(" + std::to_string(object.first) + "+" + std::to_string(object.second) + "," + std::to_string(value) + "))");  
+      return ("[" + std::to_string(get_pid()) + ":" + std::to_string(get_index()) + "] (" + type_to_string() + "(" + std::to_string(object.first) + "," + std::to_string(value) + "))");
+    return ("[" + std::to_string(get_pid()) + ":" + std::to_string(get_index()) + "] (" + type_to_string() + "(" + std::to_string(object.first) + "+" + std::to_string(object.second) + "," + std::to_string(value) + "))");  
   }
   
-  return ("[" + std::to_string(get_pid()) + ":" + std::to_string(get_id()) + "] (" + type_to_string() + ":thread" + std::to_string(object.first) + ")");
+  return ("[" + std::to_string(get_pid()) + ":" + std::to_string(get_index()) + "] (" + type_to_string() + ":thread" + std::to_string(object.first) + ")");
 }
 
 bool ViewEqTraceBuilder::Sequence::view_adjust(IID<IPid> e1, IID<IPid> e2) {
+  if (container->ordered_by_join(e1, e2) || container->ordered_by_spawn(e1, e2)) 
+    return false;
+
   std::vector<IID<IPid>> original_events = events;
 
   Event ev1 = container->get_event(e1);
@@ -1328,7 +1357,18 @@ void ViewEqTraceBuilder::Sequence::join_prefix(
         Event ep = container->get_event(*itp);
 
         if (eo.RWpair(ep)) { // ep is a read of same object
-          // push till ep first
+          // push till ep first if it can be done
+          for (auto ito_ = ito; ito_ != other_end; ito_++) {
+            for (auto itp_ = primary_next; itp_ != itp+1; itp_++) {
+              if (container->ordered_by_join(*ito_, *itp_) || container->ordered_by_spawn(*ito_, *itp_)) {
+                // cannot push till ep because of join/spawn
+                merged_sequence.clear();
+                return;
+              }
+            }
+          }
+
+          // can push till ep first
           for (auto itp2 = primary_next; itp2 != itp; itp2++) {
             Event ep2 = container->get_event(*itp2);
 
@@ -1432,9 +1472,9 @@ std::string ViewEqTraceBuilder::EventSequence::to_string() {
   if (events.empty()) return "<>";
 
   std::string s = "<";
-  s += "(" + std::to_string(events[0].get_pid()) + ":" + std::to_string(events[0].get_id()) +")";
+  s += "(" + std::to_string(events[0].get_pid()) + ":" + std::to_string(events[0].get_index()) +")";
   for (auto it = events.begin() + 1; it != events.end(); it++) {
-    s = s + ", (" + std::to_string(it->get_pid()) + ":" + std::to_string(it->get_id()) +")";
+    s = s + ", (" + std::to_string(it->get_pid()) + ":" + std::to_string(it->get_index()) +")";
   }
 
   s = s + ">";

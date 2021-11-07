@@ -76,6 +76,9 @@ public:
     // current value in memory for an object
     int current_value(std::pair<unsigned, unsigned> obj);
 
+    void update_join_summary(Event event);
+    void update_spawn_summary(Event event);
+
     // returns a list of dependent (R-W, W-R) and non-forbidden events for an event
     std::unordered_set<IID<IPid>> unexploredInfluencers(Event er, SOPFormula& f);
     std::unordered_set<IID<IPid>> exploredInfluencers(Event er, SOPFormula &f);
@@ -195,9 +198,9 @@ protected:
         bool RWpair(Event e);
 
         IID<IPid> get_iid() const {return iid;}
-        int get_id() {return iid.get_index();}
+        int get_index() {return iid.get_index();}
         IPid get_pid() {return iid.get_pid();}
-        int get_id() const {return iid.get_index();}
+        int get_index() const {return iid.get_index();}
         IPid get_pid() const {return iid.get_pid();}
 
 
