@@ -32,7 +32,6 @@ protected:
 
 public:
     typedef int IPid;
-    // typedef std::pair<unsigned, unsigned> Object; // [snj]: TODO use this
 
     ViewEqTraceBuilder(const Configuration &conf = Configuration::default_conf);
     virtual ~ViewEqTraceBuilder() override;
@@ -149,18 +148,8 @@ public:
                                       const SymAddrSize &mutex_ml) override;
     virtual NODISCARD int cond_destroy(const SymAddrSize &ml) override;
     virtual NODISCARD bool register_alternatives(int alt_count) override;
-    // [snj]: TODO check whether we can do without the above listed functions
 
-    /* [rmnt]: I have just copied their comment for now. TODO Write our own
-    * Records a symbolic representation of the current event.
-    *
-    * During replay, events are checked against the replay log. If a mismatch is
-    * detected, a nondeterminism error is reported and the function returns
-    * false.
-    *
-    * Otherwise returns true.
-    */
-    // [snj]: record symbolic event for event
+    // [snj]: not in use
     // bool NODISCARD record_symbolic(Event event, SymEv symevent);
     bool NODISCARD record_symbolic(SymEv event);
 
@@ -187,8 +176,6 @@ protected:
         void make_write();
         SymEv sym_event() const {return symEvent[0];}
 
-        // [snj]: TODO use ACCESS_TYPE
-        bool is_spawn() {return type == SPAWN;}
         /* is read of shared object */
         bool is_read() {return (symEvent.size()==1 && sym_event().addr().addr.block.is_global() && type == READ);}
         /* is write of shared object */
@@ -211,13 +198,9 @@ protected:
 
         std::string to_string() const;
         std::string type_to_string() const;
-        inline std::ostream &operator<<(std::ostream &os){return os << to_string();}
-        inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os){return os << to_string();}
-
+        
         bool operator==(Event event);
         bool operator!=(Event event);
-        // [snj]: TODO why is thus operator commented?
-        // std::string   operator<<() {to_string();}
     };
 
     typedef std::vector<IID<IPid>>::iterator sequence_iterator;
@@ -538,11 +521,6 @@ protected:
 
     /* [snj]: forbidden values for the current trace */
     SOPFormula forbidden;
-
-    /* [snj]: initial values of objects 
-       object -> value
-    */
-    // std::unordered_map<Object, int> INIT_VALUES; // [snj]: TODO use this
 };
 
 #endif

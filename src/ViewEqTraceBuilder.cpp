@@ -849,7 +849,6 @@ bool ViewEqTraceBuilder::load(const SymAddrSize &ml) {
     execution_sequence.push_back(current_event.iid);
   }
 
-
   return true;
 }
 
