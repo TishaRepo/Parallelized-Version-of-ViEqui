@@ -1144,8 +1144,8 @@ ViewEqTraceBuilder::Sequence::causal_prefix(IID<IPid> e1, IID<IPid> e2, sequence
       else if (std::find(threads_of_causal_prefix.begin(), threads_of_causal_prefix.end(), causal_after) !=
         threads_of_causal_prefix.end()) {
         if (causal_before == e1.get_pid()) {
-          if (!causal_prefix_by_join.empty())
-            join_at = causal_prefix_by_join.head();
+          if (!causal_prefix.empty())
+            join_at = causal_prefix.head();
         }
         threads_of_causal_prefix.push_back(causal_before);
       }
@@ -1247,7 +1247,7 @@ ViewEqTraceBuilder::Sequence::causal_prefix(IID<IPid> e1, IID<IPid> e2, sequence
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1, IID<IPid> e2){
   assert(this->has(e1) && this->has(e2));
-  
+
   std::pair<IID<IPid>, Sequence> causal_prefix_result = causal_prefix(e1, e2, find(e1)+1, find(e2));
 
   IID<IPid> e1_delim = causal_prefix_result.first;  
@@ -1309,48 +1309,48 @@ void ViewEqTraceBuilder::Sequence::join_prefix(
   for (auto ito = other_begin; ito != other_end; ito++) {
     Event eo = container->get_event(*ito);
 
-    if (eo.is_write()) { // next event of other is a write
-      // look for reads of same object in primary, if such reads exist then push them first
-      for (auto itp = primary_next; itp != primary_end; itp++) {
-        Event ep = container->get_event(*itp);
+    for (auto itp = primary_next; itp != primary_end; itp++) {
+      Event ep = container->get_event(*itp);
 
-        if (eo.RWpair(ep)) { // ep is a read of same object
-          // push till ep first if it can be done
-          for (auto ito_ = ito; ito_ != other_end; ito_++) {
-            for (auto itp_ = primary_next; itp_ != itp+1; itp_++) {
-              if (container->ordered_by_join(*ito_, *itp_) || container->ordered_by_spawn(*ito_, *itp_)) {
-                // cannot push till ep because of join/spawn
+      if ((eo.is_write() && eo.RWpair(ep)) || // ep is a read of same objectas eo
+        (container->ordered_by_join(*itp, *ito) || container->ordered_by_spawn(*itp, *ito))) { // ep is ordered before eo by join/spawn
+        // ep must be added before eo
+        for (auto ito_ = ito; ito_ != other_end; ito_++) { // events after eo in other
+          for (auto itp_ = primary_next; itp_ != itp+1; itp_++) { // events before ep in primary
+            if (container->ordered_by_join(*ito_, *itp_) || container->ordered_by_spawn(*ito_, *itp_)) {
+              // ito_ is ordered before itp_ by join/spawn
+              // cyclic dependency - no feasible merge possible ABORT
+              merged_sequence.clear();
+              return;
+            }
+          }
+        }
+
+        // no dependency of ep (or events before ep) on eo (or events after eo)
+        // push events in primary till ep
+        for (auto itp2 = primary_next; itp2 != itp; itp2++) {
+          Event ep2 = container->get_event(*itp2);
+
+          if (ep2.is_write()) { // next event of other is a write
+            // look for reads of same object in other after the write eo, 
+            // if such reads exist then they must be pushed before ep2 but 
+            // that would crearte a cyclic dependency so ABORT
+            for (auto ito2 = ito+1; ito2 != other_end; ito2++) {
+              Event eo2 = container->get_event(*ito2);
+
+              if (ep2.RWpair(eo2)) { // eo2 is a read of same object as ep2
+                // no feasible merge possible ABORT
                 merged_sequence.clear();
                 return;
               }
             }
           }
 
-          // can push till ep first
-          for (auto itp2 = primary_next; itp2 != itp; itp2++) {
-            Event ep2 = container->get_event(*itp2);
-
-            if (ep2.is_write()) { // next event of other is a write
-              // look for reads of same object in other after the write eo, 
-              // if such reads exist then they must be pushed before ep2 but 
-              // that would crearte a cyclic dependency so ABORT
-              for (auto ito2 = ito+1; ito2 != other_end; ito2++) {
-                Event eo2 = container->get_event(*ito2);
-
-                if (ep2.RWpair(eo2)) { // eo2 is a read of same object as ep2
-                  // no feasible merge possible ABORT
-                  merged_sequence.clear();
-                  return;
-                }
-              }
-            }
-
-            merged_sequence.push_back(*itp2);
-          }
-
-          merged_sequence.push_back(*itp); // pushed events untill read itp, now push itp
-          primary_next = itp+1;
+          merged_sequence.push_back(*itp2);
         }
+
+        merged_sequence.push_back(*itp); // pushed events untill read itp, now push itp
+        primary_next = itp+1;
       }
     }
 
