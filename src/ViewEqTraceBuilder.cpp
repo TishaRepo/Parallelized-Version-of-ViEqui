@@ -1027,9 +1027,9 @@ bool ViewEqTraceBuilder::Sequence::view_adjust(IID<IPid> e1, IID<IPid> e2) {
       IID<IPid> tmp = events[j];
       events[j] = events[j+1];
       events[j+1] = tmp;
-
-      delim++; // shifted 1 event of e1's thread, now 1 location fixed
     }
+    
+    delim++; // shifted 1 event of e1's thread, now 1 location fixed
   }
 
   return true;
