@@ -157,6 +157,8 @@ public:
   VecSet<std::string> extfun_no_full_memory_conflict;
   /* Should we check for robustness as a correctness criterion? */
   bool check_robustness;
+  /* [snj]: Should we check for redundant explorations (valid only with viewEq algorithm) */\
+  bool check_optimality;
   /* If this flag is set, the ExecutionEngine will log what happens
    * during the run to the TraceBuilder, so that the TraceBuilder can
    * produce a more detailed (human-readable) error trace.

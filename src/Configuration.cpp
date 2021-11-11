@@ -110,6 +110,11 @@ cl_dpor_algorithm(llvm::cl::NotHidden, llvm::cl::init(Configuration::SOURCE),
 #endif
                                  ));
 
+static llvm::cl::opt<bool> cl_check_optimality("check-optimality", llvm::cl::NotHidden,
+                                    llvm::cl::desc("Check for optimal number of execution traces\n" 
+                                    "i.e. check if any redundant traces were explored.\n"
+                                    "Valid only with view algorithm option"));
+
 static llvm::cl::opt<bool> cl_check_robustness("check-robustness",llvm::cl::NotHidden,
                                                llvm::cl::desc("Check for robustness as a correctness criterion."));
 // Previous name
@@ -204,6 +209,7 @@ void Configuration::assign_by_commandline(){
   c11 = cl_c11;
   dpor_algorithm = cl_dpor_algorithm;
   check_robustness = cl_check_robustness;
+  check_optimality = cl_check_optimality;
   transform_spin_assume = !cl_transform_no_spin_assume;
   transform_loop_unroll = cl_transform_loop_unroll;
   if (cl_verifier_nondet_int.getNumOccurrences())
@@ -322,6 +328,15 @@ void Configuration::check_commandline(){
     Debug::warn("Configuration::check_commandline:c11:no-race-detect")
       << "WARNING: The race detector for --c11 is not yet implemented."
       << " Bugs might be missed or cause nondeterminism.\n";
+  }
+
+  if (cl_dpor_algorithm != Configuration::VIEW_EQ) {
+    if (cl_check_optimality.getNumOccurrences()) {
+      Debug::warn("Configuration::check_commandline:check_optimality")
+        << "WARNING: check optimality is only vaid with viewEq algorithm."
+        << " Option ignored here.\n";
+      check_optimality = false;
+    }
   }
 }
 

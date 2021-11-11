@@ -11,6 +11,7 @@ ViewEqTraceBuilder::ViewEqTraceBuilder(const Configuration &conf) : TSOPSOTraceB
   execution_sequence.set_container_reference(this);
   empty_sequence.set_container_reference(this);
   empty_sequence.clear();
+  check_optimality = conf.check_optimality;
 }
 
 ViewEqTraceBuilder::~ViewEqTraceBuilder() {}
@@ -587,8 +588,13 @@ int ViewEqTraceBuilder::find_replay_state_prefix() {
 }
 
 bool ViewEqTraceBuilder::reset() {
+  if (check_optimality)
+    record_redundant();
+
   int replay_state_prefix = find_replay_state_prefix();
   if (replay_state_prefix < 0) {// no more leads to explore, model checking complete
+    if (check_optimality)
+      report_redundant();
     replay_point = -1;
     return false; 
   }
@@ -911,6 +917,44 @@ void ViewEqTraceBuilder::debug_print() const {
     if (i==100) out.flush();
   }
 } 
+
+void ViewEqTraceBuilder::record_redundant() {
+  std::string tid_execution = ""; // string of thread ids in order of their execution global events
+
+  for (int i = 0; i < execution_sequence.size(); i++) {
+    if (prefix_state[i] >= 0) { // is a global event
+      tid_execution += std::to_string(execution_sequence[i].get_pid());
+    }
+  }
+
+  long long execution_hash =  StringHash(tid_execution).hash();
+  explored_sequences_summary.push_back(std::make_pair(execution_hash, tid_execution));
+
+  for (int i = 0; i < explored_sequences_summary.size()-1; i++) {
+    if (explored_sequences_summary[i].first == execution_hash) {
+      if (explored_sequences_summary[i].second == tid_execution) {
+        redundant[(i+1)].push_back(explored_sequences_summary.size());
+        break;
+      }
+    }
+  }
+}
+
+void ViewEqTraceBuilder::report_redundant() {
+  if (redundant.size() > 0) {
+    out << "\nRedundant explorations:\n";
+    for (auto it = redundant.begin(); it != redundant.end(); it++) {
+      out << "Trace#" << it->first;
+      for (auto it2 = it->second.begin(); it2 != it->second.end(); it2++) {
+        out << ", Trace#" << (*it2);
+      }
+      out << "\n";
+    }
+  }
+  else {
+    out << "Optimal Exploration\n";
+  }
+}
 
 bool ViewEqTraceBuilder::compare_exchange(const SymData &sd, const SymData::block_type expected, bool success)
                                                     {out << "[snj]: cmp_exch being invoked!!\n"; assert(false); return false;}
@@ -1982,4 +2026,19 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
     // ////
     consistent_union(itfl->first, itfl->second);
   }
+}
+
+long long StringHash::polynomialRollingHash() {
+  int p = 31;
+  int m = 1e9 + 9;
+  long long power_of_p = 1;
+  long long hash_val = 0;
+
+  // Loop to calculate the hash value by iterating over the elements of string
+  for (int i = 0; i < str.length(); i++) {
+    hash_val = (hash_val + (str[i] - 'a' + 1) * power_of_p) % m;
+    power_of_p = (power_of_p * p) % m;
+  }
+
+  return (hash_val%m + m) % m; // return positive remainder only
 }

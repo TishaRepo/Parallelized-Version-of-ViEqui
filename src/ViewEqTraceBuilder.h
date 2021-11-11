@@ -19,6 +19,19 @@ class HashFn{
         }
 };
 
+class StringHash {
+    std::string str;
+    long long hash_value;
+
+    long long polynomialRollingHash();
+
+public:
+    StringHash() {}
+    StringHash(std::string s) : str(s)  {}
+
+    long long hash() {return polynomialRollingHash();}
+};
+
 
 class ViewEqTraceBuilder : public TSOPSOTraceBuilder
 {
@@ -71,6 +84,11 @@ public:
     // verbose information of a trace
     virtual Trace *get_trace() const override;
     virtual void debug_print() const override;
+
+    // detect and record redundant explorations
+    void record_redundant();
+    // report summary of redundant explorations
+    void report_redundant();
 
     // current value in memory for an object
     int current_value(std::pair<unsigned, unsigned> obj);
@@ -429,6 +447,19 @@ protected:
 
     /* stream for debug printing on stdout */
     llvm::raw_ostream &out = llvm::outs();
+
+    /* [snj]: check and report redundant explorations  */
+    bool check_optimality;
+
+    /* [snj]: list of strings of tids representing execution sequences explored as
+       pair(hash_value, string of thread ids in order of their execution global events)
+    */
+    std::vector<std::pair<long long, std::string>> explored_sequences_summary;
+
+    /* [snj]: list of redundant explorations
+        earliest redundant trace -> later redundant traces
+    */
+    std::unordered_map<int, std::vector<int>> redundant;
 
     /* The index into prefix corresponding to the last event that was
     * scheduled. Has the value -1 when no events have been scheduled.

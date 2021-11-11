@@ -62,18 +62,14 @@ for test_index in range(1, len(test_results)+1):
     (test_traces, test_isviolation) = test_results[test_index-1]
 
     os.system('clang -c -emit-llvm -S -o executable_file.ll ' + test_path + test_name)
-    process = subprocess.Popen([current_path + 'src/nidhugg', '--sc', '--view' , current_path + 'executable_file.ll'], stdout=subprocess.PIPE, bufsize=1, universal_newlines=True)
+    process = subprocess.Popen([current_path + 'src/nidhugg', '--sc', '--view', '--check-optimality' , current_path + 'executable_file.ll'], stdout=subprocess.PIPE, bufsize=1, universal_newlines=True)
     sout = process.stdout.readlines() # process.communicate()[0]
     os.system('rm ' + current_path + 'executable_file.ll')
 
     run_fail = True
     count_fail = False
     violation_status_fail = False
-
-#     # for line in sout:
-#     #     print line
-#     # print "-- stdout --"
-#     # break
+    optimality_fail = False
 
     for line in sout:
         if 'Trace count:' in line:
@@ -91,16 +87,23 @@ for test_index in range(1, len(test_results)+1):
             if (test_isviolation != 'Y'):
                 violation_status_fail = True
 
+        elif line.startswith('Redundant explorations'):
+            optimality_fail = True
+
     if (run_fail):
-        print str(test_index) + ' Failed to complete run'
+        print (str(test_index) + ' Failed to complete run')
         failed_tests.append((test_name, 'Failed to complete run'))
 
-    if (count_fail and violation_status_fail):
-        failed_tests.append((test_name, 'Traces count mismatch (expected=' + str(test_traces) + ' found=' + str(out_traces) + ') & violation status mismatch (expected=' + test_isviolation + ')'))
-    elif (count_fail):
-        failed_tests.append((test_name, 'Traces count mismatch (expected=' + str(test_traces) + ' found=' + str(out_traces) + ')'))
-    elif (violation_status_fail):
-        failed_tests.append((test_name, 'Violation status mismatch (expected=' + test_isviolation + ')'))
+    fail_msg = ''
+    if count_fail:
+        fail_msg += '     Traces count mismatch (expected=' + str(test_traces) + ' found=' + str(out_traces) + ')\n'
+    if violation_status_fail:
+        fail_msg += '     Violation status mismatch (expected=' + test_isviolation + ')\n'
+    if optimality_fail:
+        fail_msg += '     Optimality failed\n'
+
+    if count_fail or violation_status_fail or optimality_fail:
+        failed_tests.append( (test_name, fail_msg) )
 
     tests_completed = tests_completed + 1
 
@@ -112,4 +115,4 @@ print ('No. of tests failed = ' + str(len(failed_tests)))
 print('----------------------------------------------')
 for (idx, msg) in failed_tests:
     print ('Test ' + idx + ': FAIL')
-    print ('     ' + msg)
+    print (msg)
