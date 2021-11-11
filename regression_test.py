@@ -41,7 +41,9 @@ test_results = [(2,'N'), # Test1
                 (2,'N'), # Test23
                 (4,'N'), # Test24
                 (6,'N'), # Test25
-                (8,'N')] # Test26
+                (8,'N'), # Test26
+                (4,'Y'), # Test27
+                (4,'N')] # Test28
 
 failed_tests = []
 
@@ -82,7 +84,7 @@ for test_index in range(1, len(test_results)+1):
             if (test_isviolation != 'N'):
                 violation_status_fail = True
 
-        elif line.startswith('Error detected'):
+        elif line.startswith(' Error detected'):
             run_fail = False
             if (test_isviolation != 'Y'):
                 violation_status_fail = True
