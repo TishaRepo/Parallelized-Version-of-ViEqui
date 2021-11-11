@@ -275,7 +275,7 @@ bool DPORDriver::handle_trace(TraceBuilder *TB, Trace *t, uint64_t *computation_
     res.all_traces.push_back(t);
     t_used = true;
   }
-  if(conf.dpor_algorithm != Configuration::VIEW_EQ && !TB->sleepset_is_empty()) {
+  if(conf.dpor_algorithm != Configuration::VIEW_EQ && !TB->sleepset_is_empty()) {// [snj]: TODO do we need to check conf algo
     ++res.sleepset_blocked_trace_count;
   }else if(assume_blocked){
     ++res.assume_blocked_trace_count;

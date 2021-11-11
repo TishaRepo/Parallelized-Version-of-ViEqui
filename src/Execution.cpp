@@ -4255,7 +4255,6 @@ void Interpreter::run()
       }
     }
 
-    // [rmnt]: TODO: Check whether we need metadata function
     TB.metadata(I.getMetadata("dbg"));
 
     assert(DryRunMem.empty());
@@ -4302,9 +4301,6 @@ void Interpreter::run()
     if (ECStack()->empty())
     { // The thread has terminated
     
-      // snj: assert fail
-      if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ && Blocked) break;
-
       if (CurrentThread == 0 && AtExitHandlers.size())
       {
         callFunction(AtExitHandlers.back(), {});
@@ -4321,6 +4317,8 @@ void Interpreter::run()
       --ECStack()->back().CurInst;
       DryRunMem.clear();
     }
+
+    if (Blocked) break; // snj: assert fail
 
     // [snj]: check if the next instruction is a load or store
     if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ && !ECStack()->empty()) {

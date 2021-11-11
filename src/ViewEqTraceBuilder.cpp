@@ -76,8 +76,7 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun) {
 void ViewEqTraceBuilder::replay_non_memory_access(int next_replay_thread, IID<IPid> next_replay_event) {
   assert(!threads[next_replay_thread].awaiting_load_store);
   assert(next_replay_event.get_index() == threads[next_replay_thread].size());
-
-  threads[next_replay_thread].push_back(no_load_store);
+  threads[next_replay_thread].push_back(next_replay_event);
   current_thread = next_replay_thread;
 }
 
@@ -128,7 +127,8 @@ bool ViewEqTraceBuilder::exists_non_memory_access(int *proc) {
   for (int i = threads.size()-1; i >=0 ; i--) {
     if (threads[i].available && !threads[i].awaiting_load_store) {
       IID<IPid> iid = IID<IPid>(IPid(i), threads[i].events.size());
-      threads[i].push_back(no_load_store);
+      Event non_global(iid);
+      threads[i].push_back(non_global);
       execution_sequence.push_back(iid);
       prefix_state.push_back(-1);
       prefix_idx++;
@@ -558,9 +558,9 @@ bool ViewEqTraceBuilder::Sequence::hasRWpairs(Sequence& seq) {
 
 void ViewEqTraceBuilder::metadata(const llvm::MDNode *md)
 {
-  // [rmnt]: Originally, they check whether dryrun is false before updating the current event's metadata and also maintain a last_md object inside TSOTraceBuilder. Since we don't use dryrun, we have omitted the checks and also last_md
-  assert(current_event.md == 0);
-  current_event.md = md;
+  IID<IPid> current_event = execution_sequence[prefix_idx-1];
+  threads[current_event.get_pid()][current_event.get_index()].md = md;
+  
   last_md = md;
 }
 

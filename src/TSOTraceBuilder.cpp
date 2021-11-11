@@ -48,7 +48,6 @@ TSOTraceBuilder::~TSOTraceBuilder()
 
 bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun)
 {
-  // outs() << "snj: entering schedule\n";
   assert(!has_vclocks && "Can't add more events after analysing the trace");
 
   *dryrun = false;
@@ -56,7 +55,6 @@ bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun)
   this->dryrun = false;
   if (replay)
   {
-    // outs() << "snj: in replay\n";
     /* Are we done with the current Event? */
     if (0 <= prefix_idx && threads[curev().iid.get_pid()].last_event_index() <
                                curev().iid.get_index() + curbranch().size - 1)
@@ -145,7 +143,6 @@ bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun)
       !prefix[prefix.len() - 1].may_conflict &&
       prefix[prefix.len() - 1].sleep.empty())
   {
-    // outs() << "snj: if 1\n";
     assert(prefix.children_after(prefix.len() - 1) == 0);
     assert(prefix[prefix.len() - 1].wakeup.empty());
     assert(curev().sym.empty());     /* Would need to be copied */
@@ -164,7 +161,6 @@ bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun)
     /* Copy symbolic events to wakeup tree */
     if (prefix.len() > 0)
     {
-      // outs() << "snj: if 2\n";
       if (!curbranch().sym.empty())
       {
 #ifndef NDEBUG
@@ -176,7 +172,6 @@ bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun)
       }
       else
       {
-        // outs() << "snj: else of if 1,2\n";
         Branch b = curbranch();
         b.sym = curev().sym;
         if (conf.dpor_algorithm == Configuration::OBSERVERS)
@@ -189,7 +184,6 @@ bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun)
   }
 
   /* Create a new Event */
-  // outs() << "snj: new event\n";
   sym_idx = 0;
 
   /* Find an available thread (auxiliary or real).
@@ -219,7 +213,6 @@ bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun)
     if (threads[p].available && !threads[p].sleeping &&
         (conf.max_search_depth < 0 || threads[p].last_event_index() < conf.max_search_depth))
     {
-      // outs() << "snj: real thread loop: thread[" << p << "].event_indices.push_back(" << prefix_idx << ")\n";
       threads[p].event_indices.push_back(++prefix_idx);
       assert(prefix_idx == int(prefix.len()));
       prefix.push(Branch(IPid(p)),
@@ -1995,7 +1988,6 @@ static It frontier_filter(It first, It last, LessFn less)
 
 void TSOTraceBuilder::compute_vclocks()
 {
-  // outs() << "snj: in compute vclocks\n";
   /* Be idempotent */
   if (has_vclocks)
     return;

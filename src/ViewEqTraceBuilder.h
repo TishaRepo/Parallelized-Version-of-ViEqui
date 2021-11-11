@@ -411,7 +411,6 @@ protected:
     };
 
     /* [snj]: dummy event */
-    Event no_load_store;
     IID<IPid> dummy_id;
 
     /* [rmnt]: The CPids of threads in the current execution. */
