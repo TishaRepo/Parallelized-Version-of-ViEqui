@@ -66,7 +66,7 @@ def run_one_test( logfile, algo ):
     if algo == 3 : return trace_count + ',' + str(exn_time) + ',' + errors.strip() + ',' + str(status) + ',' + optimal + ',' + cmnt
     return trace_count + ',' + str(exn_time) + ',' + errors.strip() + ',' + str(status)
 
-def run_tests(start = 0, end = 8062):
+def run_tests(start = 0, end = 8065):
     testfiles = open(fileslist, 'r')
     logfile = open(output, 'a')
     if(start == 0):
@@ -134,12 +134,12 @@ def run_litmus():
 
 ###################################################################################
 
-#files = getFilesList(litmus_path)
-#filelist = open(current_path + 'filelist.txt', 'w')
-#files.sort()
-#for entry in files:
+# files = getFilesList('tests/litmus/C-tests/')
+# filelist = open(current_path + 'filelist.txt', 'w')
+# files.sort()
+# for entry in files:
 #    print(entry)
 #    filelist.write(entry[entry.find('Litmus') + 7:] + '\n')
 
-
+os.system('make')
 run_tests(0) 
