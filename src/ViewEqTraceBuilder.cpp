@@ -193,7 +193,8 @@ void ViewEqTraceBuilder::execute_next_lead() {
   // std::vector<Lead> unexl = states[current_state].unexplored_leads();
   // for (auto it = unexl.begin(); it != unexl.end(); it++) {
   //   out << "lead: ";
-  //   out << it->to_string() << "\n";
+  //   out << it->to_string();
+  //   out << " = " << it->merged_sequence.to_string() << "\n";
   // }
   // ////
   Lead next_lead = states[current_state].next_unexplored_lead();
@@ -1906,7 +1907,7 @@ void ViewEqTraceBuilder::forward_suffix_leads(std::unordered_map<int, std::vecto
 void ViewEqTraceBuilder::remove_duplicate_leads(std::vector<Lead>& L) {
   for (auto it = L.begin(); it != L.end(); it++) {
     for (auto it2 = it+1; it2 != L.end();) {
-      if (*it == *it2) { // found two instances of the same lead
+      if (it->merged_sequence == it2->merged_sequence) { // found two instances of the same lead
         it2 = L.erase(it2); // remove one instance
         continue;
       }
