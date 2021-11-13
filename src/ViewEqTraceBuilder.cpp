@@ -912,8 +912,7 @@ void ViewEqTraceBuilder::debug_print() const {
       out << "Heap Operation \n";
       continue;
     }
-    out << event.to_string() << " = ";
-    out << event.sym_event().to_string() << "\n";
+    out << event.to_string() << "\n";
 
     if (i==100) out.flush();
   }
@@ -1262,16 +1261,14 @@ ViewEqTraceBuilder::Sequence::causal_prefix(IID<IPid> e1, IID<IPid> e2, sequence
 
     // write whose object's read was seen and thus rf write is to be included in prefix
     else if (!added_to_prefix && ite.is_write()) { 
-      if (objects_for_source_join[ite.object.first].find(ite.object.second) != 
-        objects_for_source_join[ite.object.first].end()) {
+      if (objects_for_source_join[ite.object.first].find(ite.object.second) != objects_for_source_join[ite.object.first].end()) {
         objects_for_source_join[ite.object.first].erase(ite.object.second);
         threads_of_join_prefix.push_back(it->get_pid());
         causal_prefix_by_join.push_front(*it);
         added_to_prefix = true;
       }
 
-      if (objects_for_source_join_e1[ite.object.first].find(ite.object.second) != 
-        objects_for_source_join_e1[ite.object.first].end()) {
+      if (objects_for_source_join_e1[ite.object.first].find(ite.object.second) != objects_for_source_join_e1[ite.object.first].end()) {
         objects_for_source_join_e1[ite.object.first].erase(ite.object.second);
         threads_of_e1_join_prefix.push_back(it->get_pid());
         causal_prefix_by_join_of_e1_thread.push_front(*it);
@@ -1288,6 +1285,25 @@ ViewEqTraceBuilder::Sequence::causal_prefix(IID<IPid> e1, IID<IPid> e2, sequence
       if (added_to_prefix && it->get_pid() == e1.get_pid()) {
         join_at = (*it);
       }
+    }
+  }
+
+  Event e1_event = container->get_event(e1);
+  if (e1_event.is_write()) {
+    // check if a read in any of the sequences is dependent on write e1
+    if (objects_for_source_join[e1_event.object.first].find(e1_event.object.second) != objects_for_source_join[e1_event.object.first].end()) { 
+      causal_prefix_by_join.push_front(e1);
+      join_at = e1;
+    }
+
+    if (objects_for_source_join_e1[e1_event.object.first].find(e1_event.object.second) != objects_for_source_join_e1[e1_event.object.first].end()) {
+        causal_prefix_by_join_of_e1_thread.push_front(e1);
+        join_at = e1;
+    }
+
+    if (objects_for_source[e1_event.object.first].find(e1_event.object.second) != objects_for_source[e1_event.object.first].end()) {
+        causal_prefix.push_front(e1);
+        join_at = e1;
     }
   }
 
@@ -1337,7 +1353,8 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1,
       return causal_prefix;
     }
 
-    causal_prefix.push_at(loc, e1);
+    if (e1_delim != e1) // if not e1 already added
+      causal_prefix.push_at(loc, e1);
   }
   else { // event.is_read()
     if (e1_delim != e2) { // events causal after e1 are in 'causal_prefix' then e1 cannot be added later for reading, infeasible (read, value) pair
@@ -1482,9 +1499,16 @@ std::string ViewEqTraceBuilder::EventSequence::to_string() {
   if (events.empty()) return "<>";
 
   std::string s = "<";
-  s += "(" + std::to_string(events[0].get_pid()) + ":" + std::to_string(events[0].get_index()) +")";
+  s += "(" + std::to_string(events[0].get_pid()) + ":" + std::to_string(events[0].get_index()) + ")";
+  if (events[0].is_write()) 
+    s += "=" + std::to_string(events[0].value);
+  else s += "[" + std::to_string(events[0].value) + "]";
+
   for (auto it = events.begin() + 1; it != events.end(); it++) {
     s = s + ", (" + std::to_string(it->get_pid()) + ":" + std::to_string(it->get_index()) +")";
+    if (it->is_write()) 
+      s += "=" + std::to_string(it->value);
+    else s += "[" + std::to_string(it->value) + "]";
   }
 
   s = s + ">";
@@ -1968,7 +1992,6 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
           SOPFormula f = l->forbidden;
           f || sl->forbidden;
           add.push_back(Lead((*sl), f));
-          // add.push_back(Lead(sl->constraint, sl->start, f));
         }
 
         combined_with_existing = true;
@@ -1982,7 +2005,6 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
           SOPFormula f = l->forbidden;
           f && sl->forbidden;
           add.push_back(Lead((*sl), f));
-          // add.push_back(Lead(sl->constraint, sl->start, f));
         }
 
         combined_with_existing = true;
