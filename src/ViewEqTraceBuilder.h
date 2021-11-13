@@ -450,10 +450,10 @@ protected:
     /* [snj]: check and report redundant explorations  */
     bool check_optimality;
 
-    /* [snj]: list of strings of tids representing execution sequences explored as
-       pair(hash_value, string of thread ids in order of their execution global events)
+    /* [snj]: list of read_value maps representing execution sequences explored as
+       pair(hash_value, read -> value map)
     */
-    std::vector<std::pair<long long, std::string>> explored_sequences_summary;
+    std::vector<std::pair<long long, std::unordered_map<IID<IPid>, int>>> explored_sequences_summary;
 
     /* [snj]: list of redundant explorations
         earliest redundant trace -> later redundant traces

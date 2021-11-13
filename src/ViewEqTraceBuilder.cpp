@@ -920,20 +920,27 @@ void ViewEqTraceBuilder::debug_print() const {
 } 
 
 void ViewEqTraceBuilder::record_redundant() {
-  std::string tid_execution = ""; // string of thread ids in order of their execution global events
+  std::string symbolic_execution = ""; // string of alternating tid (of read event) . corresponding read value
+  std::unordered_map<IID<IPid>, int> rv_map;
 
   for (int i = 0; i < execution_sequence.size(); i++) {
     if (prefix_state[i] >= 0) { // is a global event
-      tid_execution += std::to_string(execution_sequence[i].get_pid());
+      Event event = get_event(execution_sequence[i]);
+      if (event.is_read()) {
+        symbolic_execution += std::to_string(execution_sequence[i].get_pid());
+        symbolic_execution += std::to_string(event.value);
+
+        rv_map[event.iid] = event.value;
+      }
     }
   }
 
-  long long execution_hash =  StringHash(tid_execution).hash();
-  explored_sequences_summary.push_back(std::make_pair(execution_hash, tid_execution));
+  long long execution_hash =  StringHash(symbolic_execution).hash();
+  explored_sequences_summary.push_back(std::make_pair(execution_hash, rv_map));
 
   for (int i = 0; i < explored_sequences_summary.size()-1; i++) {
     if (explored_sequences_summary[i].first == execution_hash) {
-      if (explored_sequences_summary[i].second == tid_execution) {
+      if (explored_sequences_summary[i].second == rv_map) {
         redundant[(i+1)].push_back(explored_sequences_summary.size());
         break;
       }
