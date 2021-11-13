@@ -32,3 +32,6 @@ stamp-*
 test-driver
 tests/smoke/test.results.txt
 tests/litmus/test.results.txt
+filelist.txt
+out
+*.csv
