@@ -1060,8 +1060,28 @@ bool ViewEqTraceBuilder::Sequence::view_adjust(IID<IPid> e1, IID<IPid> e2) {
   Event ev1 = container->get_event(e1);
   Event ev2 = container->get_event(e2);
 
+  // True if a write of an object exists in the sequence being moved up
+  // ie let e1's thread be t1 
+  // if there is write (wi) of an object (o) not from t1 then it would
+  // be moved before t1 events
+  // Now, if we find a read (ri) of o (not from t1) that has to be exchanged with
+  // a write (w1) from t1 but since wi was between w1 and ri so they can be exchanged
+  // eg t1:Wx1.t2:Wx2.t3:Rx ==> t2:Wx2.t3:rx.t1:Wx1 allowed
+  std::vector<std::pair<unsigned, unsigned>> up_attached_sources;
+  // True if a write of an object exists from e1's thread and would be moved down
+  // if so then a write from another thread can be allowed to move up
+  // eg t1:Wx1.t1:Rx.t2:Wx2 ==> t2:Wx2.t1:Wx1.t1:Rx allowed
+  std::vector<std::pair<unsigned, unsigned>> down_attached_sources;
+
   int n2 = index_of(e2);
   int n1 = index_of(e1);
+
+  for (int i = n1; i < n2; i++) {
+    Event ecurr = container->get_event(events[i]);
+    if (ecurr.is_write()) 
+      down_attached_sources.push_back(ecurr.object);
+  }
+
   for (int i = n2 - 1, delim = 0; i >= n1; i--) { // from before e2 till e1
     if (events[i].get_pid() != e1.get_pid()) continue; // shift only events from e1's thread
 
@@ -1069,9 +1089,25 @@ bool ViewEqTraceBuilder::Sequence::view_adjust(IID<IPid> e1, IID<IPid> e2) {
       Event ecurr = container->get_event(events[j]);
       Event enext = container->get_event(events[j+1]);
 
-      if (ecurr.RWpair(enext)) { // if cannot exchange
-        events = original_events; // restrore original sequence
-        return false;
+      if (enext.is_write())
+        up_attached_sources.push_back(enext.object);
+
+      if (ecurr.RWpair(enext)) { // found read, write pair of same object to exchange
+        if (ecurr.is_read()) {
+          if (std::find(down_attached_sources.begin(), down_attached_sources.end(), ecurr.object) == down_attached_sources.end()) {
+            // no write of same object to move down with the read moving down ie rf will change if exchanged
+            events = original_events; // restrore original sequence
+            return false;
+          }
+        }
+        
+        if (enext.is_read()) {
+          if (std::find(up_attached_sources.begin(), up_attached_sources.end(), enext.object) == up_attached_sources.end()) {
+            // no write of same object to move up with the read moving up ie rf will change if exchanged
+            events = original_events; // restrore original sequence
+            return false;
+          }
+        }
       }
 
       // can exchange
