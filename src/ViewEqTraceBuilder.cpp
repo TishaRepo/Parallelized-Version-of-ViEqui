@@ -1178,8 +1178,8 @@ void ViewEqTraceBuilder::Sequence::assign_thread_causality(Event& event, IPid& c
 void ViewEqTraceBuilder::Sequence::update_thread_causality(Event& event, IPid& causal_before, IPid& causal_after,
       Sequence* prefix, std::vector<unsigned>* threads_of_prefix, IID<IPid>& e1_delim, IID<IPid>& e1,IID<IPid>& e2) {
   assign_thread_causality(event, causal_before, causal_after, prefix, threads_of_prefix, e1_delim, e1, e2);
-  if (causal_after == e2.get_pid())
-    return;
+  if (event.type == Event::ACCESS_TYPE::JOIN && causal_after == e2.get_pid())
+    return; // already covered
 
   if (std::find(threads_of_prefix[JOIN].begin(), threads_of_prefix[JOIN].end(), causal_after) != 
     threads_of_prefix[JOIN].end()) { // spawning/joining thread spwans/joins in a thread in the list threads_of_prefix[JOIN]
@@ -1191,23 +1191,11 @@ void ViewEqTraceBuilder::Sequence::update_thread_causality(Event& event, IPid& c
     }
     // add spawning/joining thread to the list, as its events are causally prefixed due to spawn/join
     threads_of_prefix[JOIN].push_back(causal_before); 
-
-    if (std::find(threads_of_prefix[JOINe1].begin(), threads_of_prefix[JOINe1].end(), causal_after) !=
-      threads_of_prefix[JOINe1].end()) // spawn/join parent in this list as well
-      threads_of_prefix[JOINe1].clear(); // prefix of the two lists is common from here on
-
-    if (std::find(threads_of_prefix[CAUSAL].begin(), threads_of_prefix[CAUSAL].end(), causal_after) !=
-      threads_of_prefix[CAUSAL].end()) // spawn/join parent in this list as well
-      threads_of_prefix[CAUSAL].clear(); // prefix of the two lists is common from here on
   }
   else if (std::find(threads_of_prefix[JOINe1].begin(), threads_of_prefix[JOINe1].end(), causal_after) !=
     threads_of_prefix[JOINe1].end()) { // spawning/joining thread spawns/joins in a thread in the list
     // add spawning/joining thread to the list, as its events are causally prefixed due to spawn/join
     threads_of_prefix[JOINe1].push_back(causal_before);
-
-    if (std::find(threads_of_prefix[CAUSAL].begin(), threads_of_prefix[CAUSAL].end(), causal_after) !=
-      threads_of_prefix[CAUSAL].end()) // spawn/join parent in this list as well
-      threads_of_prefix[CAUSAL].clear(); // prefix of the two lists is common from here on
   }
   else if (std::find(threads_of_prefix[CAUSAL].begin(), threads_of_prefix[CAUSAL].end(), causal_after) !=
     threads_of_prefix[CAUSAL].end()) {
