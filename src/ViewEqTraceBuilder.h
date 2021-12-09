@@ -231,6 +231,18 @@ protected:
         // auxiliary function for join
         void join_prefix(std::vector<IID<IPid>>::iterator, std::vector<IID<IPid>>::iterator,
                          std::vector<IID<IPid>>::iterator, std::vector<IID<IPid>>::iterator);
+
+        enum PREFIX_TYPE {JOIN, JOINe1, CAUSAL};
+        void assign_thread_causality(Event& event, IPid& causal_before, IPid& causal_after,
+            Sequence* prefix, std::vector<unsigned>* threads_of_prefix, IID<IPid>& e1_delim, IID<IPid>& e1,IID<IPid>& e2);
+        void update_thread_causality(Event& event, IPid& causal_before, IPid& causal_after,
+            Sequence* prefix, std::vector<unsigned>* threads_of_prefix, IID<IPid>& e1_delim, IID<IPid>& e1,IID<IPid>& e2);
+        void add_causal_event(Sequence* prefix, std::vector<unsigned>* threads_of_prefix,
+            std::unordered_map<unsigned, std::unordered_set<unsigned>>* objects_for_source, bool& added_to_prefix, 
+            IID<IPid>& e1, IID<IPid>& e1_delim, Event event, int idx);
+        void prefix_rf_source(Sequence* prefix, std::vector<unsigned>* threads_of_prefix, 
+            std::unordered_map<unsigned, std::unordered_set<unsigned>>* objects_for_source, Event& event, 
+            bool& added_to_prefix, int idx);
     public:
         std::vector<IID<IPid>> events;
         ViewEqTraceBuilder* container;
