@@ -1152,14 +1152,7 @@ bool ViewEqTraceBuilder::Sequence::view_adjust(IID<IPid> e1, IID<IPid> e2) {
 //   return true;
 // }
 
-
-bool ViewEqTraceBuilder::Sequence::conflicts_with(ViewEqTraceBuilder::Sequence &other_seq) {
-  return conflicts_with(other_seq, true).first;
-}
-
-std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> ViewEqTraceBuilder::Sequence::conflicts_with(ViewEqTraceBuilder::Sequence &other_seq, bool returnRWpair) {
-  if (!returnRWpair) conflicts_with(other_seq);
-
+std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> ViewEqTraceBuilder::Sequence::conflicts_with(Sequence& other_seq) {
   for(int i = 0; i < events.size(); i++){
     for(int j = i + 1; j < events.size() ; j++){
       if(other_seq.has(events[i]) && other_seq.has(events[j])){
@@ -1494,17 +1487,17 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::consistent_merge(Sequ
 
   // look for a conflicting RW pair (conflict: RW pair (e1,e2) st e1 < e2 in primary and e2 < e1 in other)
   // pair(bool has_conglicting_pair , pair(conflicting event 1, conflicting event2))
-  std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> conflictingRWpair = primary_seq.conflicts_with(other_seq, true);
+  std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> conflictingRWpair = primary_seq.conflicts_with(other_seq);
   while (conflictingRWpair.first) { // primary_seq and other_seq conflict
     if (primary_seq.view_adjust(conflictingRWpair.second.first, conflictingRWpair.second.second)) {
       // other_seq adjusted ensuring same view of reads
       // now look for next conflicting RW pair
-      conflictingRWpair = primary_seq.conflicts_with(other_seq, true);
+      conflictingRWpair = primary_seq.conflicts_with(other_seq);
     } 
     else if(other_seq.view_adjust(conflictingRWpair.second.second, conflictingRWpair.second.first)) {
       // primary_seq adjusted ensuring same view of reads
       // now look for next conflicting RW pair
-      conflictingRWpair = primary_seq.conflicts_with(other_seq, true);
+      conflictingRWpair = primary_seq.conflicts_with(other_seq);
     }
     else { // conflicting and cannot be adjusted
       // restrore original sequences (before any view-adjusts) and 
@@ -1544,7 +1537,7 @@ std::string ViewEqTraceBuilder::EventSequence::to_string() {
 
 ViewEqTraceBuilder::EventSequence ViewEqTraceBuilder::Sequence::to_event_sequence(
                                         std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn>& mem) {
-  EventSequence event_sequence;
+  EventSequence event_sequence(container);
   std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn> mem_map;
 
   for (auto it = begin(); it != end(); it++) {
@@ -1574,7 +1567,7 @@ ViewEqTraceBuilder::EventSequence ViewEqTraceBuilder::Sequence::to_event_sequenc
 
 ViewEqTraceBuilder::EventSequence ViewEqTraceBuilder::Sequence::to_event_sequence(EventSequence& source,
                                         std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn>& mem) {
-  EventSequence event_sequence;
+  EventSequence event_sequence(container);
   std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn> mem_map;
 
   for (auto it = begin(); it != end(); it++) {
@@ -1642,17 +1635,11 @@ ViewEqTraceBuilder::event_sequence_iterator ViewEqTraceBuilder::EventSequence::f
 }
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::EventSequence::to_iid_sequence() {
-  Sequence seq;
+  Sequence seq(container);
   for (auto it = begin(); it != end(); it++) {
     seq.push_back(it->iid);
   }
 
-  return seq;
-}
-
-ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::EventSequence::to_iid_sequence(ViewEqTraceBuilder *container) {
-  Sequence seq = to_iid_sequence();
-  seq.set_container_reference(container);
   return seq;
 }
 
@@ -1665,6 +1652,78 @@ std::unordered_map<IID<IPid>, int> ViewEqTraceBuilder::EventSequence::read_value
   }
 
   return rv_map;
+}
+
+bool ViewEqTraceBuilder::EventSequence::VA_equal(EventSequence& seq) {
+  EventSequence s = seq;
+
+  std::pair<bool, std::pair<Event, Event>> conflictingRWpair = conflicts_with(s);
+  while (conflictingRWpair.first) { 
+    if(s.view_adjust(conflictingRWpair.second.second, conflictingRWpair.second.first)) {
+      // seq adjusted ensuring same view of reads
+      // now look for next conflicting RW pair
+      conflictingRWpair = conflicts_with(s);
+    }
+    else { // conflicting and cannot be adjusted
+      return false;
+    }
+  }
+
+  // no more conflicts
+  if (to_iid_sequence() == s.to_iid_sequence()) // equal after view_adjustment
+    return true;
+
+  return false;
+}
+
+bool ViewEqTraceBuilder::EventSequence::view_adjust(Event e1, Event e2) {
+  std::vector<Event> original_events = events;
+
+  event_sequence_iterator it1 = find_iid(e1.iid);
+  event_sequence_iterator it2 = find_iid(e2.iid);
+  int n1 = it1 - begin();
+  int n2 = it2 - begin();
+
+  for (int i = n2 - 1, delim = 0; i >= n1; i--) { // from before e2 till e1
+    if (events[i].get_pid() != e1.get_pid()) continue; // shift only events from e1's thread
+
+    for (int j = i; j < n2 - delim; j++) {
+      Event ecurr = events[j];
+      Event enext = events[j+1];
+
+      if (ecurr.RWpair(enext)) { // if cannot exchange
+        events = original_events; // restrore original sequence
+        return false;
+      }
+
+      // can exchange
+      Event tmp = events[j];
+      events[j] = events[j+1];
+      events[j+1] = tmp;
+    }
+    
+    delim++; // shifted 1 event of e1's thread, now 1 location fixed
+  }
+
+  return true;
+}
+
+std::pair<bool, std::pair<ViewEqTraceBuilder::Event, ViewEqTraceBuilder::Event>> 
+ViewEqTraceBuilder::EventSequence::conflicts_with(EventSequence& other_seq) {
+  for(int i = 0; i < events.size(); i++){
+    for(int j = i + 1; j < events.size() ; j++){
+      event_sequence_iterator it1 = other_seq.find_iid(events[i].iid);
+      event_sequence_iterator it2 = other_seq.find_iid(events[j].iid);
+      if (it1 != other_seq.end() && it2 != other_seq.end()) {
+        if ((it1 - it2) > 0) {
+          return std::make_pair(true, std::make_pair((*it1), (*it2)));
+        }
+      }
+    }
+  }
+
+  IID<IPid> dummy;
+  return std::make_pair(false, std::make_pair(dummy, dummy));
 }
 
 bool ViewEqTraceBuilder::EventSequence::operator==(EventSequence seq) {
@@ -1801,6 +1860,9 @@ bool ViewEqTraceBuilder::Lead::VA_equivalent(Lead& l) {
   if (merged_sequence.to_iid_sequence() == l.merged_sequence.to_iid_sequence())
     return true; // sequences are equal => sequences are equivalent
 
+  if (merged_sequence.VA_equal(l.merged_sequence)) // equal after view adjust ie resolving conflicts
+    return true;
+  
   std::unordered_map<IID<IPid>, int> rv_map = merged_sequence.read_value_map();
   std::unordered_map<IID<IPid>, int> l_rv_map = l.merged_sequence.read_value_map();
 
@@ -1870,7 +1932,7 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Lead::VA_suffix(Lead& prefix) {
     suffix.erase(it->iid);
   }
 
-  return suffix.to_iid_sequence(start.container);
+  return suffix.to_iid_sequence();
 }
 
 bool ViewEqTraceBuilder::Lead::operator==(Lead l) {
@@ -1938,7 +2000,7 @@ bool ViewEqTraceBuilder::forward_lead(std::unordered_map<int, std::vector<Lead>>
     assert(fwd_state >= 0 && fwd_state < states.size());
     
     SOPFormula f = (lead.forbidden);
-    EventSequence fwd_const;
+    EventSequence fwd_const(this);
     if (fwd_state != current_state) { 
       f || states[fwd_state].forbidden; // combine forbidden with forbidden of the state after current start
       fwd_const = states[fwd_state].alpha_sequence();
@@ -1970,6 +2032,11 @@ void ViewEqTraceBuilder::remove_duplicate_leads(std::vector<Lead>& L) {
         continue;
       }
 
+      if (it->VA_equivalent(*it2)) {
+        it2 = L.erase(it2); // remove one instance
+        continue;
+      }
+
       it2++; // lead it2 is not a duplicate of lead it, move to next
     }
   }
@@ -1995,6 +2062,17 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
     states[state].leads = L;
     return;
   }
+
+  // ////
+  // out << "state" << state << " leads:\n";
+  // for (auto sl = states[state].leads.begin(); sl != states[state].leads.end(); sl++) {
+  //   out << sl->to_string() << " = " << sl->merged_sequence.to_string() << "\n";
+  // }
+  // out << "new leads:\n";
+  // for (auto l = L.begin(); l != L.end(); l++) {
+  //   out << l->to_string() << " = " << l->merged_sequence.to_string() << "\n";
+  // }
+  // ////
 
   std::set<int, std::greater<int>> rem; // list of indices to be removed from current leads in descending order
   std::vector<Lead> add; // list of indices of L to be added to state leads

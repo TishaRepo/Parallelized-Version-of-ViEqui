@@ -305,8 +305,7 @@ protected:
            original sequence. */
         bool view_adjust(IID<IPid> e1, IID<IPid> e2);
         /* has events in this and other that occur in reverse order */
-        bool conflicts_with(Sequence &other_seq);
-        std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> conflicts_with(Sequence &other_seq, bool returnRWpair);
+        std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> conflicts_with(Sequence &other_seq);
         /* poprefix(e1).(write out of e1, e2).(read out of e1, e2) */
         Sequence backseq(IID<IPid> e1, IID<IPid> e2);
 
@@ -324,6 +323,11 @@ protected:
     class EventSequence {
     public:
         std::vector<Event> events;
+        ViewEqTraceBuilder* container;
+
+        EventSequence() {}
+        EventSequence(ViewEqTraceBuilder* c) {container = c;}
+        void set_container_reference(ViewEqTraceBuilder* c) {container = c;}
 
         bool empty() {return (size() == 0);}
         int size() {return events.size();}
@@ -352,8 +356,16 @@ protected:
         event_sequence_iterator erase(event_sequence_iterator it) {return events.erase(it);}
 
         Sequence to_iid_sequence();
-        Sequence to_iid_sequence(ViewEqTraceBuilder *container);
         std::unordered_map<IID<IPid>, int> read_value_map();
+
+        /* this == seq with resolvable conflicts */
+        bool VA_equal(EventSequence& seq);
+        /* In the sequence attempt to shift events from thread of e1 (including e1)
+           to after e2. If cannot shift an event coherently then retun false and keep
+           original sequence. */
+        bool view_adjust(Event e1, Event e2);
+        /* has events in this and other that occur in reverse order */
+        std::pair<bool, std::pair<Event, Event>> conflicts_with(EventSequence &other_seq);
 
         bool operator==(EventSequence seq);
         bool operator!=(EventSequence seq);
@@ -390,23 +402,34 @@ protected:
         EventSequence merged_sequence; // consistent_merge(start, constraint) sequence to explore while maintaining constraint
         bool is_done = false;          // whether the lead has been explored
 
+        ViewEqTraceBuilder* container;
+        
         Lead() {}
         Lead(const Lead &l, SOPFormula f) {
             constraint = l.constraint; start = l.start; forbidden = f; 
             merged_sequence = l.merged_sequence;
+            container = l.container;
         }
         Lead(EventSequence c, Sequence s, SOPFormula f, std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn>& mem) {
-            constraint = c.to_iid_sequence(s.container); start = s; forbidden = f;
+            constraint = c.to_iid_sequence(); start = s; forbidden = f;
             Sequence merged_sequence_id = start.consistent_merge(constraint);
             merged_sequence = merged_sequence_id.to_event_sequence(c, mem);
+            merged_sequence.set_container_reference(s.container);
+            container = s.container;
         }
         Lead(Sequence s, SOPFormula f, std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn>& mem) {
+            constraint.set_container_reference(s.container);
             start = s; forbidden = f;
             merged_sequence = s.to_event_sequence(mem);
+            merged_sequence.set_container_reference(s.container);
+            container = s.container;
         }
         Lead(EventSequence s, SOPFormula f) {
+            constraint.set_container_reference(s.container);
             start = s.to_iid_sequence(); forbidden = f;
             merged_sequence = s;
+            merged_sequence.set_container_reference(s.container);
+            container = s.container;
         }
 
         /* this is prefix of l with view-adjustment */
