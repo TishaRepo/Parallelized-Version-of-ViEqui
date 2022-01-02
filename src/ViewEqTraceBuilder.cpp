@@ -1086,13 +1086,73 @@ bool ViewEqTraceBuilder::Sequence::view_adjust(IID<IPid> e1, IID<IPid> e2) {
   return true;
 }
 
-bool ViewEqTraceBuilder::Sequence::conflicts_with(ViewEqTraceBuilder::Sequence &other_seq) {
-  return conflicts_with(other_seq, true).first;
-}
+// bool ViewEqTraceBuilder::Sequence::view_adjust(IID<IPid> e1, IID<IPid> e2) {
+//  // add to remove redundant leads
+//  // if (it->VA_equivalent(*it2)) {
+//  //       it2 = L.erase(it2); // remove one instance
+//  //       continue;
+//  //     }
+//   if (container->ordered_by_join(e1, e2) || container->ordered_by_spawn(e1, e2)) 
+//     return false;
 
-std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> ViewEqTraceBuilder::Sequence::conflicts_with(ViewEqTraceBuilder::Sequence &other_seq, bool returnRWpair) {
-  if (!returnRWpair) conflicts_with(other_seq);
+//   std::vector<IID<IPid>> original_events = events;
 
+//   Event ev1 = container->get_event(e1);
+//   Event ev2 = container->get_event(e2);
+
+//   int n2 = index_of(e2);
+//   int n1 = index_of(e1);
+
+//   for (int i = n2 - 1, delim = 0; i >= n1; i--) { // from before e2 till e1
+//     if (events[i].get_pid() != e1.get_pid()) continue; // shift only events from e1's thread
+
+//     for (int j = i; j < n2 - delim; j++) {
+//       IID<IPid> tmp = events[j];
+//       events[j] = events[j+1];
+//       events[j+1] = tmp;
+//     }
+    
+//     delim++; // shifted 1 event of e1's thread, now 1 location fixed
+//   }
+
+//   std::unordered_map<unsigned, std::unordered_map<unsigned, int>> original_mem_map;
+//   std::unordered_map<unsigned, std::unordered_map<unsigned, int>> modified_mem_map;
+
+//   std::unordered_map<IID<IPid>, int> original_rv_map;
+//   std::unordered_map<IID<IPid>, int> modified_rv_map;
+
+//   for (int i = n1; i < n2; i++) {
+//     Event oevent = container->get_event(original_events[i]);
+//     Event mevent = container->get_event(events[i]);
+
+//     if (oevent.is_write()) 
+//       original_mem_map[oevent.object.first][oevent.object.second] = oevent.value;
+
+//     if (mevent.is_write()) 
+//       modified_mem_map[mevent.object.first][mevent.object.second] = mevent.value;
+
+//     if (oevent.is_read()) {
+//       if (original_mem_map[oevent.object.first].find(oevent.object.second) != original_mem_map[oevent.object.first].end())
+//         original_rv_map[oevent.get_iid()] = original_mem_map[oevent.object.first][oevent.object.second];
+//     }
+
+//     if (mevent.is_read()) {
+//       if (modified_mem_map[mevent.object.first].find(mevent.object.second) != modified_mem_map[mevent.object.first].end())
+//         modified_rv_map[mevent.get_iid()] = modified_mem_map[mevent.object.first][mevent.object.second];
+//     }
+//   }
+
+//   for (auto it = original_rv_map.begin(); it != original_rv_map.end(); it++) {
+//     if (it->second != modified_rv_map[it->first]) {
+//       events = original_events;
+//       return false;
+//     }
+//   }
+
+//   return true;
+// }
+
+std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> ViewEqTraceBuilder::Sequence::conflicts_with(Sequence& other_seq) {
   for(int i = 0; i < events.size(); i++){
     for(int j = i + 1; j < events.size() ; j++){
       if(other_seq.has(events[i]) && other_seq.has(events[j])){
@@ -1116,91 +1176,120 @@ bool ViewEqTraceBuilder::Sequence::isprefix(ViewEqTraceBuilder::Sequence &seq){
   return true;
 }
 
+void ViewEqTraceBuilder::Sequence::assign_thread_causality(Event& event, IPid& causal_before, IPid& causal_after,
+        Sequence* prefix, std::vector<unsigned>* threads_of_prefix, IID<IPid>& e1_delim, IID<IPid>& e1,IID<IPid>& e2) {
+  if (event.type == Event::ACCESS_TYPE::SPAWN) {
+    causal_before = event.get_pid();    // thread calling spawn  
+    causal_after  = event.object.first; // thread spawned
+  }
+  else { // event.type == Event::ACCESS_TYPE::JOIN
+    causal_before = event.object.first; // thread joined
+    causal_after  = event.get_pid();    // thread calling join
+
+    if (causal_after == e2.get_pid()) { // joins in e2's thread
+      if (causal_before == e1.get_pid()) { // join of e1's thread
+        if (!prefix[CAUSAL].empty()) 
+          e1_delim = prefix[CAUSAL].head(); // next event in causal prefix is the delim event
+        threads_of_prefix[JOINe1].push_back(e1.get_pid());
+      }
+      else { // join of a thread that is not e1's thread
+        threads_of_prefix[JOIN].push_back(causal_before); // tid of thread that joined
+      }
+    }
+  }
+}
+
+void ViewEqTraceBuilder::Sequence::update_thread_causality(Event& event, IPid& causal_before, IPid& causal_after,
+      Sequence* prefix, std::vector<unsigned>* threads_of_prefix, IID<IPid>& e1_delim, IID<IPid>& e1,IID<IPid>& e2) {
+  assign_thread_causality(event, causal_before, causal_after, prefix, threads_of_prefix, e1_delim, e1, e2);
+  if (event.type == Event::ACCESS_TYPE::JOIN && causal_after == e2.get_pid())
+    return; // already covered
+
+  if (std::find(threads_of_prefix[JOIN].begin(), threads_of_prefix[JOIN].end(), causal_after) != 
+    threads_of_prefix[JOIN].end()) { // spawning/joining thread spwans/joins in a thread in the list threads_of_prefix[JOIN]
+    if (causal_before == e1.get_pid()) {
+      if (!prefix[JOIN].empty())
+        e1_delim = prefix[JOIN].head();
+      else if (!prefix[CAUSAL].empty())
+        e1_delim = prefix[CAUSAL].head();
+    }
+    // add spawning/joining thread to the list, as its events are causally prefixed due to spawn/join
+    threads_of_prefix[JOIN].push_back(causal_before); 
+  }
+  else if (std::find(threads_of_prefix[JOINe1].begin(), threads_of_prefix[JOINe1].end(), causal_after) !=
+    threads_of_prefix[JOINe1].end()) { // spawning/joining thread spawns/joins in a thread in the list
+    // add spawning/joining thread to the list, as its events are causally prefixed due to spawn/join
+    threads_of_prefix[JOINe1].push_back(causal_before);
+  }
+  else if (std::find(threads_of_prefix[CAUSAL].begin(), threads_of_prefix[CAUSAL].end(), causal_after) !=
+    threads_of_prefix[CAUSAL].end()) {
+    if (causal_before == e1.get_pid()) {
+      if (!prefix[CAUSAL].empty())
+        e1_delim = prefix[CAUSAL].head();
+    }
+    threads_of_prefix[CAUSAL].push_back(causal_before);
+  }
+}
+
+void ViewEqTraceBuilder::Sequence::add_causal_event(Sequence* prefix, std::vector<unsigned>* threads_of_prefix,
+            std::unordered_map<unsigned, std::unordered_set<unsigned>>* objects_for_source, bool& added_to_prefix, 
+            IID<IPid>& e1, IID<IPid>& e1_delim, Event event, int idx) {
+  if (std::find(threads_of_prefix[idx].begin(), threads_of_prefix[idx].end(), event.get_pid()) != 
+    threads_of_prefix[idx].end()) {
+    prefix[idx].push_front(event.get_iid());
+    added_to_prefix = true;
+
+    if (event.is_read()) {
+      objects_for_source[idx][event.object.first].insert(event.object.second);
+    }
+    else if (event.is_write()) {
+      objects_for_source[idx][event.object.first].erase(event.object.second);    
+    }
+
+    if (event.get_pid() == e1.get_pid())
+      e1_delim = event.get_iid();
+  }
+}
+
+void ViewEqTraceBuilder::Sequence::prefix_rf_source(Sequence* prefix, std::vector<unsigned>* threads_of_prefix,
+          std::unordered_map<unsigned, std::unordered_set<unsigned>>* objects_for_source, Event& event, 
+          bool& added_to_prefix, int idx) {
+  if (objects_for_source[idx][event.object.first].find(event.object.second) != 
+      objects_for_source[idx][event.object.first].end()) {
+    objects_for_source[idx][event.object.first].erase(event.object.second);
+    threads_of_prefix[idx].push_back(event.get_pid());
+    prefix[idx].push_front(event.get_iid());
+    added_to_prefix = true;
+  }
+}
+
 // return: (delim event ie event beyond which e1 cannot be placed, causal prefix sequence (not including e1 or e2))
 // delim event could be either event from e1's thread or join of e1's thread
 // prefix of e2 upto e1 that includes events of e2 and events that are prefixed due to rf or join
 std::pair<IID<IPid>, ViewEqTraceBuilder::Sequence>
 ViewEqTraceBuilder::Sequence::causal_prefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end) {
-  Sequence causal_prefix_by_join(container); // causal prefix of events whose threads join in thread of e2 (does not include thread of e1)
-  Sequence causal_prefix_by_join_of_e1_thread(container); // causal prefix of events of thread of e1 given e1 joins in thread of e2
-  Sequence causal_prefix(container); // causal prefix of events of e2 (not including causal dependence due to join events)
+  // id0: causal prefix of events whose threads join in thread of e2 (does not include thread of e1)
+  // id1: causal prefix of events of thread of e1 given e1 joins in thread of e2
+  // id2: causal prefix of events of e2 (not including causal dependence due to join events)
+  Sequence prefix[] = { Sequence(container), Sequence(container), Sequence(container) };
 
-  std::vector<unsigned> threads_of_join_prefix; // list of threads that join in e2's thread and threads causally prefixed to them
-  std::vector<unsigned> threads_of_e1_join_prefix;  // list of threads causally related to e1's thread events, given e1 joins in e2's thread
-  std::vector<unsigned> threads_of_causal_prefix; // list of threads that have events causally prefixed to e2 (no due to join)
-
+  // id0: list of threads that join in e2's thread and threads causally prefixed to them
+  // id1: list of threads causally related to e1's thread events, given e1 joins in e2's thread
+  // id2: list of threads that have events causally prefixed to e2 (no due to join)
+  std::vector<unsigned> threads_of_prefix[3];  
+  
   // objects whose read has been included in the prefix and the corresponding source write is to be included if found
-  std::unordered_map<unsigned, std::unordered_set<unsigned>> objects_for_source_join;
-  std::unordered_map<unsigned, std::unordered_set<unsigned>> objects_for_source_join_e1;
-  std::unordered_map<unsigned, std::unordered_set<unsigned>> objects_for_source;
+  std::unordered_map<unsigned, std::unordered_set<unsigned>> objects_for_source[3]; 
 
-  IID<IPid> join_at = e2; // default delim event 
-  threads_of_causal_prefix.push_back(e2.get_pid()); // prefix contains events from e2's thread
+  IID<IPid> e1_delim = e2; // default delim event 
+  threads_of_prefix[CAUSAL].push_back(e2.get_pid()); // prefix contains events from e2's thread
 
   for (auto it = end; it != begin;) { it--;
     Event ite = container->get_event(*it);
 
     if (ite.type == Event::ACCESS_TYPE::SPAWN || ite.type == Event::ACCESS_TYPE::JOIN) {
       IPid causal_before, causal_after;
-      if (ite.type == Event::ACCESS_TYPE::SPAWN) {
-        causal_before = it->get_pid();    // thread calling spawn  
-        causal_after  = ite.object.first; // thread spawned
-      }
-      else { // ite.type == Event::ACCESS_TYPE::JOIN
-        causal_before = ite.object.first; // thread joined
-        causal_after  = it->get_pid();    // thread calling join
-    
-        if (causal_after == e2.get_pid()) { // joins in e2's thread
-          if (causal_before == e1.get_pid()) { // join of e1's thread
-            if (!causal_prefix.empty()) 
-              join_at = causal_prefix.head(); // next event in causal prefix is the delim event
-            threads_of_e1_join_prefix.push_back(e1.get_pid());
-          }
-          else { // join of a thread that is not e1's thread
-            threads_of_join_prefix.push_back(causal_before); // tid of thread that joined
-          }
-
-          continue;
-        }
-      }
-      
-      if (std::find(threads_of_join_prefix.begin(), threads_of_join_prefix.end(), causal_after) != 
-        threads_of_join_prefix.end()) { // spawning/joining thread spwans/joins in a thread in the list threads_of_join_prefix
-        if (causal_before == e1.get_pid()) {
-          if (!causal_prefix_by_join.empty())
-            join_at = causal_prefix_by_join.head();
-          else if (!causal_prefix.empty())
-            join_at = causal_prefix.head();
-        }
-        // add spawning/joining thread to the list, as its events are causally prefixed due to spawn/join
-        threads_of_join_prefix.push_back(causal_before); 
-
-        if (std::find(threads_of_e1_join_prefix.begin(), threads_of_e1_join_prefix.end(), causal_after) !=
-          threads_of_e1_join_prefix.end()) // spawn/join parent in this list as well
-          threads_of_e1_join_prefix.clear(); // prefix of the two lists is common from here on
-
-        if (std::find(threads_of_causal_prefix.begin(), threads_of_causal_prefix.end(), causal_after) !=
-          threads_of_causal_prefix.end()) // spawn/join parent in this list as well
-          threads_of_causal_prefix.clear(); // prefix of the two lists is common from here on
-      }
-      else if (std::find(threads_of_e1_join_prefix.begin(), threads_of_e1_join_prefix.end(), causal_after) !=
-        threads_of_e1_join_prefix.end()) { // spawning/joining thread spawns/joins in a thread in the list
-        // add spawning/joining thread to the list, as its events are causally prefixed due to spawn/join
-        threads_of_e1_join_prefix.push_back(causal_before);
-
-        if (std::find(threads_of_causal_prefix.begin(), threads_of_causal_prefix.end(), causal_after) !=
-          threads_of_causal_prefix.end()) // spawn/join parent in this list as well
-          threads_of_causal_prefix.clear(); // prefix of the two lists is common from here on
-      }
-      else if (std::find(threads_of_causal_prefix.begin(), threads_of_causal_prefix.end(), causal_after) !=
-        threads_of_causal_prefix.end()) {
-        if (causal_before == e1.get_pid()) {
-          if (!causal_prefix.empty())
-            join_at = causal_prefix.head();
-        }
-        threads_of_causal_prefix.push_back(causal_before);
-      }
-
+      update_thread_causality(ite, causal_before, causal_after, prefix, threads_of_prefix, e1_delim, e1, e2);
       continue; // nothing else to be done for a spwan/join event (it is not added to prefix)
     }
 
@@ -1208,82 +1297,19 @@ ViewEqTraceBuilder::Sequence::causal_prefix(IID<IPid> e1, IID<IPid> e2, sequence
     
     bool added_to_prefix = false;
 
-    // events causal to threads that join in e2's thread
-    if (std::find(threads_of_join_prefix.begin(), threads_of_join_prefix.end(), it->get_pid()) != 
-      threads_of_join_prefix.end()) {
-      causal_prefix_by_join.push_front(*it);
-      added_to_prefix = true;
-
-      if (ite.is_read()) {
-        objects_for_source_join[ite.object.first].insert(ite.object.second);
-      }
-      else if (ite.is_write()) {
-        objects_for_source_join[ite.object.first].erase(ite.object.second);    
-      }
-
-      if (it->get_pid() == e1.get_pid())
-        join_at = (*it);
-    }
-
-    // events causal to e1's thread if e1's thread joins in e2's thread
-    if (std::find(threads_of_e1_join_prefix.begin(), threads_of_e1_join_prefix.end(), it->get_pid()) != 
-      threads_of_e1_join_prefix.end()) {
-      causal_prefix_by_join_of_e1_thread.push_front(*it);
-      added_to_prefix = true;
-
-      if (ite.is_read()) {
-        objects_for_source_join_e1[ite.object.first].insert(ite.object.second);
-      }
-      else if (ite.is_write()) {
-        objects_for_source_join_e1[ite.object.first].erase(ite.object.second);    
-      }
-
-      if (it->get_pid() == e1.get_pid())
-        join_at = (*it);
-    }
-
-    // events causal to e2
-    if (std::find(threads_of_causal_prefix.begin(), threads_of_causal_prefix.end(), it->get_pid()) != 
-      threads_of_causal_prefix.end()) {
-      causal_prefix.push_front(*it);
-      added_to_prefix = true;
-
-      if (ite.is_read()) {
-        objects_for_source[ite.object.first].insert(ite.object.second);
-      }
-      else if (ite.is_write()) {
-        objects_for_source[ite.object.first].erase(ite.object.second);    
-      }
-
-      if (it->get_pid() == e1.get_pid()) 
-        join_at = (*it);      
-    }
+    // add event to prefix if its thread events are to be prefixed
+    add_causal_event(prefix, threads_of_prefix, objects_for_source, added_to_prefix, e1, e1_delim, ite, JOIN);
+    add_causal_event(prefix, threads_of_prefix, objects_for_source, added_to_prefix, e1, e1_delim, ite, JOINe1);
+    add_causal_event(prefix, threads_of_prefix, objects_for_source, added_to_prefix, e1, e1_delim, ite, CAUSAL);
 
     // write whose object's read was seen and thus rf write is to be included in prefix
-    else if (!added_to_prefix && ite.is_write()) { 
-      if (objects_for_source_join[ite.object.first].find(ite.object.second) != objects_for_source_join[ite.object.first].end()) {
-        objects_for_source_join[ite.object.first].erase(ite.object.second);
-        threads_of_join_prefix.push_back(it->get_pid());
-        causal_prefix_by_join.push_front(*it);
-        added_to_prefix = true;
-      }
-
-      if (objects_for_source_join_e1[ite.object.first].find(ite.object.second) != objects_for_source_join_e1[ite.object.first].end()) {
-        objects_for_source_join_e1[ite.object.first].erase(ite.object.second);
-        threads_of_e1_join_prefix.push_back(it->get_pid());
-        causal_prefix_by_join_of_e1_thread.push_front(*it);
-        added_to_prefix = true;
-      }
-
-      if (objects_for_source[ite.object.first].find(ite.object.second) != objects_for_source[ite.object.first].end()) {
-        objects_for_source[ite.object.first].erase(ite.object.second);
-        threads_of_causal_prefix.push_back(it->get_pid());
-        causal_prefix.push_front(*it);
-        added_to_prefix = true;
-      }
-
+    if (!added_to_prefix && ite.is_write()) { 
+      prefix_rf_source(prefix, threads_of_prefix, objects_for_source, ite, added_to_prefix, JOIN);
+      prefix_rf_source(prefix, threads_of_prefix, objects_for_source, ite, added_to_prefix, JOINe1);
+      prefix_rf_source(prefix, threads_of_prefix, objects_for_source, ite, added_to_prefix, CAUSAL);
+      
       if (added_to_prefix && it->get_pid() == e1.get_pid()) {
-        join_at = (*it);
+        e1_delim = (*it);
       }
     }
   }
@@ -1291,27 +1317,21 @@ ViewEqTraceBuilder::Sequence::causal_prefix(IID<IPid> e1, IID<IPid> e2, sequence
   Event e1_event = container->get_event(e1);
   if (e1_event.is_write()) {
     // check if a read in any of the sequences is dependent on write e1
-    if (objects_for_source_join[e1_event.object.first].find(e1_event.object.second) != objects_for_source_join[e1_event.object.first].end()) { 
-      causal_prefix_by_join.push_front(e1);
-      join_at = e1;
-    }
-
-    if (objects_for_source_join_e1[e1_event.object.first].find(e1_event.object.second) != objects_for_source_join_e1[e1_event.object.first].end()) {
-        causal_prefix_by_join_of_e1_thread.push_front(e1);
-        join_at = e1;
-    }
-
-    if (objects_for_source[e1_event.object.first].find(e1_event.object.second) != objects_for_source[e1_event.object.first].end()) {
-        causal_prefix.push_front(e1);
-        join_at = e1;
+    for (int idx = 0; idx < 3; idx++) {
+      if (objects_for_source[idx][e1_event.object.first].find(e1_event.object.second) != 
+          objects_for_source[idx][e1_event.object.first].end()) { 
+        prefix[idx].push_front(e1);
+        e1_delim = e1;
+      }
     }
   }
 
-  Sequence result = causal_prefix_by_join.consistent_merge(causal_prefix_by_join_of_e1_thread);
-  result = result.consistent_merge(causal_prefix);
+  Sequence result = prefix[JOIN].consistent_merge(prefix[JOINe1]);
+  result = result.consistent_merge(prefix[CAUSAL]);
 
-  return std::make_pair(join_at, result);
+  return std::make_pair(e1_delim, result);
 }
+
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1, IID<IPid> e2){
   assert(this->has(e1) && this->has(e2));
@@ -1467,17 +1487,17 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::consistent_merge(Sequ
 
   // look for a conflicting RW pair (conflict: RW pair (e1,e2) st e1 < e2 in primary and e2 < e1 in other)
   // pair(bool has_conglicting_pair , pair(conflicting event 1, conflicting event2))
-  std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> conflictingRWpair = primary_seq.conflicts_with(other_seq, true);
+  std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> conflictingRWpair = primary_seq.conflicts_with(other_seq);
   while (conflictingRWpair.first) { // primary_seq and other_seq conflict
     if (primary_seq.view_adjust(conflictingRWpair.second.first, conflictingRWpair.second.second)) {
       // other_seq adjusted ensuring same view of reads
       // now look for next conflicting RW pair
-      conflictingRWpair = primary_seq.conflicts_with(other_seq, true);
+      conflictingRWpair = primary_seq.conflicts_with(other_seq);
     } 
     else if(other_seq.view_adjust(conflictingRWpair.second.second, conflictingRWpair.second.first)) {
       // primary_seq adjusted ensuring same view of reads
       // now look for next conflicting RW pair
-      conflictingRWpair = primary_seq.conflicts_with(other_seq, true);
+      conflictingRWpair = primary_seq.conflicts_with(other_seq);
     }
     else { // conflicting and cannot be adjusted
       // restrore original sequences (before any view-adjusts) and 
@@ -1517,7 +1537,7 @@ std::string ViewEqTraceBuilder::EventSequence::to_string() {
 
 ViewEqTraceBuilder::EventSequence ViewEqTraceBuilder::Sequence::to_event_sequence(
                                         std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn>& mem) {
-  EventSequence event_sequence;
+  EventSequence event_sequence(container);
   std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn> mem_map;
 
   for (auto it = begin(); it != end(); it++) {
@@ -1547,7 +1567,7 @@ ViewEqTraceBuilder::EventSequence ViewEqTraceBuilder::Sequence::to_event_sequenc
 
 ViewEqTraceBuilder::EventSequence ViewEqTraceBuilder::Sequence::to_event_sequence(EventSequence& source,
                                         std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn>& mem) {
-  EventSequence event_sequence;
+  EventSequence event_sequence(container);
   std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn> mem_map;
 
   for (auto it = begin(); it != end(); it++) {
@@ -1615,17 +1635,11 @@ ViewEqTraceBuilder::event_sequence_iterator ViewEqTraceBuilder::EventSequence::f
 }
 
 ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::EventSequence::to_iid_sequence() {
-  Sequence seq;
+  Sequence seq(container);
   for (auto it = begin(); it != end(); it++) {
     seq.push_back(it->iid);
   }
 
-  return seq;
-}
-
-ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::EventSequence::to_iid_sequence(ViewEqTraceBuilder *container) {
-  Sequence seq = to_iid_sequence();
-  seq.set_container_reference(container);
   return seq;
 }
 
@@ -1638,6 +1652,78 @@ std::unordered_map<IID<IPid>, int> ViewEqTraceBuilder::EventSequence::read_value
   }
 
   return rv_map;
+}
+
+bool ViewEqTraceBuilder::EventSequence::VA_equal(EventSequence& seq) {
+  EventSequence s = seq;
+
+  std::pair<bool, std::pair<Event, Event>> conflictingRWpair = conflicts_with(s);
+  while (conflictingRWpair.first) { 
+    if(s.view_adjust(conflictingRWpair.second.second, conflictingRWpair.second.first)) {
+      // seq adjusted ensuring same view of reads
+      // now look for next conflicting RW pair
+      conflictingRWpair = conflicts_with(s);
+    }
+    else { // conflicting and cannot be adjusted
+      return false;
+    }
+  }
+
+  // no more conflicts
+  if (to_iid_sequence() == s.to_iid_sequence()) // equal after view_adjustment
+    return true;
+
+  return false;
+}
+
+bool ViewEqTraceBuilder::EventSequence::view_adjust(Event e1, Event e2) {
+  std::vector<Event> original_events = events;
+
+  event_sequence_iterator it1 = find_iid(e1.iid);
+  event_sequence_iterator it2 = find_iid(e2.iid);
+  int n1 = it1 - begin();
+  int n2 = it2 - begin();
+
+  for (int i = n2 - 1, delim = 0; i >= n1; i--) { // from before e2 till e1
+    if (events[i].get_pid() != e1.get_pid()) continue; // shift only events from e1's thread
+
+    for (int j = i; j < n2 - delim; j++) {
+      Event ecurr = events[j];
+      Event enext = events[j+1];
+
+      if (ecurr.RWpair(enext)) { // if cannot exchange
+        events = original_events; // restrore original sequence
+        return false;
+      }
+
+      // can exchange
+      Event tmp = events[j];
+      events[j] = events[j+1];
+      events[j+1] = tmp;
+    }
+    
+    delim++; // shifted 1 event of e1's thread, now 1 location fixed
+  }
+
+  return true;
+}
+
+std::pair<bool, std::pair<ViewEqTraceBuilder::Event, ViewEqTraceBuilder::Event>> 
+ViewEqTraceBuilder::EventSequence::conflicts_with(EventSequence& other_seq) {
+  for(int i = 0; i < events.size(); i++){
+    for(int j = i + 1; j < events.size() ; j++){
+      event_sequence_iterator it1 = other_seq.find_iid(events[i].iid);
+      event_sequence_iterator it2 = other_seq.find_iid(events[j].iid);
+      if (it1 != other_seq.end() && it2 != other_seq.end()) {
+        if ((it1 - it2) > 0) {
+          return std::make_pair(true, std::make_pair((*it1), (*it2)));
+        }
+      }
+    }
+  }
+
+  IID<IPid> dummy;
+  return std::make_pair(false, std::make_pair(dummy, dummy));
 }
 
 bool ViewEqTraceBuilder::EventSequence::operator==(EventSequence seq) {
@@ -1774,6 +1860,9 @@ bool ViewEqTraceBuilder::Lead::VA_equivalent(Lead& l) {
   if (merged_sequence.to_iid_sequence() == l.merged_sequence.to_iid_sequence())
     return true; // sequences are equal => sequences are equivalent
 
+  if (merged_sequence.VA_equal(l.merged_sequence)) // equal after view adjust ie resolving conflicts
+    return true;
+  
   std::unordered_map<IID<IPid>, int> rv_map = merged_sequence.read_value_map();
   std::unordered_map<IID<IPid>, int> l_rv_map = l.merged_sequence.read_value_map();
 
@@ -1843,7 +1932,7 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Lead::VA_suffix(Lead& prefix) {
     suffix.erase(it->iid);
   }
 
-  return suffix.to_iid_sequence(start.container);
+  return suffix.to_iid_sequence();
 }
 
 bool ViewEqTraceBuilder::Lead::operator==(Lead l) {
@@ -1911,7 +2000,7 @@ bool ViewEqTraceBuilder::forward_lead(std::unordered_map<int, std::vector<Lead>>
     assert(fwd_state >= 0 && fwd_state < states.size());
     
     SOPFormula f = (lead.forbidden);
-    EventSequence fwd_const;
+    EventSequence fwd_const(this);
     if (fwd_state != current_state) { 
       f || states[fwd_state].forbidden; // combine forbidden with forbidden of the state after current start
       fwd_const = states[fwd_state].alpha_sequence();
@@ -1943,6 +2032,11 @@ void ViewEqTraceBuilder::remove_duplicate_leads(std::vector<Lead>& L) {
         continue;
       }
 
+      if (it->VA_equivalent(*it2)) {
+        it2 = L.erase(it2); // remove one instance
+        continue;
+      }
+
       it2++; // lead it2 is not a duplicate of lead it, move to next
     }
   }
@@ -1968,6 +2062,17 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
     states[state].leads = L;
     return;
   }
+
+  // ////
+  // out << "state" << state << " leads:\n";
+  // for (auto sl = states[state].leads.begin(); sl != states[state].leads.end(); sl++) {
+  //   out << sl->to_string() << " = " << sl->merged_sequence.to_string() << "\n";
+  // }
+  // out << "new leads:\n";
+  // for (auto l = L.begin(); l != L.end(); l++) {
+  //   out << l->to_string() << " = " << l->merged_sequence.to_string() << "\n";
+  // }
+  // ////
 
   std::set<int, std::greater<int>> rem; // list of indices to be removed from current leads in descending order
   std::vector<Lead> add; // list of indices of L to be added to state leads
