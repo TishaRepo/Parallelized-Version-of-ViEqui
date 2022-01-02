@@ -4,8 +4,8 @@ import time
 
 current_path = os.getcwd() + '/'
 litmus_path = current_path + 'tests/litmus/'
-test_path = litmus_path + 'C-tests/'
-output = os.getcwd() + '/view_litmus.csv'
+test_path = litmus_path + 'C-tests-neg/'
+output = os.getcwd() + '/view_litmus_neg.csv'
 fileslist = litmus_path + 'listfile.txt'
 
 def getFilesList( dirName ):
@@ -23,15 +23,15 @@ def run_one_test( logfile, algo ):
     t0 = time.time()
     try:
       if (algo == 1): 
-          #process = subprocess.run([current_path + 'src/nidhugg', '--sc', current_path+ 'executable_file.ll'], stdout = subprocess.PIPE, stderr = subprocess.STDOUT, bufsize=1, universal_newlines=True, timeout = 60.0)
-          (status, sout) = subprocess.getstatusoutput('timeout 60s '+ current_path + 'src/nidhugg --sc '+ current_path+ 'executable_file.ll')
+          #process = subprocess.run([current_path + 'src/nidhugg', '--sc', current_path+ 'executable_file_neg.ll'], stdout = subprocess.PIPE, stderr = subprocess.STDOUT, bufsize=1, universal_newlines=True, timeout = 60.0)
+          (status, sout) = subprocess.getstatusoutput('timeout 60s '+ current_path + 'src/nidhugg --sc '+ current_path+ 'executable_file_neg.ll')
       elif(algo == 2):
-          #process = subprocess.run([current_path + 'src/nidhugg', '--sc','--observers', current_path+ 'executable_file.ll'], stdout = subprocess.PIPE, stderr = subprocess.STDOUT, bufsize=1, universal_newlines=True, timeout = 60.0)
-          (status, sout) = subprocess.getstatusoutput('timeout 60s ' + current_path + 'src/nidhugg --sc --observers '+ current_path+ 'executable_file.ll')
-          #process = subprocess.Popen([current_path + 'src/nidhugg', '--sc','--view', current_path + 'executable_file.ll'], stdout=subprocess.PIPE, bufsize=1, universal_newlines=True)
+          #process = subprocess.run([current_path + 'src/nidhugg', '--sc','--observers', current_path+ 'executable_file_neg.ll'], stdout = subprocess.PIPE, stderr = subprocess.STDOUT, bufsize=1, universal_newlines=True, timeout = 60.0)
+          (status, sout) = subprocess.getstatusoutput('timeout 60s ' + current_path + 'src/nidhugg --sc --observers '+ current_path+ 'executable_file_neg.ll')
+          #process = subprocess.Popen([current_path + 'src/nidhugg', '--sc','--view', current_path + 'executable_file_neg.ll'], stdout=subprocess.PIPE, bufsize=1, universal_newlines=True)
       elif(algo == 3):
-          #process = subprocess.run([current_path + 'src/nidhugg', '--sc', '--view',current_path+ 'executable_file.ll'], bufsize=1, universal_newlines=True, timeout = 60.0)
-          (status, sout) = subprocess.getstatusoutput('timeout 60s '+ current_path + 'src/nidhugg --sc --view '+ current_path+ 'executable_file.ll')
+          #process = subprocess.run([current_path + 'src/nidhugg', '--sc', '--view',current_path+ 'executable_file_neg.ll'], bufsize=1, universal_newlines=True, timeout = 60.0)
+          (status, sout) = subprocess.getstatusoutput('timeout 60s '+ current_path + 'src/nidhugg --sc --view '+ current_path+ 'executable_file_neg.ll')
     except subprocess.TimeoutExpired:
       return  '' + ',' + '' + ',' + 'Time out' + ',' + '124'
     exn_time = time.time() - t0
@@ -66,7 +66,7 @@ def run_one_test( logfile, algo ):
     if algo == 3 : return trace_count + ',' + str(exn_time) + ',' + errors.strip() + ',' + str(status) + ',' + optimal + ',' + cmnt
     return trace_count + ',' + str(exn_time) + ',' + errors.strip() + ',' + str(status)
 
-def run_tests(start = 0, end = 8065):
+def run_tests(start = 0, end = 8062):
     testfiles = open(fileslist, 'r')
     logfile = open(output, 'a')
     if(start == 0):
@@ -86,7 +86,7 @@ def run_tests(start = 0, end = 8065):
         logfile.write(ln+',')
 
         print(ln + '\n')
-        os.system('clang -c -emit-llvm -S -o executable_file.ll ' + test_path + ln)
+        os.system('clang -c -emit-llvm -S -o executable_file_neg.ll ' + test_path + ln)
 
         default_stats = run_one_test(logfile, 1)
         #print(default_stats)
@@ -101,7 +101,7 @@ def run_tests(start = 0, end = 8065):
         #print(view_stats)
         logfile.write(view_stats+'\n')
 
-        os.system('rm ' + current_path + 'executable_file.ll')
+        os.system('rm ' + current_path + 'executable_file_neg.ll')
         os.system('echo Test number ' + str(counter) + '\n')
     logfile.close()
 
@@ -117,7 +117,7 @@ def run_litmus():
         ln = ln.strip()
         logfile.write(ln+',')
 
-        os.system('clang -c -emit-llvm -S -o executable_file.ll ' + litmus_path + ln)
+        os.system('clang -c -emit-llvm -S -o executable_file_neg.ll ' + litmus_path + ln)
 
         default_stats = run_one_test(logfile, 1)
         logfile.write(default_stats+',')
@@ -129,7 +129,7 @@ def run_litmus():
         logfile.write(view_stats+'\n')
 
         counter+=1
-        os.system('rm ' + current_path + 'executable_file.ll')
+        os.system('rm ' + current_path + 'executable_file_neg.ll')
         os.system('echo Test number ' + str(counter) + '\n')
     logfile.close()
 
@@ -142,5 +142,5 @@ def run_litmus():
 #    print(entry)
 #    filelist.write(entry[entry.find('Litmus') + 7:] + '\n')
 
-os.system('make')
+# os.system('make')
 run_tests(0) 
