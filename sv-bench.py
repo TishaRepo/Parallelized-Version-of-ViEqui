@@ -2,69 +2,101 @@ import os
 import subprocess
 import csv
 
-bench_dir = 'pthread_temp'
-bench_path = 'benchmarks/sv-benchmarks/c/' + bench_dir + '/'
+bench_dir = 'temp'
+bench_path = 'benchmarks/sv_bench/' + bench_dir + '/'
 bench_files = [f for f in os.listdir(bench_path) if f.endswith('.c')] # no .cc files in sv-benchmarks
 
 failed_tests = []
 tests_completed = 0
 
-csv_out = 'benchmark,#traces,time,error_code,error,warning\n'
+timeout = '300s'
+executable_file = 'executable_file.ll'
+
+command = [
+    ['timeout', timeout, 'time', 'src/nidhugg', '--sc', '--optimal' , executable_file],     # ODPOR
+    ['timeout', timeout, 'time', 'src/nidhugg', '--sc', '--observers' , executable_file],   # observer-ODPOR
+    ['timeout', timeout, 'time', 'src/nidhugg', '--sc', '--view' , executable_file]]        # viewEq-SMC
+
+csv_out = ',ODPOR,,,,,Observer-ODPOR,,,,,ViewEq\n'
+csv_out = csv_out + 'benchmark,#traces,time,error_code,error,warning,'
+csv_out = csv_out + '#traces,time,error_code,error,warning,'
+csv_out = csv_out + '#traces,time,error_code,error,warning\n'
+
+def algo(n):
+    if n == 0:
+        return 'ODPOR'
+    elif n == 1:
+        return 'obs_ODPOR'
+    else:
+        return 'viewEq'
 
 for file in bench_files:
     print ('Running Test ' + file[:-2])
 
-    os.system('clang -c -emit-llvm -S -o executable_file.ll ' + bench_path + file)
-    process = subprocess.Popen(['timeout', '30s', 'time', 'src/nidhugg', '--sc' , 'executable_file.ll'], 
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.STDOUT, 
-                universal_newlines=True)
+    os.system('clang -c -emit-llvm -S -o ' + executable_file + ' ' + bench_path + file)
+    csv_out = csv_out + file[:-2] + ','
 
-    sout = process.stdout.readlines()
+    for i in range(len(command)):
+        print(i)
+        process = subprocess.Popen(command[i], 
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.STDOUT, 
+                    universal_newlines=True)
 
-    run_fail    = True
-    trace_count = ''
-    time        = ''
-    warning     = ''
-    error       = ''
-    errorcode   = ''
+        sout = process.stdout.readlines()
 
-    if str(process.returncode) != 'None':
-        error_code = str(process.returncode)
+        run_fail    = True
+        trace_count = ''
+        time        = ''
+        warning     = ''
+        error       = ''
+        errorcode   = ''
 
-    for line in sout:
-        if 'Trace count:' in line:
-            print(line)
-            trace_count = line[line.find('Trace count') + len('Trace count: '):-1]
+        if str(process.returncode) != 'None':
+            error_code = str(process.returncode)
 
-        elif line.startswith('No errors'):
-            run_fail = False
+        for line in sout:
+            if 'Trace count:' in line:
+                print(line)
+                trace_count = line[line.find('Trace count') + len('Trace count: '):-1]
 
-        elif line.startswith('Error detected'):
-            run_fail = False
-            error = error + line
+            elif line.startswith('No errors'):
+                run_fail = False
 
-        elif line.startswith('ERROR'):
-            run_fail = True
-            error = error + line
+            elif line.startswith('Error detected') or line.startswith(' Error detected'):
+                run_fail = False
+                error = 'Y'
+                # error = error + line
 
-        elif line.startswith('WARNING'):
-            warning = warning + line
+            elif line.startswith('ERROR'):
+                run_fail = True
+                error = 'Y'
+                # error = error + line
 
-        elif 'elapsed' in line:
-            time = line[line.find('system') + len('system ') :  line.find('elapsed')]        
+            elif line.startswith('WARNING'):
+                warning = 'Y'
+                # warning = warning + line
 
-    if (run_fail):
-        print file[:-2] + ' Failed to complete run'
-        failed_tests.append((file[:-2], 'Failed to complete run'))
+            elif 'elapsed' in line:
+                time = line[line.find('system') + len('system ') :  line.find('elapsed')]        
 
-    tests_completed = tests_completed + 1
-    csv_out = csv_out + file[:-2] + ',' + trace_count + ',' + time + ',' + errorcode + ',' + error + ',' + warning + '\n'
+        if (run_fail):
+            print (file[:-2] + ' Failed to complete run (' + algo(i) + ')')
+            failed_tests.append((file[:-2], 'Failed to complete run'))
+
+        tests_completed = tests_completed + 1
+        csv_out = csv_out + trace_count + ',' + time + ',' + errorcode + ',' + error + ',' + warning
+        if i < 2:
+            csv_out = csv_out + ','
+        else:
+            csv_out = csv_out + '\n'
 
     # ####
     # print('traces:' + trace_count + ', time:' + time)
     # break
     # ####
+
+os.system('rm ' + executable_file)
 
 print ('----------------------------------------------')
 print ('Test Set sv-benchmarks::' + bench_dir)
