@@ -2,7 +2,7 @@ import os
 import subprocess
 import csv
 
-bench_dir = 'temp'
+bench_dir = 'pthread'
 bench_path = 'benchmarks/sv_bench/' + bench_dir + '/'
 bench_files = [f for f in os.listdir(bench_path) if f.endswith('.c')] # no .cc files in sv-benchmarks
 
@@ -36,7 +36,17 @@ def algo(n):
     else:
         return 'viewEq'
 
+def is_ignore(filename):
+    for prefix in mutex_tests:
+        if filename.startswith(prefix):
+            return True
+    return False
+
 for file in bench_files:
+    if is_ignore(file):
+        print('Ignoring Test ' + file[:-2])
+        continue
+
     print ('Running Test ' + file[:-2])
 
     os.system('clang -c -emit-llvm -S -o ' + executable_file + ' ' + bench_path + file)
