@@ -6,6 +6,9 @@ bench_dir = 'temp'
 bench_path = 'benchmarks/sv_bench/' + bench_dir + '/'
 bench_files = [f for f in os.listdir(bench_path) if f.endswith('.c')] # no .cc files in sv-benchmarks
 
+mutex_tests = ['indexer', 'lazy01', 'queue', 'stack', 'stateful', 'sync', 'two',
+            'sigma'] # not mutex but not working
+
 failed_tests = []
 tests_completed = 0
 
@@ -17,10 +20,13 @@ command = [
     ['timeout', timeout, 'time', 'src/nidhugg', '--sc', '--observers' , executable_file],   # observer-ODPOR
     ['timeout', timeout, 'time', 'src/nidhugg', '--sc', '--view' , executable_file]]        # viewEq-SMC
 
+file = open('sv-benchmarks-result.csv', 'w')
+
 csv_out = ',ODPOR,,,,,Observer-ODPOR,,,,,ViewEq\n'
 csv_out = csv_out + 'benchmark,#traces,time,error_code,error,warning,'
 csv_out = csv_out + '#traces,time,error_code,error,warning,'
 csv_out = csv_out + '#traces,time,error_code,error,warning\n'
+file.write(csv_out)
 
 def algo(n):
     if n == 0:
@@ -34,7 +40,7 @@ for file in bench_files:
     print ('Running Test ' + file[:-2])
 
     os.system('clang -c -emit-llvm -S -o ' + executable_file + ' ' + bench_path + file)
-    csv_out = csv_out + file[:-2] + ','
+    csv_out = file[:-2] + ','
 
     for i in range(len(command)):
         print(i)
@@ -95,6 +101,7 @@ for file in bench_files:
     # print('traces:' + trace_count + ', time:' + time)
     # break
     # ####
+    file.write(csv_out)
 
 os.system('rm ' + executable_file)
 
@@ -111,9 +118,7 @@ for (idx, msg) in failed_tests:
 if len(failed_tests) > 0:
     print ('----------------------------------------------\n\n')
 
-file = open('sv-benchmarks-result.csv', 'w')
-file.write(csv_out)
-file.close
+file.close()
 
 # print('csv:')
 # rows = csv_out.split('\n')

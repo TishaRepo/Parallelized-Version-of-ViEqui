@@ -6,19 +6,16 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-void assume_abort_if_not(int cond) {
-  if(!cond) {abort();}
-}
 #include <assert.h>
 
 #include <stdlib.h>
 #include <pthread.h>
 #include <string.h>
 
+#define SIGMA 16
 
-const int SIGMA = 16;
 
-int *array;
+int array[SIGMA];
 int array_index;
 
 
@@ -31,15 +28,13 @@ void *thread(void * arg)
 
 int main()
 {
-  array_index = -1;
-	int tid, sum;
-	pthread_t *t;
+	int tid=0, sum=0;
+	pthread_t t[SIGMA];
 
-	t = (pthread_t *)malloc(sizeof(pthread_t) * SIGMA);
-	array = (int *)malloc(sizeof(int) * SIGMA);
-
-	assume_abort_if_not(t);
-	assume_abort_if_not(array);
+	array_index = -1;
+	for (int i=0; i<SIGMA; i++) {
+		array[i] = 0;
+	}
 
 	for (tid=0; tid<SIGMA; tid++) {
 		array_index++;
