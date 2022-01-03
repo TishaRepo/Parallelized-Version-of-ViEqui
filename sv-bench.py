@@ -20,13 +20,13 @@ command = [
     ['timeout', timeout, 'time', 'src/nidhugg', '--sc', '--observers' , executable_file],   # observer-ODPOR
     ['timeout', timeout, 'time', 'src/nidhugg', '--sc', '--view' , executable_file]]        # viewEq-SMC
 
-file = open('sv-benchmarks-result.csv', 'w')
+csvfile = open('sv-benchmarks-result.csv', 'w')
 
 csv_out = ',ODPOR,,,,,Observer-ODPOR,,,,,ViewEq\n'
 csv_out = csv_out + 'benchmark,#traces,time,error_code,error,warning,'
 csv_out = csv_out + '#traces,time,error_code,error,warning,'
 csv_out = csv_out + '#traces,time,error_code,error,warning\n'
-file.write(csv_out)
+csvfile.write(csv_out)
 
 def algo(n):
     if n == 0:
@@ -111,7 +111,7 @@ for file in bench_files:
     # print('traces:' + trace_count + ', time:' + time)
     # break
     # ####
-    file.write(csv_out)
+    csvfile.write(csv_out)
 
 os.system('rm ' + executable_file)
 
@@ -128,7 +128,7 @@ for (idx, msg) in failed_tests:
 if len(failed_tests) > 0:
     print ('----------------------------------------------\n\n')
 
-file.close()
+csvfile.close()
 
 # print('csv:')
 # rows = csv_out.split('\n')
