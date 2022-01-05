@@ -43,6 +43,9 @@ main(int argc, char **argv)
 {
   pthread_t id1, id2;
 
+  i = 1;
+  j = 1;
+
   pthread_create(&id1, NULL, t1, NULL);
   pthread_create(&id2, NULL, t2, NULL);
 
