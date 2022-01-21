@@ -24,7 +24,7 @@ def run_one_test( logfile, algo ):
     try:
       if (algo == 1): 
           #process = subprocess.run([current_path + 'src/nidhugg', '--sc', current_path+ 'executable_file_neg.ll'], stdout = subprocess.PIPE, stderr = subprocess.STDOUT, bufsize=1, universal_newlines=True, timeout = 60.0)
-          (status, sout) = subprocess.getstatusoutput('timeout 60s '+ current_path + 'src/nidhugg --sc '+ current_path+ 'executable_file_neg.ll')
+          (status, sout) = subprocess.getstatusoutput('timeout 60s '+ current_path + 'src/nidhugg --sc --optimal'+ current_path+ 'executable_file_neg.ll')
       elif(algo == 2):
           #process = subprocess.run([current_path + 'src/nidhugg', '--sc','--observers', current_path+ 'executable_file_neg.ll'], stdout = subprocess.PIPE, stderr = subprocess.STDOUT, bufsize=1, universal_newlines=True, timeout = 60.0)
           (status, sout) = subprocess.getstatusoutput('timeout 60s ' + current_path + 'src/nidhugg --sc --observers '+ current_path+ 'executable_file_neg.ll')
