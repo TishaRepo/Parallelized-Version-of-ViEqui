@@ -35,4 +35,3 @@ tests/litmus/test.results.txt
 filelist.txt
 out
 *.csv
-benchmarks/sv-repo-benchmarks/
