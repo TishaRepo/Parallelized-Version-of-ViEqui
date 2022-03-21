@@ -8,7 +8,7 @@
 
 #include <assert.h>
 void assume_abort_if_not(int cond) {
-  if(!cond) {abort();}
+  if(!cond) {assert(0);}
 }
 #include <pthread.h>
 #include <stdio.h>
@@ -88,7 +88,7 @@ void *t1(void *arg)
   for(i=0; i<SIZE; i++)
   {
     pthread_mutex_lock(&m);   
-    assume_abort_if_not(tmp < SIZE);
+    assert(!(tmp < SIZE));
     if ((push(arr,tmp)==OVERFLOW))
       error();
     pthread_mutex_unlock(&m);

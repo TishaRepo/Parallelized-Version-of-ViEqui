@@ -2,10 +2,10 @@
 #include <stdint.h>
 #include <stdatomic.h>
 
-#define T 2
+#define T 1
 #ifndef N
 #  warning "N not defined, assuming 6"
-#  define N 6
+#  define N 1
 #endif
 
 atomic_int x[1], y[1];

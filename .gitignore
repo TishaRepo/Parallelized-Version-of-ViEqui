@@ -5,16 +5,29 @@
 *.trs
 *.aux
 *.toc
+
+# vs code
 src/.vscode/*
+
+# executables and objects
 src/nidhugg
 src/nidhuggc
 src/unittest
+*.ll
+
+# libs ans Makefiles
 src/libnidhugg.a
 Makefile
 Makefile.in
+src/Makefile.in
+
+# temporary
 aclocal.m4
 ar-lib
 autom4te.cache
+src/.deps
+
+# temporary (installation)
 compile
 config.guess
 config.h
@@ -26,8 +39,9 @@ configure
 depcomp
 install-sh
 missing
-src/.deps
-src/Makefile.in
+
+# temporary (testing)
+scripts/
 stamp-*
 test-driver
 tests/smoke/test.results.txt
