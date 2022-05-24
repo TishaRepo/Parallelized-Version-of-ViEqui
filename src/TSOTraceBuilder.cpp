@@ -344,7 +344,7 @@ bool TSOTraceBuilder::reset()
   do_race_detect();
 
   // [rmnt] : Debugging
-  if (conf.debug_print_on_reset || true)
+  if (conf.debug_print_on_reset)
   {
     llvm::dbgs() << " === TSOTraceBuilder reset ===\n";
     debug_print();
