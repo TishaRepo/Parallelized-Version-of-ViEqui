@@ -1,0 +1,4 @@
+decls = {
+    'pthread-wmm' : {}
+    
+}
