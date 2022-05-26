@@ -2,7 +2,7 @@ import os
 import sys
 import subprocess
 from time import time
-import shlex
+from datetime import datetime
 
 # define constants --------------------------------
 TO = 1800 # 30 mins
@@ -16,27 +16,26 @@ else:
     bench_path = sys.argv[1]
     if bench_path[-1] != '/':
         bench_path += '/'
-    bench_dir  = bench_path.split('/')[-2]
 
-bench_files = [f for f in os.listdir(bench_path) if f.endswith('.c')] # no .cc files in sv-benchmarks
+benchdirs = [bench_path]
 
 ignore_tests = ['sigma'] # not working
 
 failed_tests = []
-tests_completed = 0
+total_tests_completed = 0
 
 command = [
-    './src/nidhugg --sc --optimal ' + executable_file, # ODPOR
-    # ['./src/nidhugg', '--sc', '--observers', executable_file], # observer-ODPOR
-    # ['./src/nidhugg', '--sc', '--view',      executable_file]  # viewEq-SMC
+    ['./src/nidhugg', '--sc', '--optimal',   executable_file], # ODPOR
+    ['./src/nidhugg', '--sc', '--observers', executable_file], # observer-ODPOR
+    ['./src/nidhugg', '--sc', '--view',      executable_file]  # viewEq-SMC
 ]      
 
-csvfile = open('sv-benchmarks-result.csv', 'w')
+csvfile = open('results/sv-benchmarks-result.csv', 'w')
 
-csv_out = ',ODPOR,,,Observer-ODPOR,,,ViewEq\n'
-csv_out = csv_out + 'benchmark,#traces,time,assert-fail,error_code,'
-csv_out = csv_out + '#traces,time,assert-fail,error_code,'
-csv_out = csv_out + '#traces,time,assert-fail,error_code\n'
+csv_out = ',,ODPOR,,,Observer-ODPOR,,,ViewEq\n'
+csv_out = csv_out + 'benchmark,#traces,time,error_code,'
+csv_out = csv_out + '#traces,time,error_code,'
+csv_out = csv_out + '#traces,time,error_code\n'
 csvfile.write(csv_out)
 
 def algo(n):
@@ -62,20 +61,26 @@ def make_csv_row(trace_count, time, error, i):
     
     return row
 
-def run_test(file):
-    global tests_completed
+def run_test(dir, file):
+    global total_tests_completed
     global failed_tests
 
-    print ('Running Test ' + file[:-2])
+    tests_completed = 0
+
+    print(datetime.now(), 'Running Test ' + file[:-2])
 
     os.system('clang -c -emit-llvm -S -o ' + executable_file + ' ' + bench_path + file)
-    csv_out = file[:-2] + ','
+    csv_out = dir + ',' + file[:-2] + ','
 
     for i in range(len(command)):
         start_time = time()
         try:
-            (returncode, sout) = subprocess.getstatusoutput(command[i])
-            print('rc:', returncode)
+            p = subprocess.run(command[i],
+                    capture_output=True,
+                    stderr=None,
+                    bufsize=1, 
+                    universal_newlines=True,
+                    timeout=TO)
         except subprocess.TimeoutExpired:
             test_time = str( time() - start_time )
             csv_out = csv_out + make_csv_row('TIMEOUT', test_time, error, i)
@@ -84,7 +89,8 @@ def run_test(file):
             print('subprocess error:', e)
 
         test_time = str( round( time() - start_time , 2 ))
-        sout = sout.splitlines()
+        returncode = p.returncode
+        sout = p.stdout.split('\n')
 
         trace_count = ''
         error       = ''
@@ -108,23 +114,53 @@ def run_test(file):
 
         csv_out = csv_out + make_csv_row(trace_count, test_time, error, i)
 
-    return csv_out
+    total_tests_completed += tests_completed
+    return tests_completed, csv_out
 
 # ---------- main ---------------
-for file in bench_files:
-    if is_ignore(file):
-        print('Ignoring Test ' + file[:-2])
-        continue
 
-    test_result = run_test(file)
-    # csvfile.write(csv_out)
-    print(test_result)
+while len(benchdirs) > 0:
+    tests_completed = 0
+    tests_failed    = 0
+
+    bench_path = benchdirs.pop()
+    if bench_path[-1] != '/':
+        bench_path += '/'
+    bench_files = [ f for f in os.listdir(bench_path) if f.endswith('.c') ] # no .cc files in sv-benchmarks
+    benchdirs  += [ f.path for f in os.scandir(bench_path) if f.is_dir() ]
+    bench_dir   = bench_path.split('/')[-2]
+
+    print('Entering', bench_path)
+    
+    for file in bench_files:
+        if is_ignore(file):
+            print('Ignoring Test ' + file[:-2])
+            continue
+
+        passed_tests, test_result = run_test(bench_path, file)
+        csvfile.write(test_result)
+
+        tests_completed += passed_tests
+        tests_failed    += len(command) - passed_tests
+    
+    print('Leaving', bench_path)
+
+    print ('----------------------------------------------')
+    print ('Test Set sv-benchmarks::' + bench_dir)
+    print ('----------------------------------------------')
+    print ('No. of tests completed =', tests_completed)
+    print ('No. of tests failed =', tests_failed)
+    print ('----------------------------------------------\n')
+
+csvfile.close()
+os.system('rm ' + executable_file)
 
 print ('----------------------------------------------')
-print ('Test Set sv-benchmarks::' + bench_dir)
 print ('----------------------------------------------')
-print ('No. of tests run = ' + str(tests_completed))
-print ('No. of tests failed = ' + str(len(failed_tests)))
+print ('Test Set Summary')
+print ('----------------------------------------------')
+print ('No. of tests completed =', total_tests_completed)
+print ('No. of tests failed =', len(failed_tests))
 print ('----------------------------------------------\n')
 
 for (idx, msg) in failed_tests:
@@ -132,6 +168,3 @@ for (idx, msg) in failed_tests:
     print ('     ' + msg)    
 if len(failed_tests) > 0:
     print ('----------------------------------------------\n\n')
-
-csvfile.close()
-os.system('rm ' + executable_file)
