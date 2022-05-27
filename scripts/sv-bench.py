@@ -1,12 +1,14 @@
+from locale import T_FMT_AMPM
 import os
 import sys
 import subprocess
+from threading import Timer
 from time import time
 from datetime import datetime
 from output_colors import output_colors as oc
 
 # define constants --------------------------------
-TO = 1800 # 30 mins
+TO = 2 #1800 # 30 mins
 executable_file = 'sv_bench_executable_file.ll'
 #--------------------------------------------------
 
@@ -27,9 +29,9 @@ failed_tests = []
 total_tests_completed = 0
 
 command = [
-    ['./src/nidhugg', '--sc', '--optimal',   executable_file], # ODPOR
-    ['./src/nidhugg', '--sc', '--observers', executable_file], # observer-ODPOR
-    ['./src/nidhugg', '--sc', '--view',      executable_file]  # viewEq-SMC
+    # ['timeout', str(TO)+'s', './src/nidhugg', '--sc', '--optimal',   executable_file], # ODPOR
+    # ['timeout', str(TO)+'s', './src/nidhugg', '--sc', '--observers', executable_file], # observer-ODPOR
+    ['timeout', str(TO)+'s', './src/nidhugg', '--sc', '--view',      executable_file]  # viewEq-SMC
 ]      
 
 csvfile = open('results/sv-benchmarks-result.csv', 'w')
@@ -40,7 +42,9 @@ csv_out = csv_out + '#traces,time,error_code,'
 csv_out = csv_out + '#traces,time,error_code\n'
 csvfile.write(csv_out)
 
-max_header_length = 0 # for printing
+# for printing result summary
+max_header_length = 45 
+min_border_length = 40
 #--------------------------------------------------
 
 def algo(n):
@@ -66,20 +70,17 @@ def make_csv_row(trace_count, time, error, i):
     
     return row
 
-def print_dir_summary(bench_dir, tests_completed, tests_failed):
-    global max_header_length
-
+def print_dir_summary(bench_dir, tests_completed, tests_failed, tests_timedout):
     header = 'Test Set sv-benchmarks::' + bench_dir
     header_length = len(header)
-    border_line = '-' * header_length
-
-    max_header_length = max(header_length, max_header_length)
+    border_line = '-' * max(header_length, min_border_length)
 
     print (oc.BLUE, oc.BOLD, border_line, oc.ENDC)
     print (oc.BLUE, oc.BOLD, header, oc.ENDC)
     print (oc.BLUE, oc.BOLD, border_line, oc.ENDC)
     print ('\tNo. of tests completed =', tests_completed)
-    print ('\tNo. of tests failed =', tests_failed)
+    print ('\tNo. of tests failed    =', tests_failed)
+    print ('\tNo. of tests timedout  =', tests_timedout)
     print (oc.BLUE, oc.BOLD, border_line, '\n', oc.ENDC)
 
 def print_set_summary():
@@ -105,6 +106,7 @@ def run_test(dir, file):
     global failed_tests
 
     tests_completed = 0
+    tests_timedout  = 0
 
     print(oc.PURPLE, '[' + str(datetime.now()) + ']', oc.ENDC, 'Running Test ' + file[:-2])
 
@@ -115,11 +117,10 @@ def run_test(dir, file):
         start_time = time()
         try:
             p = subprocess.Popen(command[i],
-                    stdout=subprocess.PIPE,
-                    stderr=None,
-                    bufsize=1, 
-                    universal_newlines=True)
-                    # timeout=TO)
+                stdout=subprocess.PIPE,
+                stderr=None,
+                bufsize=1, 
+                universal_newlines=True)
         except subprocess.TimeoutExpired:
             test_time = str( time() - start_time )
             csv_out = csv_out + make_csv_row('TIMEOUT', test_time, error, i)
@@ -128,9 +129,9 @@ def run_test(dir, file):
             print(oc.RED, 'subprocess error:', e, oc.ENDC)
             continue
 
-        test_time = str( round( time() - start_time , 3 ))
         sout = p.communicate()[0].split('\n')
         returncode = p.wait()
+        test_time = str( round( time() - start_time, 3 ) )
 
         trace_count = ''
         error       = ''
@@ -140,6 +141,11 @@ def run_test(dir, file):
         elif returncode == 42: # assert_fail
             error = 'assert fail'
             tests_completed += 1
+        elif returncode == 124: # timeout
+            print(oc.RED, 'Timeout (' + algo(i) + ')', oc.ENDC)
+            csv_out = csv_out + make_csv_row('TIMEOUT', test_time, error, i)
+            tests_timedout += 1
+            continue
         else:
             error_code = str(returncode)
             print (oc.RED, file[:-2] + ' Failed to complete run (' + algo(i) + ')', oc.ENDC)
@@ -155,7 +161,7 @@ def run_test(dir, file):
         csv_out = csv_out + make_csv_row(trace_count, test_time, error, i)
 
     total_tests_completed += tests_completed
-    return tests_completed, csv_out
+    return tests_completed, tests_timedout, csv_out
 
 # main --------------------------------------------
 
@@ -177,14 +183,14 @@ while len(benchdirs) > 0:
             print('Ignoring Test ' + file[:-2])
             continue
 
-        passed_tests, test_result = run_test(bench_path, file)
+        completed_tests, to_tests, test_result = run_test(bench_path, file)
         csvfile.write(test_result)
 
-        tests_completed += passed_tests
-        tests_failed    += len(command) - passed_tests
+        tests_completed += completed_tests
+        tests_failed    += len(command) - completed_tests - to_tests
     
     print(oc.BLUE, oc.BOLD, 'Leaving', bench_path, oc.ENDC)
-    print_dir_summary(bench_dir, tests_completed, tests_failed)
+    print_dir_summary(bench_dir, tests_completed, tests_failed, to_tests)
 
 csvfile.close()
 os.system('rm ' + executable_file)

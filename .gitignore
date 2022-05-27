@@ -5,6 +5,7 @@
 *.trs
 *.aux
 *.toc
+null.d
 
 # vs code
 src/.vscode/*
@@ -15,6 +16,7 @@ src/nidhugg
 src/nidhuggc
 src/unittest
 *.ll
+**/__pycache__
 
 # libs ans Makefiles
 src/libnidhugg.a
