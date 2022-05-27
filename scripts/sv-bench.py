@@ -8,7 +8,7 @@ from datetime import datetime
 from output_colors import output_colors as oc
 
 # define constants --------------------------------
-TO = 2 #1800 # 30 mins
+TO = 1800 # 30 mins
 executable_file = 'sv_bench_executable_file.ll'
 #--------------------------------------------------
 
@@ -29,8 +29,8 @@ failed_tests = []
 total_tests_completed = 0
 
 command = [
-    # ['timeout', str(TO)+'s', './src/nidhugg', '--sc', '--optimal',   executable_file], # ODPOR
-    # ['timeout', str(TO)+'s', './src/nidhugg', '--sc', '--observers', executable_file], # observer-ODPOR
+    ['timeout', str(TO)+'s', './src/nidhugg', '--sc', '--optimal',   executable_file], # ODPOR
+    ['timeout', str(TO)+'s', './src/nidhugg', '--sc', '--observers', executable_file], # observer-ODPOR
     ['timeout', str(TO)+'s', './src/nidhugg', '--sc', '--view',      executable_file]  # viewEq-SMC
 ]      
 
@@ -118,7 +118,7 @@ def run_test(dir, file):
         try:
             p = subprocess.Popen(command[i],
                 stdout=subprocess.PIPE,
-                stderr=None,
+                stderr=subprocess.DEVNULL,
                 bufsize=1, 
                 universal_newlines=True)
         except subprocess.TimeoutExpired:
@@ -168,6 +168,7 @@ def run_test(dir, file):
 while len(benchdirs) > 0:
     tests_completed = 0
     tests_failed    = 0
+    tests_timedout  = 0
 
     bench_path = benchdirs.pop()
     if bench_path[-1] != '/':
@@ -187,10 +188,11 @@ while len(benchdirs) > 0:
         csvfile.write(test_result)
 
         tests_completed += completed_tests
+        tests_timedout  += to_tests
         tests_failed    += len(command) - completed_tests - to_tests
     
     print(oc.BLUE, oc.BOLD, 'Leaving', bench_path, oc.ENDC)
-    print_dir_summary(bench_dir, tests_completed, tests_failed, to_tests)
+    print_dir_summary(bench_dir, tests_completed, tests_failed, tests_timedout)
 
 csvfile.close()
 os.system('rm ' + executable_file)
