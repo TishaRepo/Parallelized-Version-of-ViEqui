@@ -3,12 +3,14 @@ import sys
 import subprocess
 from time import time
 from datetime import datetime
+from output_colors import output_colors as oc
 
 # define constants --------------------------------
 TO = 1800 # 30 mins
 executable_file = 'sv_bench_executable_file.ll'
 #--------------------------------------------------
 
+# initial setup -----------------------------------
 if len(sys.argv) == 1:
     bench_dir  = 'pthread'
     bench_path = 'benchmarks/sv_bench/' + bench_dir + '/'
@@ -33,10 +35,13 @@ command = [
 csvfile = open('results/sv-benchmarks-result.csv', 'w')
 
 csv_out = ',,ODPOR,,,Observer-ODPOR,,,ViewEq\n'
-csv_out = csv_out + 'benchmark,#traces,time,error_code,'
+csv_out = csv_out + 'directory,benchmark,#traces,time,error_code,'
 csv_out = csv_out + '#traces,time,error_code,'
 csv_out = csv_out + '#traces,time,error_code\n'
 csvfile.write(csv_out)
+
+max_header_length = 0 # for printing
+#--------------------------------------------------
 
 def algo(n):
     if n == 0:
@@ -61,13 +66,47 @@ def make_csv_row(trace_count, time, error, i):
     
     return row
 
+def print_dir_summary(bench_dir, tests_completed, tests_failed):
+    global max_header_length
+
+    header = 'Test Set sv-benchmarks::' + bench_dir
+    header_length = len(header)
+    border_line = '-' * header_length
+
+    max_header_length = max(header_length, max_header_length)
+
+    print (oc.BLUE, oc.BOLD, border_line, oc.ENDC)
+    print (oc.BLUE, oc.BOLD, header, oc.ENDC)
+    print (oc.BLUE, oc.BOLD, border_line, oc.ENDC)
+    print ('\tNo. of tests completed =', tests_completed)
+    print ('\tNo. of tests failed =', tests_failed)
+    print (oc.BLUE, oc.BOLD, border_line, '\n', oc.ENDC)
+
+def print_set_summary():
+    header = '\t\tTest Set Summary'
+    border_line = '=' * max_header_length
+    thin_border_line = '-' * max_header_length
+
+    print (oc.YELLOW, oc.BOLD, border_line, oc.ENDC)
+    print (oc.YELLOW, oc.BOLD, header, oc.ENDC)
+    print (oc.YELLOW, oc.BOLD, border_line, oc.ENDC)
+    print ('\tNo. of tests completed =', total_tests_completed)
+    print ('\tNo. of tests failed =', len(failed_tests))
+    print (oc.YELLOW, oc.BOLD, border_line, oc.ENDC)
+    
+    for (idx, msg) in failed_tests:
+        print ('Test ' + idx + ': FAIL')
+        print ('     ' + msg)    
+    if len(failed_tests) > 0:
+        print (thin_border_line + '\n\n')
+    
 def run_test(dir, file):
     global total_tests_completed
     global failed_tests
 
     tests_completed = 0
 
-    print(datetime.now(), 'Running Test ' + file[:-2])
+    print(oc.PURPLE, '[' + str(datetime.now()) + ']', oc.ENDC, 'Running Test ' + file[:-2])
 
     os.system('clang -c -emit-llvm -S -o ' + executable_file + ' ' + bench_path + file)
     csv_out = dir + ',' + file[:-2] + ','
@@ -75,22 +114,23 @@ def run_test(dir, file):
     for i in range(len(command)):
         start_time = time()
         try:
-            p = subprocess.run(command[i],
-                    capture_output=True,
+            p = subprocess.Popen(command[i],
+                    stdout=subprocess.PIPE,
                     stderr=None,
                     bufsize=1, 
-                    universal_newlines=True,
-                    timeout=TO)
+                    universal_newlines=True)
+                    # timeout=TO)
         except subprocess.TimeoutExpired:
             test_time = str( time() - start_time )
             csv_out = csv_out + make_csv_row('TIMEOUT', test_time, error, i)
             continue
         except Exception as e:
-            print('subprocess error:', e)
+            print(oc.RED, 'subprocess error:', e, oc.ENDC)
+            continue
 
-        test_time = str( round( time() - start_time , 2 ))
-        returncode = p.returncode
-        sout = p.stdout.split('\n')
+        test_time = str( round( time() - start_time , 3 ))
+        sout = p.communicate()[0].split('\n')
+        returncode = p.wait()
 
         trace_count = ''
         error       = ''
@@ -102,7 +142,7 @@ def run_test(dir, file):
             tests_completed += 1
         else:
             error_code = str(returncode)
-            print (file[:-2] + ' Failed to complete run (' + algo(i) + ')')
+            print (oc.RED, file[:-2] + ' Failed to complete run (' + algo(i) + ')', oc.ENDC)
             failed_tests.append((file[:-2], 'Failed to complete run'))
             error = 'RUN FAIL(' + error_code + ')'
             csv_out = csv_out + make_csv_row(trace_count, test_time, error, i)
@@ -117,7 +157,7 @@ def run_test(dir, file):
     total_tests_completed += tests_completed
     return tests_completed, csv_out
 
-# ---------- main ---------------
+# main --------------------------------------------
 
 while len(benchdirs) > 0:
     tests_completed = 0
@@ -130,7 +170,7 @@ while len(benchdirs) > 0:
     benchdirs  += [ f.path for f in os.scandir(bench_path) if f.is_dir() ]
     bench_dir   = bench_path.split('/')[-2]
 
-    print('Entering', bench_path)
+    print(oc.BLUE, oc.BOLD, 'Entering', bench_path, oc.ENDC)
     
     for file in bench_files:
         if is_ignore(file):
@@ -143,28 +183,9 @@ while len(benchdirs) > 0:
         tests_completed += passed_tests
         tests_failed    += len(command) - passed_tests
     
-    print('Leaving', bench_path)
-
-    print ('----------------------------------------------')
-    print ('Test Set sv-benchmarks::' + bench_dir)
-    print ('----------------------------------------------')
-    print ('No. of tests completed =', tests_completed)
-    print ('No. of tests failed =', tests_failed)
-    print ('----------------------------------------------\n')
+    print(oc.BLUE, oc.BOLD, 'Leaving', bench_path, oc.ENDC)
+    print_dir_summary(bench_dir, tests_completed, tests_failed)
 
 csvfile.close()
 os.system('rm ' + executable_file)
-
-print ('----------------------------------------------')
-print ('----------------------------------------------')
-print ('Test Set Summary')
-print ('----------------------------------------------')
-print ('No. of tests completed =', total_tests_completed)
-print ('No. of tests failed =', len(failed_tests))
-print ('----------------------------------------------\n')
-
-for (idx, msg) in failed_tests:
-    print ('Test ' + idx + ': FAIL')
-    print ('     ' + msg)    
-if len(failed_tests) > 0:
-    print ('----------------------------------------------\n\n')
+print_set_summary()
