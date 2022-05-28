@@ -5,10 +5,10 @@
 #include <assert.h>
 
 volatile int x;
-#define N 50
+#define N 6
 
 void* thr1(void* arg) {
-    assert(x < N);
+    assert(x <= N);
     return 0;
 }
 
