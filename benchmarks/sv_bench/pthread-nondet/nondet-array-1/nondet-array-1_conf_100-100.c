@@ -1,8 +1,8 @@
 #include <pthread.h>
 #include "assert.h"
 
-#define LOOP 10
-#define SIZE 14
+#define LOOP 100
+#define SIZE 100
 int a[SIZE] = {0};
 int x;
 

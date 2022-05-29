@@ -8,7 +8,7 @@ from datetime import datetime
 from output_colors import output_colors as oc
 
 # define constants --------------------------------
-TO = 1800 # 30 mins
+TO = 5#1800 # 30 mins
 executable_file = 'sv_bench_executable_file.ll'
 #--------------------------------------------------
 
@@ -125,6 +125,12 @@ def record_TOs(tests_timedout, config, last_status_TO, last_config, assumed_TO_c
                 last_status_TO[i] = True
                 last_config[i].append(config)
 
+def print_file(file):
+    test_name = file.split('_conf_')[0]
+    config = get_config(file)
+    config_str = '(' + '.'.join([str(x) for x in config]) + ')'
+    return test_name + config_str
+
 def print_dir_summary(bench_dir, tests_completed, tests_failed, tests_timedout):
     header = 'Test Set sv-benchmarks::' + bench_dir
     header_length = len(header)
@@ -166,7 +172,7 @@ def run_test(dir, file, ignore_command=[]):
     print(oc.PURPLE, '[' + str(datetime.now()) + ']', oc.ENDC, 'Running Test ' + file[:-2])
 
     os.system('clang -c -emit-llvm -S -o ' + executable_file + ' ' + bench_path + file)
-    csv_out = dir + ',' + file[:-2] + ','
+    csv_out = dir + ',' + print_file(file) + ','
 
     for i in range(len(command)):
         if i in ignore_command:
