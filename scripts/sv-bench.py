@@ -1,5 +1,4 @@
 import os
-import sys
 import subprocess
 import argparse
 
@@ -7,13 +6,9 @@ from time import time
 from datetime import datetime
 from output_colors import output_colors as oc
 
-# define constants --------------------------------
-TO = 5#1800 # 30 mins
-executable_file = 'sv_bench_executable_file.ll'
-#--------------------------------------------------
-
 # default -----------------------------------------
 bench_path = 'benchmarks/sv_bench/'
+executable_file = 'sv_bench_executable_file.ll'
 
 # arguments ---------------------------------------
 parser = argparse.ArgumentParser()
@@ -26,7 +21,16 @@ args = parser.parse_args()
 bench_path  = args.bench_path
 has_configs = args.has_configurations
 
+# define constants --------------------------------
+TO = 1800 # 30 mins
+#--------------------------------------------------
+
 # initial setup -----------------------------------
+if bench_path[-1] != '/':
+    bench_path += '/'
+bench_dir   = bench_path.split('/')[-2]
+
+executable_file = executable_file[:-3] + '-' + bench_dir + '.ll'
 # if len(sys.argv) == 1:
     
 # else:
@@ -126,6 +130,9 @@ def record_TOs(tests_timedout, config, last_status_TO, last_config, assumed_TO_c
                 last_config[i].append(config)
 
 def print_file(file):
+    if not has_configs:
+        return file[:-2]
+
     test_name = file.split('_conf_')[0]
     config = get_config(file)
     config_str = '(' + '.'.join([str(x) for x in config]) + ')'
