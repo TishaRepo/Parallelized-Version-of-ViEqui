@@ -1,18 +1,10 @@
-extern void abort(void);
-void assume_abort_if_not(int cond) {
-  if(!cond) {abort();}
-}
-extern void abort(void);
 #include <assert.h>
-void reach_error() { assert(0); }
-extern int __VERIFIER_nondet_int();
-
 #include <pthread.h>
 
-#define assume(e) assume_abort_if_not(e)
-#define assert_nl(e) { if(!(e)) { goto ERROR; } }
-#undef assert
-#define assert(e) { if(!(e)) { ERROR: {reach_error();abort();}(void)0; } }
+#define LOOP 10
+#define Nthreads 2
+#define OFFSET 64
+// assume(offset % WORKPERTHREAD == 0 && offset >= 0 && offset < WORKPERTHREAD*THREADSMAX);
 
 void __VERIFIER_atomic_CAS(
   volatile int *v,
@@ -30,16 +22,16 @@ void __VERIFIER_atomic_CAS(
 	}
 }
 
-#define WORKPERTHREAD 2
-#define THREADSMAX 3
-volatile int max = 0x80000000;
+#define WORKPERTHREAD 16
+#define THREADSMAX 16
+int max;
 
 int storage[WORKPERTHREAD*THREADSMAX];
 
-inline void findMax(int offset){
+void findMax(int offset){
 	int i;
 	int e;
-	int my_max = 0x80000000;
+	int my_max = 0;
 	int c; 
 	int cret;
 
@@ -48,13 +40,18 @@ inline void findMax(int offset){
 		if(e > my_max) {
 			my_max = e;
 		}
-		assert_nl(e <= my_max);
+		assert(e <= my_max);
 	}
 
-	while(1){
+	for (int l=0; l<LOOP; l++) {
 		c = max;
 		if(my_max > c){
-			__VERIFIER_atomic_CAS(&max,c,my_max,&cret);
+			// __VERIFIER_atomic_CAS(&max,c,my_max,&cret);
+			if (max == c) {
+				max = my_max;
+				cret = 1;
+			}
+			else cret = 0; 
 			if(cret){
 				break;
 			}
@@ -67,10 +64,9 @@ inline void findMax(int offset){
 }
 
 void* thr1(void* arg) {
-	int offset=__VERIFIER_nondet_int();
+	int offset=OFFSET;
 
-	assume(offset % WORKPERTHREAD == 0 && offset >= 0 && offset < WORKPERTHREAD*THREADSMAX);
-	//assume(offset < WORKPERTHREAD && offset >= 0 && offset < WORKPERTHREAD*THREADSMAX);
+	// assume(offset % WORKPERTHREAD == 0 && offset >= 0 && offset < WORKPERTHREAD*THREADSMAX);
 
 	findMax(offset);
 
@@ -78,8 +74,13 @@ void* thr1(void* arg) {
 }
 
 int main(){
-  pthread_t t;
+  max = 0;
+  for (int i=0; i<WORKPERTHREAD*THREADSMAX; i++)
+	storage[i] = i;
+  pthread_t t[Nthreads];
 
-	while(1) { pthread_create(&t, 0, thr1, 0); }
+	for (int i=0; i<Nthreads; i++) { 
+		pthread_create(&t[i], 0, thr1, 0); 
+	}
 }
 

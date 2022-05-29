@@ -2,7 +2,7 @@
 #include <pthread.h>
 
 #define Nthreads 10
-#define LOOP 10
+#define LOOP 5
 
 int a;
 int b;

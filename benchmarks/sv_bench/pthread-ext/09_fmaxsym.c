@@ -1,69 +1,72 @@
-extern void abort(void);
-void assume_abort_if_not(int cond) {
-  if(!cond) {abort();}
-}
-extern void abort(void);
 #include <assert.h>
-void reach_error() { assert(0); }
-extern int __VERIFIER_nondet_int();
-
 #include <pthread.h>
 
-#define assume(e) assume_abort_if_not(e)
-#undef assert
-#define assert(e) { if(!(e)) { ERROR: {reach_error();abort();}(void)0; } }
+#define Nthreads 2
 
+#define OFFSET 4
+// assume(offset % WORKPERTHREAD == 0 && offset >= 0 && offset < WORKPERTHREAD*THREADSMAX);
 #define WORKPERTHREAD 2
 #define THREADSMAX 3
-volatile int max = 0x80000000, m = 0;
+int max, m;
+int storage[WORKPERTHREAD*THREADSMAX];
 
-void __VERIFIER_atomic_acquire()
-{
-	assume(m==0);
-	m = 1;
-}
+// int __VERIFIER_atomic_acquire()
+// {
+// 	int m_ = m;
+// 	// if (m_!=0) return 0; 
+// 	m = 1;
+// 	return 1;
+// }
 
 void __VERIFIER_atomic_release()
 {
-	assume(m==1);
+	// assume(m==1);
 	m = 0;
 }
 
-int storage[WORKPERTHREAD*THREADSMAX];
-
-inline void findMax(int offset)
+void findMax()
 {
 	int i;
 	int e;
 
-	for(i = offset; i < offset+WORKPERTHREAD; i++) {
+	for(i = OFFSET; i < OFFSET+WORKPERTHREAD; i++) {
 		e = storage[i];
 		
-		__VERIFIER_atomic_acquire();
-		{
-			if(e > max) {
-				max = e;
-			}
+		if (m != 0)
+			continue;
+		m = 1;
+		if(e > max) {
+			max = e;
 		}
+	
 		__VERIFIER_atomic_release();
 		assert(e <= max);
 	}
 }
 
 void* thr1(void* arg) {
-  int offset=__VERIFIER_nondet_int();
+  
+	// assume(offset % WORKPERTHREAD == 0 && offset >= 0 && offset < WORKPERTHREAD*THREADSMAX);
+	
+	findMax();
 
-	assume(offset % WORKPERTHREAD == 0 && offset >= 0 && offset < WORKPERTHREAD*THREADSMAX);
-	//assume(offset < WORKPERTHREAD && offset >= 0 && offset < WORKPERTHREAD*THREADSMAX);
-
-	findMax(offset);
-
-  return 0;
+//   return NULL;
 }
 
 int main(){
   pthread_t t;
+//   pthread_t t[Nthreads];
 
-	while(1) { pthread_create(&t, 0, thr1, 0); }
+  max = 0;
+  m = 0;
+  for (int i=0; i<WORKPERTHREAD*THREADSMAX; i++)
+	storage[i] = i;
+
+	// for (int i=0; i<Nthreads; i++) { 
+	// 	pthread_create(&t[i], 0, thr1, 0); 
+		pthread_create(&t, 0, thr1, 0); 
+	// }
+
+	return 0;
 }
 

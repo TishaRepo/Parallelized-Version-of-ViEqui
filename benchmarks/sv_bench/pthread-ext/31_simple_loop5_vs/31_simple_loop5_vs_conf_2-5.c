@@ -1,8 +1,8 @@
 #include <assert.h>
 #include <pthread.h>
 
-#define Nthreads 10
-#define LOOP 10
+#define Nthreads 2
+#define LOOP 5
 
 int a;
 int b;
