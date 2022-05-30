@@ -9,6 +9,7 @@ from output_colors import output_colors as oc
 # default -----------------------------------------
 bench_path = 'benchmarks/sv_bench/'
 executable_file = 'sv_bench_executable_file.ll'
+result_file = 'results/sv-benchmarks-result.csv'
 
 # arguments ---------------------------------------
 parser = argparse.ArgumentParser()
@@ -31,12 +32,7 @@ if bench_path[-1] != '/':
 bench_dir   = bench_path.split('/')[-2]
 
 executable_file = executable_file[:-3] + '-' + bench_dir + '.ll'
-# if len(sys.argv) == 1:
-    
-# else:
-#     bench_path = sys.argv[1]
-#     if bench_path[-1] != '/':
-#         bench_path += '/'
+result_file = result_file[:-4] + '-' + bench_dir + '.csv'
 
 benchdirs = [bench_path]
 
@@ -51,7 +47,7 @@ command = [
     ['timeout', str(TO)+'s', './src/nidhugg', '--sc', '--view',      executable_file]  # viewEq-SMC
 ]      
 
-csvfile = open('results/sv-benchmarks-result.csv', 'w')
+csvfile = open(result_file, 'w')
 
 csv_out = ',,ODPOR,,,Observer-ODPOR,,,ViewEq\n'
 csv_out = csv_out + 'directory,benchmark,#traces,time,error_code,'

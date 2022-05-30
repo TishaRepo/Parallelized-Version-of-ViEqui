@@ -8,12 +8,12 @@
 
 #include <assert.h>
 
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <pthread.h>
 
-#define iSet 4
-#define iCheck 1
+#define iSet 5000
+#define iCheck 5000
 
 static int a;
 static int b;
@@ -24,38 +24,48 @@ void set();
 int check();
 
 int main(int argc, char *argv[]) {
-    int i;
-
     a = 0;
     b = 0;
+
+    // if (argc != 1) {
+    //     if (argc != 3) {
+    //         fprintf(stderr, USAGE);
+    //         exit(-1);
+    //     } else {
+    //         sscanf(argv[1], "%d", &iSet);
+    //         sscanf(argv[2], "%d", &iCheck);
+    //     }
+    // }
+
+    //printf("iSet = %d\niCheck = %d\n", iSet, iCheck);
 
     pthread_t setPool[iSet];
     pthread_t checkPool[iCheck];
 
-    for (i = 0; i < iSet; i++) {
-        pthread_create(&setPool[i], ((void *)0), &setThread, ((void *)0));
+    for (int i = 0; i < iSet; i++) {
+        pthread_create(&setPool[i], NULL, &setThread, NULL);
     }
 
-    for (i = 0; i < iCheck; i++) {
-        pthread_create(&checkPool[i], ((void *)0), &checkThread, ((void *)0));
+    for (int i = 0; i < iCheck; i++) {
+        pthread_create(&checkPool[i], NULL, &checkThread, NULL);
     }
 
-    for (i = 0; i < iSet; i++) {
-        pthread_join(setPool[i], ((void *)0));
+    for (int i = 0; i < iSet; i++) {
+        pthread_join(setPool[i], NULL);
     }
 
-    for (i = 0; i < iCheck; i++) {
-        pthread_join(checkPool[i], ((void *)0));
+    for (int i = 0; i < iCheck; i++) {
+        pthread_join(checkPool[i], NULL);
     }
 
     return 0;
 }
-
+        
 void *setThread(void *param) {
     a = 1;
     b = -1;
 
-    return ((void *)0);
+    return NULL;
 }
 
 void *checkThread(void *param) {
@@ -63,5 +73,6 @@ void *checkThread(void *param) {
         assert(0);
     }
 
-    return ((void *)0);
+    return NULL;
 }
+

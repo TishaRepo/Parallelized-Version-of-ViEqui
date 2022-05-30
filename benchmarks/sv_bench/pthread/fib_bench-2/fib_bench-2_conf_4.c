@@ -13,7 +13,7 @@
 
 int i, j;
 
-#define NUM 6
+#define NUM 4
 
 void *
 t1(void* arg)
@@ -48,9 +48,9 @@ main(int argc, char **argv)
   pthread_create(&id1, NULL, t1, NULL);
   pthread_create(&id2, NULL, t2, NULL);
 
-  int condI = i > 377;
+  int condI = i >= 3;
 
-  int condJ = j > 377;
+  int condJ = j >= 3;
 
   if (condI || condJ) {
     assert(0);

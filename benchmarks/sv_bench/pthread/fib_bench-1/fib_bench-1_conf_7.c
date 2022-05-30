@@ -11,12 +11,12 @@
 
 #include <pthread.h>
 
-
 int i, j;
 
-#define NUM 11
+#define NUM 7
 
-void *t1(void* arg)
+void *
+t1(void* arg)
 {
   int k = 0;
 
@@ -26,7 +26,8 @@ void *t1(void* arg)
   pthread_exit(NULL);
 }
 
-void *t2(void* arg)
+void *
+t2(void* arg)
 {
   int k = 0;
 
@@ -36,19 +37,19 @@ void *t2(void* arg)
   pthread_exit(NULL);
 }
 
-int main(int argc, char **argv)
+int
+main(int argc, char **argv)
 {
-  pthread_t id1, id2;
-
   i = 1;
   j = 1;
+  pthread_t id1, id2;
 
   pthread_create(&id1, NULL, t1, NULL);
   pthread_create(&id2, NULL, t2, NULL);
 
-  int condI = i > 46368;
+  int condI = i > 144;
 
-  int condJ = j > 46368;
+  int condJ = j > 144;
 
   if (condI || condJ) {
     assert(0);

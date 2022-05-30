@@ -1,7 +1,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 
-#define LOOP 10
+#define LOOP 2
 
 struct item {
   struct item *next;

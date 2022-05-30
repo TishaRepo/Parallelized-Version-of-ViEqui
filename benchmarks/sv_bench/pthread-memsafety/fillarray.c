@@ -1,7 +1,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 
-#define SIZ 10
+#define SIZ 35
 
 int size;
 int ind;

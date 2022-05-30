@@ -7,12 +7,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <assert.h>
-
-#include <stdlib.h>
 #include <pthread.h>
-#include <string.h>
 
-#define SIGMA 16
+#define SIGMA 20
 
 
 int array[SIGMA];
@@ -21,8 +18,10 @@ int array_index;
 
 void *thread(void * arg)
 {
+	int ai = *((int*)(arg));
+	array_index = ai;
 	array[array_index] = 1;
-	return 0;
+	return NULL;
 }
 
 
@@ -37,8 +36,7 @@ int main()
 	}
 
 	for (tid=0; tid<SIGMA; tid++) {
-		array_index++;
-		pthread_create(&t[tid], 0, thread, 0);
+		pthread_create(&t[tid], 0, thread, (void*)&tid);
 	}
 
 	for (tid=0; tid<SIGMA; tid++) {
