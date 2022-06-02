@@ -27,6 +27,8 @@ TO = 1800 # 30 mins
 #--------------------------------------------------
 
 # initial setup -----------------------------------
+os.system('make')
+
 if bench_path[-1] != '/':
     bench_path += '/'
 bench_dir   = bench_path.split('/')[-2]
