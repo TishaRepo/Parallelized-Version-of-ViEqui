@@ -10,17 +10,21 @@ from output_colors import output_colors as oc
 bench_path = 'benchmarks/sv_bench/'
 executable_file = 'sv_bench_executable_file.ll'
 result_file = 'results/sv-benchmarks-result.csv'
+file_ext = '.c'
 
 # arguments ---------------------------------------
 parser = argparse.ArgumentParser()
 parser.add_argument("--dir-path", "-d", type=str, required=False, dest="bench_path",
 					help="Path to test directory.")
+parser.add_argument("--file-ext", "-e", type=str, required=False, dest="file_ext",
+					help="Extension of test files.")
 parser.add_argument("--test-configurations", "-c", required=False, action='store_true', dest="has_configurations",
 					help="Tests have configurations.")
 
 args = parser.parse_args()
 bench_path  = args.bench_path
 has_configs = args.has_configurations
+file_ext    = args.file_ext
 
 # define constants --------------------------------
 TO = 1800 # 30 mins
@@ -37,6 +41,9 @@ executable_file = executable_file[:-3] + '-' + bench_dir + '.ll'
 result_file = result_file[:-4] + '-' + bench_dir + '.csv'
 
 benchdirs = [bench_path]
+
+if file_ext[0] != '.':
+    file_ext = '.' + file_ext
 
 ignore_tests = ['sigma'] # not working
 
@@ -110,7 +117,7 @@ def generate_assumed_TO_configs(config, last_config, last_status_TO):
     return assumed_TO_configs
 
 def get_config(file):
-    config = ( file[:-2].split('_conf_')[-1] ).split('-') # file name format: bench_dir_conf_config
+    config = ( file[:-1*len(file_ext)].split('_conf_')[-1] ).split('-') # file name format: bench_dir_conf_config
     config = [int(x) for x in config]
     return config
 
@@ -129,7 +136,7 @@ def record_TOs(tests_timedout, config, last_status_TO, last_config, assumed_TO_c
 
 def print_file(file):
     if not has_configs:
-        return file[:-2]
+        return file[:-1*len(file_ext)]
 
     test_name = file.split('_conf_')[0]
     config = get_config(file)
@@ -174,7 +181,7 @@ def run_test(dir, file, ignore_command=[]):
     test_completed = [False] * len(command)
     test_timedout  = [False] * len(command)
 
-    print(oc.PURPLE, '[' + str(datetime.now()) + ']', oc.ENDC, 'Running Test ' + file[:-2])
+    print(oc.PURPLE, '[' + str(datetime.now()) + ']', oc.ENDC, 'Running Test ' + file[:-1*len(file_ext)])
 
     os.system('clang -c -emit-llvm -S -o ' + executable_file + ' ' + bench_path + file)
     csv_out = dir + ',' + print_file(file) + ','
@@ -221,8 +228,8 @@ def run_test(dir, file, ignore_command=[]):
             continue
         else:
             error_code = str(returncode)
-            print (oc.RED, file[:-2] + ' Failed to complete run (' + algo(i) + ')', oc.ENDC)
-            failed_tests.append((file[:-2], 'Failed to complete run'))
+            print (oc.RED, file[:-1*len(file_ext)] + ' Failed to complete run (' + algo(i) + ')', oc.ENDC)
+            failed_tests.append((file[:-1*len(file_ext)], 'Failed to complete run'))
             error = 'RUN FAIL(' + error_code + ')'
             csv_out = csv_out + make_csv_row(trace_count, test_time, error, i)
             continue
@@ -251,7 +258,7 @@ while len(benchdirs) > 0:
     bench_path = benchdirs.pop()
     if bench_path[-1] != '/':
         bench_path += '/'
-    bench_files = [ f for f in os.listdir(bench_path) if f.endswith('.c') ] # no .cc files in sv-benchmarks
+    bench_files = [ f for f in os.listdir(bench_path) if f.endswith(file_ext) ] # no .cc files in sv-benchmarks (except pathread-atomic)
     benchdirs  += [ f.path for f in os.scandir(bench_path) if f.is_dir() ]
     bench_dir   = bench_path.split('/')[-2]
 
@@ -263,7 +270,7 @@ while len(benchdirs) > 0:
     
     if has_configs:
         configs = sort_by_config(bench_files)
-        bench_files = [ bench_dir + '_conf_' + '-'.join(config) + '.c' for config in configs ]
+        bench_files = [ bench_dir + '_conf_' + '-'.join(config) + file_ext for config in configs ]
     for file in bench_files:
         assumed_TO_configs = []
         if has_configs:
