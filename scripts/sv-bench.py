@@ -285,3 +285,5 @@ while len(benchdirs) > 0:
 csvfile.close()
 os.system('rm ' + executable_file)
 print_set_summary()
+
+print(oc.RED, "TODO: compute no of events per trace.", oc.ENDC)
