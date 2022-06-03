@@ -5,8 +5,7 @@
 // #include "librace.h"
 #include <assert.h>
 
-#define LOOPt0 70
-#define LOOPt1 140
+#define LOOP 90
 
 atomic_int flag1;
 atomic_int flag2;;
@@ -17,7 +16,7 @@ atomic_int __fence_var;
 void* t0(void *)
 {
     int rflag2 = -1, rturn = -1, rx = -1;
-    for (int k = 0; k < LOOPt0; k++) {
+    for (int k = 0; k < LOOP; k++) {
         atomic_store_explicit( &flag1, 1, memory_order_release);
         atomic_store_explicit( &turn, 1, memory_order_release);
         rflag2 = atomic_load_explicit( &flag2, memory_order_acquire); //memory_order_acquire);
@@ -34,7 +33,7 @@ void* t0(void *)
 void* t1(void *)
 {
     int rflag1 = -1, rturn = -1, rx = -1;
-    for (int k = 0; k < LOOPt1; k++) {
+    for (int k = 0; k < LOOP; k++) {
         atomic_store_explicit( &flag2, 1, memory_order_release);
         atomic_store_explicit( &turn, 0, memory_order_release);
         rflag1 = atomic_load_explicit( &flag1, memory_order_acquire); //memory_order_acquire);

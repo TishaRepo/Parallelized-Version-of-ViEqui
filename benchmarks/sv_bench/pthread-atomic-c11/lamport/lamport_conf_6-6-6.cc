@@ -3,7 +3,7 @@
 #include <assert.h>
 // #include "model-assert.h"
 
-#define OFLOOP 2 // outer for loop
+#define OFLOOP 6 // outer for loop
 #define IFLOOP 6 // inner for loop
 #define WLOOP  6 // while loop
 

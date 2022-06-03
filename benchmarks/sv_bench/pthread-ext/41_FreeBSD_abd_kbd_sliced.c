@@ -1,8 +1,8 @@
 #include <assert.h>
 #include <pthread.h>
 
-#define Nthreads 100
-#define LOOP 100
+#define Nthreads 10
+#define LOOP 10
 
 /*
 to correctly model the cv_broadcast(COND) statement "b1_COND := 1;" must be manually changed to "b1_COND$ := 1;" in the abstract BP

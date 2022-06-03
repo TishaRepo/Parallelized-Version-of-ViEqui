@@ -3,7 +3,7 @@
 #include <assert.h>
 // #include "model-assert.h"
 
-#define LOOP 8
+#define LOOP 5
 
 
 atomic_int flag1 ,flag2 ;
