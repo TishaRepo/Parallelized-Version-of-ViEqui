@@ -9,10 +9,7 @@
 #include <stdatomic.h>
 #include <pthread.h>
 
-#ifndef N
-#  warning "N was not defined"
-#  define N 5
-#endif
+#define N 30
 
 atomic_int vars[1];
 

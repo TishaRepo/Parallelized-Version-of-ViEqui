@@ -13,10 +13,7 @@
 #include <stdatomic.h>
 #include <pthread.h>
 
-#ifndef N
-#  warning "N was not defined"
-#  define N 5
-#endif
+#define N 500
 
 // shared variables
 atomic_int x;
