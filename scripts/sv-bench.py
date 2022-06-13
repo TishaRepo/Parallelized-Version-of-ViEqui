@@ -22,9 +22,16 @@ parser.add_argument("--test-configurations", "-c", required=False, action='store
 					help="Tests have configurations.")
 
 args = parser.parse_args()
-bench_path  = args.bench_path
-has_configs = args.has_configurations
-file_ext    = args.file_ext
+#bench_path  = args.bench_path
+#has_configs = args.has_configurations
+#file_ext    = args.file_ext
+if args.bench_path != None:
+        bench_path  = args.bench_path
+if args.has_configurations != None:
+        has_configs = args.has_configurations
+if args.file_ext != None:
+                file_ext    = args.file_ext
+
 
 # define constants --------------------------------
 TO = 1800 # 30 mins
