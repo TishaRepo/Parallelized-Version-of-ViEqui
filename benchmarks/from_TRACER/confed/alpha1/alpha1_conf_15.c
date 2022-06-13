@@ -27,10 +27,10 @@ void *reader(void *arg){
 	return NULL;
 }
 
-int arg[N];
 int main(int argc, char **argv){
   	pthread_t ws[N];
  	pthread_t read;
+	int arg[N];
    
   	atomic_init(&vars[0], 1);
   
