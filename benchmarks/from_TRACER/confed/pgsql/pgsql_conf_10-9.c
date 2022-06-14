@@ -51,10 +51,10 @@ void *t(void *arg)
   
 }
 
-int arg[N];
 int main(int argc, char **argv)
 {
   	pthread_t ts[N];
+	int arg[N];
   	
 	for (int i=1; i<N; i++) {
 	  	atomic_init(&latch[i], 0);
@@ -62,7 +62,9 @@ int main(int argc, char **argv)
 	}
 	atomic_init(&latch[0], 1);
 	atomic_init(&flag[0], 1);
-	  
+	
+	atomic_init(&x, 0);
+
 	for (int i=0; i<N; i++) {
 	  	arg[i] = i;
 	  	pthread_create(&ts[i], NULL, t, &arg[i]);

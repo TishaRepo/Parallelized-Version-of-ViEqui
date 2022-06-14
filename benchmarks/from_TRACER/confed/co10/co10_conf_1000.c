@@ -22,10 +22,10 @@ void *writer(void *arg){
 }
 
 
-int arg[N];
 int main(int argc, char *argv[]){
   	pthread_t ws[N];
-
+	int arg[N];
+	
  	atomic_init(&vars[0], 0);
   
   	for (int i=0; i<N; i++) {

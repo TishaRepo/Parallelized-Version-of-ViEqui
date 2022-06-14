@@ -29,11 +29,11 @@ void *reader(void *arg){
 	return NULL;
 }
 
-int arg[N];
 int main(int argc, char **argv){
  	pthread_t ws[N];
   	pthread_t r;
-  
+	int arg[N];
+	
   	atomic_init(&vars[0], 0);
   
   	for (int i=0; i<N; i++) {
