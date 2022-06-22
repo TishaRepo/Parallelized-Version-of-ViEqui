@@ -69,6 +69,7 @@ public:
     virtual NODISCARD bool atomic_store(const SymData &ml) override;
     virtual NODISCARD bool load(const SymAddrSize &ml) override;
 
+            void finish_up_state(int replay_state_prefix);
             int  find_replay_state_prefix();
     virtual bool reset() override;
     virtual void cancel_replay() override;

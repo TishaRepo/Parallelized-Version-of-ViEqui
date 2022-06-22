@@ -572,11 +572,18 @@ bool ViewEqTraceBuilder::record_symbolic(SymEv event)
   return false;
 }
 
+void ViewEqTraceBuilder::finish_up_state(int replay_state_prefix) {
+  add_EW_leads(replay_state_prefix);
+  int replay_execution_prefix = states[replay_state_prefix].sequence_prefix;
+  IID<IPid> event = execution_sequence[replay_execution_prefix];
+  covered_read_values.erase(event);
+}
+
 int ViewEqTraceBuilder::find_replay_state_prefix() {
   int replay_state_prefix = states.size() - 1;
   for (auto it = states.end(); it != states.begin();) {
     it--;
-    add_EW_leads(replay_state_prefix);
+    finish_up_state(replay_state_prefix);
     
     if (it->has_unexplored_leads()) { // found replay state      
       break;
