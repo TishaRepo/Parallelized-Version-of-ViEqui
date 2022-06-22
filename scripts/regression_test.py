@@ -15,6 +15,7 @@
 
 import os
 import subprocess
+from output_colors import output_colors as oc
 
 test_results = [(2,'N'), # Test1
                 (3,'N'), # Test2
@@ -43,8 +44,12 @@ test_results = [(2,'N'), # Test1
                 (6,'N'), # Test25
                 (8,'N'), # Test26
                 (4,'Y'), # Test27
-                (4,'N')] # Test28
+                (4,'N'), # Test28
+                (2,'N'), # Test29
+                (1,'N'), # Test30
+                (8,'N')] # Test31
 
+ignore_tests = [29]
 failed_tests = []
 
 current_path = os.getcwd() + '/'
@@ -59,7 +64,11 @@ tests_completed = 0
 for test_index in range(1, len(test_results)+1):
     test_name = [test_file for test_file in test_files if ('Test' + str(test_index) + '_') in test_file][0]
 
-    print ('Running Test' + str(test_index))
+    if test_index in ignore_tests:
+        print (oc.YELLOW, 'Ignoring Test', test_index, oc.ENDC)
+        continue
+
+    print (oc.BLUE, 'Running Test', test_index, oc.ENDC)
 
     (test_traces, test_isviolation) = test_results[test_index-1]
 
@@ -93,7 +102,7 @@ for test_index in range(1, len(test_results)+1):
             optimality_fail = True
 
     if (run_fail):
-        print (str(test_index) + ' Failed to complete run')
+        print (oc.RED, test_index, 'Failed to complete run', oc.ENDC)
         failed_tests.append((test_name, 'Failed to complete run'))
 
     fail_msg = ''
@@ -106,15 +115,19 @@ for test_index in range(1, len(test_results)+1):
 
     if count_fail or violation_status_fail or optimality_fail:
         failed_tests.append( (test_name, fail_msg) )
+    else:
+        print(oc.GREEN, 'OK', oc.ENDC)
 
-    tests_completed = tests_completed + 1
+    tests_completed += 1
 
-assert(tests_completed == len(test_results))
+assert(tests_completed == len(test_results) - len(ignore_tests))
 
+print(oc.YELLOW)
 print('----------------------------------------------')
 print ('No. of tests run = ' + str(tests_completed))
 print ('No. of tests failed = ' + str(len(failed_tests)))
 print('----------------------------------------------')
+print(oc.ENDC)
 for (idx, msg) in failed_tests:
     print ('Test ' + idx + ': FAIL')
     print (msg)
