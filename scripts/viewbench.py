@@ -1,7 +1,5 @@
-from itertools import count
-import os
+import os, sys
 import subprocess
-import argparse
 from telnetlib import NOP
 
 from time import time
@@ -34,8 +32,8 @@ csvfile = open(result_file, 'w')
 
 csv_out = ',,ODPOR,,,,Observer-ODPOR,,,,ViewEq\n'
 csv_out = csv_out + 'directory,benchmark,'
-csv_out = csv_out + '#traces,time,error_code,TO+F+C'
-csv_out = csv_out + '#traces,time,error_code,TO+F+C'
+csv_out = csv_out + '#traces,time,error_code,TO+F+C,'
+csv_out = csv_out + '#traces,time,error_code,TO+F+C,'
 csv_out = csv_out + '#traces,time,error_code,TO+F+C\n'
 csvfile.write(csv_out)
 
@@ -161,11 +159,18 @@ def run_test(dir, file, ignore_command=[]):
         trace_count = ''
         error = ''
 
+        if i in ignore_command:
+            print(oc.RED, 'Assumed Timeout (' + algo(i) + ')', oc.ENDC)
+            test_timedout[i] = True
+            csv_out = csv_out + make_csv_row('TIMEOUT (assumed)', '', '', '', i)
+            continue
+
         for j in range(TR):
-            if i in ignore_command:
-                print(oc.RED, 'Assumed Timeout (' + algo(i) + ')', oc.ENDC)
-                test_timedout[i] = True
-                csv_out = csv_out + make_csv_row('TIMEOUT (assumed)', '', '', '', i)
+            if count_timeout[i] > 1: # if 2 runs timedout, assume rest will timeout
+                count_timeout[i] += 1
+                continue
+            if  count_failed[i] > 1: # if 2 runs failed, assume rest will fail
+                count_failed[i] += 1
                 continue
 
             start_time = time()
@@ -192,7 +197,7 @@ def run_test(dir, file, ignore_command=[]):
         
             if returncode == 0: # OK
                 total_time += test_time
-            if returncode == 42: # assert_fail
+            elif returncode == 42: # assert_fail
                 round_error = 'assert fail'
                 total_time += test_time
                 if j == 0:
@@ -206,6 +211,7 @@ def run_test(dir, file, ignore_command=[]):
                 continue
             else:
                 error_code = str(returncode)
+                print('error code:', error_code)
                 print (oc.RED, file.split('.')[0] + ' Failed to complete run (' + algo(i) + ', round' + str(j) + ')', oc.ENDC)
                 error += 'RUN FAIL(' + error_code + ')'
                 count_failed[i] += 1
@@ -261,7 +267,8 @@ while len(benchdirs) > 0:
     bench_files = [ f for f in os.listdir(bench_path) if f.endswith('.c') or f.endswith('.cc') ]
     benchdirs  += [ f.path for f in os.scandir(bench_path) if f.is_dir() ]
     bench_dir   = bench_path.split('/')[-2]
-    file_ext = '.' + bench_files[0].split('.')[1]
+    if len(bench_files) > 0:
+        file_ext = '.' + bench_files[0].split('.')[1] # dir has c/cc files
 
     print(oc.BLUE, oc.BOLD, 'Entering', bench_path, oc.ENDC)
     
