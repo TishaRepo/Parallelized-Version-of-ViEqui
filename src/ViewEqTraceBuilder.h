@@ -489,7 +489,7 @@ protected:
     /* [snj]: list of read_value maps representing execution sequences explored as
        pair(hash_value, read -> value map)
     */
-    std::vector<std::pair<long long, std::unordered_map<IID<IPid>, int>>> explored_sequences_summary;
+    std::vector<std::unordered_map<IID<IPid>, int>> explored_sequences_summary;
 
     /* [snj]: list of redundant explorations
         earliest redundant trace -> later redundant traces

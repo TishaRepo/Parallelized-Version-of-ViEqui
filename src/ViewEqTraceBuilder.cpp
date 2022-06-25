@@ -391,6 +391,7 @@ void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula& forbidd
         || ui_values.find(get_event((*it)).value) != ui_values.end())
       continue; // skip current value, it is covered in fwd analysis
 
+    covered_read_values[event.get_iid()].push_back(get_event((*it)).value);
     int es_idx = execution_sequence.index_of((*it)); // index in execution_sequnce of ei
     
     Sequence start = execution_sequence.backseq((*it), event.iid);
@@ -926,30 +927,23 @@ void ViewEqTraceBuilder::debug_print() const {
 } 
 
 void ViewEqTraceBuilder::record_redundant() {
-  std::string symbolic_execution = ""; // string of alternating tid (of read event) . corresponding read value
   std::unordered_map<IID<IPid>, int> rv_map;
 
   for (int i = 0; i < execution_sequence.size(); i++) {
     if (prefix_state[i] >= 0) { // is a global event
       Event event = get_event(execution_sequence[i]);
       if (event.is_read()) {
-        symbolic_execution += std::to_string(execution_sequence[i].get_pid());
-        symbolic_execution += std::to_string(event.value);
-
         rv_map[event.iid] = event.value;
       }
     }
   }
 
-  long long execution_hash =  StringHash(symbolic_execution).hash();
-  explored_sequences_summary.push_back(std::make_pair(execution_hash, rv_map));
+  explored_sequences_summary.push_back(rv_map);
 
   for (int i = 0; i < explored_sequences_summary.size()-1; i++) {
-    if (explored_sequences_summary[i].first == execution_hash) {
-      if (explored_sequences_summary[i].second == rv_map) {
-        redundant[(i+1)].push_back(explored_sequences_summary.size());
-        break;
-      }
+    if (explored_sequences_summary[i] == rv_map) {
+      redundant[(i+1)].push_back(explored_sequences_summary.size());
+      break;
     }
   }
 }
