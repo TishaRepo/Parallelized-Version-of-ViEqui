@@ -333,6 +333,10 @@ bool SOPFormula::operator==(SOPFormula &formula) {
     return true;
 }
 
+bool SOPFormula::operator!=(SOPFormula &formula) {
+    return !(*this == formula);
+}
+
 string SOPFormula::to_string() {
     if (result == RESULT::FALSE)
         return "FALSE";

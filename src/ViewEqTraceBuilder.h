@@ -69,6 +69,7 @@ public:
     virtual NODISCARD bool atomic_store(const SymData &ml) override;
     virtual NODISCARD bool load(const SymAddrSize &ml) override;
 
+            void finish_up_lead(int replay_state_prefix);
             void finish_up_state(int replay_state_prefix);
             int  find_replay_state_prefix();
     virtual bool reset() override;
@@ -115,6 +116,9 @@ public:
     bool is_independent_EW_lead(Sequence& start, IID<IPid> write_event, IID<IPid> read_event);
     // perform union of state leads with pending EW_leads
     void add_EW_leads(int state);
+    // for leads of ei at 'state' for fwd analysed 'read' add 'value' to forbidden
+    // since, 'value' was not known to be covered at time of forward-analysis
+    void forbid_value_for_ei_leads(int state, IID<IPid> read, int value);
 
     // forward and backward analysis for builfing view-starts
     void forward_analysis(Event event, SOPFormula& forbidden);
@@ -464,6 +468,10 @@ protected:
         int lead_head_execution_prefix = -1; // idx in execution sequence where alpha lead starts (-1 if not a part of a lead)
         bool executing_alpha_lead = false;   // state is a part of alpha
 
+        bool performed_fwd_analysis = false; // forward-analysis was performed at this state
+        IID<IPid> fwd_read;                  // forward-analysis was performed for this read
+        std::unordered_map<int, std::vector<Lead>> ei_leads; // state -> leads of ei's for this fwd_read
+
         // shared memory values at this state of execution ( object -> value map )
         std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn> mem; 
 
@@ -544,6 +552,7 @@ protected:
        its execution suffixes
        read -> set of values   
     */
+   // [snj]: TODO remove this and add the covered value to the forbidden of all at state of the read 
     std::unordered_map<IID<IPid>, std::vector<int>>  covered_read_values;
 
     /* [snj]: a set of leads that generated from different extensions

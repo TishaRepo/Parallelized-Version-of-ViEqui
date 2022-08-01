@@ -159,6 +159,9 @@ void ViewEqTraceBuilder::compute_new_leads() {
     if (enabled_read_of_RW.first == true) {
       next_event = enabled_read_of_RW.second; // read event of RW pair (event removed from enabled)
       analyse_unexplored_influenecers(next_event);
+
+      states[current_state].performed_fwd_analysis = true;
+      states[current_state].fwd_read = next_event;
     }
     else { //no read of RW-pair available in enabled
       next_event = Enabled.front(); // pick any event from enabled
@@ -369,10 +372,28 @@ void ViewEqTraceBuilder::add_EW_leads(int state) {
     for (auto it2 = it->second.begin(); it2 != it->second.end(); it2++) {
       // it2 = (value, list of leads)
       consistent_union(state, it2->second);
+      forbid_value_for_ei_leads(state, it->first, it2->first);
     }
   }
 
   EW_leads.erase(state);
+}
+
+void ViewEqTraceBuilder::forbid_value_for_ei_leads(int state, IID<IPid> read, int value) {
+  if (!states[state].performed_fwd_analysis) return;
+  if (states[state].fwd_read != read) return;
+  // forward-analysis was perfromed for 'read' at 'state'
+  for (auto it = states[state].ei_leads.begin(); it != states[state].ei_leads.end(); it++) {
+    std::vector<Lead> updated_leads;
+    
+    for (auto l = it->second.begin(); l != it->second.end(); l++) {
+      SOPFormula new_forbidden = l->forbidden;
+      new_forbidden || std::make_pair(read, value);
+      updated_leads.push_back(Lead((*l), new_forbidden));
+    }
+    
+    states[state].ei_leads[it->first] = updated_leads;
+  }
 }
 
 void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula& forbidden, std::unordered_map<int, std::vector<Lead>>& L) {
@@ -439,8 +460,9 @@ void ViewEqTraceBuilder::backward_analysis_write(Event event, SOPFormula& forbid
     if (is_independent_EW_lead(start, event.iid, (*it))) {
       // the events in start are equivalent in all extensions from event_index state
       L[event_index].push_back(Lead(constraint, start, inF, states[event_index].mem));
-  
       EW_leads[event_index][(*it)].erase(event.value);
+
+      forbid_value_for_ei_leads(event_index, (*it), event.value);
 
       // add to the list of EW reads values covered
       covered_read_values[(*it)].push_back(event.value);
@@ -458,13 +480,13 @@ void ViewEqTraceBuilder::backward_analysis(Event event, SOPFormula& forbidden) {
 
   if (event.is_read()) {
     backward_analysis_read(event, forbidden, L);
+    states[current_state].ei_leads = L;
   }
   else if (event.is_write()) {
     backward_analysis_write(event, forbidden, L);
-  }
-
-  for (auto it = L.begin(); it != L.end(); it++) {
-    consistent_union(it->first, it->second); // consistent join at respective execution prefix
+    for (auto it = L.begin(); it != L.end(); it++) {
+     consistent_union(it->first, it->second); // consistent join at respective execution prefix
+    }
   }
 }
 
@@ -573,23 +595,31 @@ bool ViewEqTraceBuilder::record_symbolic(SymEv event)
   return false;
 }
 
-void ViewEqTraceBuilder::finish_up_state(int replay_state_prefix) {
+void ViewEqTraceBuilder::finish_up_lead(int replay_state_prefix) {
   add_EW_leads(replay_state_prefix);
   int replay_execution_prefix = states[replay_state_prefix].sequence_prefix;
   IID<IPid> event = execution_sequence[replay_execution_prefix];
   covered_read_values.erase(event);
 }
 
+void ViewEqTraceBuilder::finish_up_state(int replay_state_prefix) {
+  for (auto it = states[replay_state_prefix].ei_leads.begin(); 
+      it != states[replay_state_prefix].ei_leads.end(); it++) {
+    consistent_union(it->first, it->second);
+  }
+}
+
 int ViewEqTraceBuilder::find_replay_state_prefix() {
   int replay_state_prefix = states.size() - 1;
   for (auto it = states.end(); it != states.begin();) {
     it--;
-    finish_up_state(replay_state_prefix);
+    finish_up_lead(replay_state_prefix);
     
     if (it->has_unexplored_leads()) { // found replay state      
       break;
     }
 
+    finish_up_state(replay_state_prefix);
     replay_state_prefix --;
   }
 
@@ -2087,6 +2117,11 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
     bool combined_with_existing = false;
     for (auto sl = states[state].leads.begin(); sl != states[state].leads.end(); sl++) {
       if ((*l) == (*sl)) {
+        // out << "same " << sl->to_string() << " and " << l->to_string() << "\n";
+        rem.insert(sl - states[state].leads.begin());
+        SOPFormula f = l->forbidden;
+        f || sl->forbidden;
+        add.push_back(Lead((*sl), f));
         combined_with_existing = true;
         break;
       }

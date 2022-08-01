@@ -90,6 +90,7 @@ public:
     void operator&&(std::pair<IID<IPid>, int> term);
     void operator=(SOPFormula f) { terms = f.terms; result = f.result; }
     bool operator==(SOPFormula &f);
+    bool operator!=(SOPFormula &f);
 
     void clear() { terms.clear(); result = RESULT::FALSE; }
 
