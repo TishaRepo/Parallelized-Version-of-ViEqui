@@ -12,8 +12,8 @@
 #include <stdlib.h>
 #include <pthread.h>
 
-#define iSet 5000
-#define iCheck 5000
+#define iSet 2500
+#define iCheck 2500
 
 static int a;
 static int b;

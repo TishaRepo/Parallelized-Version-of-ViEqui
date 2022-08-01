@@ -14,8 +14,8 @@
 #include <stdatomic.h>
 #include <pthread.h>
 
-#define LOOP 8
-#define N 8
+#define LOOP 7
+#define N 6
 
 // shared variables
 atomic_int latch[N];
