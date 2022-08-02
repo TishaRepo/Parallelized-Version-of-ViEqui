@@ -150,6 +150,13 @@ public:
 
     void analyse_unexplored_influenecers(IID<IPid> read_event);
 
+    // enable load corresponding to the rmw
+    void enable_rmw(const SymAddrSize &ml);
+    // add rmw to execution, do necessary analysis
+    void complete_rmw(const SymData &ml);
+    // complete local rmw
+    virtual NODISCARD bool atomic_rmw(const SymData &ml);
+
     //[nau]: added virtual function definitions for the sake of compiling
     //[snj]: added some more to the list
     virtual NODISCARD bool compare_exchange(const SymData &sd, const SymData::block_type expected, bool success) override;
@@ -189,6 +196,7 @@ protected:
         // execution sequence, all value are initialized to 0 by default
         int value;
         std::pair<unsigned, unsigned> object; // <base, offset> - offset for arrays
+        bool is_rmw = false; // is a load or store of an rmw event
         
         Event() {}
         Event(SymEv sym) {symEvent.push_back(sym); md = 0;}

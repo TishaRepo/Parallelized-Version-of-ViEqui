@@ -337,6 +337,15 @@ namespace llvm
     virtual void callFunction(Function *F, const std::vector<GenericValue> &ArgVals);
     virtual void run(); // Execute instructions until nothing left to do
 
+    // Opcode Implementations - auxiliary functions
+    void completeLoadInst(LoadInst &I);
+    void completeStoreInst(StoreInst &I);
+    void completeAtomicRMWInst(AtomicRMWInst &I);
+    bool isGlobal(Instruction &I);
+    bool isGlobalLoad(Instruction &I);
+    bool isGlobalStore(Instruction &I);
+    bool isGlobalRMW(Instruction &I);
+
     // Opcode Implementations
     virtual void visitReturnInst(ReturnInst &I);
     virtual void visitBranchInst(BranchInst &I);
@@ -348,11 +357,7 @@ namespace llvm
     virtual void visitFCmpInst(FCmpInst &I);
     virtual void visitAllocaInst(AllocaInst &I);
     virtual void visitLoadInst(LoadInst &I);
-            void completeLoadInst(LoadInst &I);
-            bool isGlobalLoad(Instruction &I);
     virtual void visitStoreInst(StoreInst &I);
-            void completeStoreInst(StoreInst &I);
-            bool isGlobalStore(Instruction &I);
     virtual void visitGetElementPtrInst(GetElementPtrInst &I);
     virtual void visitPHINode(PHINode &PN)
     {

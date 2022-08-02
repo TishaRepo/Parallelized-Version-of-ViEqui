@@ -1201,6 +1201,150 @@ void Interpreter::returnValueToCaller(Type *RetTy,
   }
 }
 
+// [snj]: complete load for ViewEqTraceBuilder
+void Interpreter::completeLoadInst(LoadInst &I)
+{
+  ExecutionContext &SF = ECStack()->back();
+  GenericValue SRC = getOperandValue(I.getPointerOperand(), SF);
+  GenericValue *Ptr = (GenericValue *)GVTOP(SRC);
+  GenericValue Result;
+
+  LoadValueFromMemory(Result, Ptr, I.getType());
+  // [snj]: next 2 lines to check the value loaded from memory
+  // APInt a = Result.IntVal;
+  // llvm::outs() << "Loaded Value:"; a.print(llvm::outs(), true); llvm::outs() << "\n";
+  SetValue(&I, Result, SF);
+}
+
+// [snj]: complete store for ViewEqTraceBuilder
+void Interpreter::completeStoreInst(StoreInst &I)
+{
+  ExecutionContext &SF = ECStack()->back();
+  GenericValue Val = getOperandValue(I.getOperand(0), SF);
+  GenericValue *Ptr = (GenericValue *)GVTOP(getOperandValue(I.getPointerOperand(), SF));
+  
+  StoreValueToMemory(Val, Ptr, I.getOperand(0)->getType());
+}
+
+void Interpreter::completeAtomicRMWInst(AtomicRMWInst &I)
+{
+  ExecutionContext &SF = ECStack()->back();
+  GenericValue *Ptr = (GenericValue *)GVTOP(getOperandValue(I.getPointerOperand(), SF));
+  GenericValue Val = getOperandValue(I.getValOperand(), SF);
+  GenericValue OldVal, NewVal;
+
+  assert(I.getType()->isIntegerTy());
+  assert(I.getOrdering() != llvm::AtomicOrdering::NotAtomic);
+
+  Option<SymAddrSize> Ptr_sas = GetSymAddrSize(Ptr, I.getType());
+  if (!Ptr_sas)
+    return;
+
+  /* Load old value at *Ptr */
+  if (DryRun && DryRunMem.size())
+  {
+    DryRunLoadValueFromMemory(OldVal, Ptr, *Ptr_sas, I.getType());
+  }
+  else
+  {
+    LoadValueFromMemory(OldVal, Ptr, I.getType());
+  }
+
+  SetValue(&I, OldVal, SF);
+
+  /* Compute NewVal */
+  switch (I.getOperation())
+  {
+  case llvm::AtomicRMWInst::Xchg:
+    NewVal = Val;
+    break;
+  case llvm::AtomicRMWInst::Add:
+    NewVal.IntVal = OldVal.IntVal + Val.IntVal;
+    break;
+  case llvm::AtomicRMWInst::Sub:
+    NewVal.IntVal = OldVal.IntVal - Val.IntVal;
+    break;
+  case llvm::AtomicRMWInst::And:
+    NewVal.IntVal = OldVal.IntVal & Val.IntVal;
+    break;
+  case llvm::AtomicRMWInst::Nand:
+    NewVal.IntVal = ~(OldVal.IntVal & Val.IntVal);
+    break;
+  case llvm::AtomicRMWInst::Or:
+    NewVal.IntVal = OldVal.IntVal | Val.IntVal;
+    break;
+  case llvm::AtomicRMWInst::Xor:
+    NewVal.IntVal = OldVal.IntVal ^ Val.IntVal;
+    break;
+  case llvm::AtomicRMWInst::Max:
+    NewVal.IntVal = APIntOps::smax(OldVal.IntVal, Val.IntVal);
+    break;
+  case llvm::AtomicRMWInst::Min:
+    NewVal.IntVal = APIntOps::smin(OldVal.IntVal, Val.IntVal);
+    break;
+  case llvm::AtomicRMWInst::UMax:
+    NewVal.IntVal = APIntOps::umax(OldVal.IntVal, Val.IntVal);
+    break;
+  case llvm::AtomicRMWInst::UMin:
+    NewVal.IntVal = APIntOps::umin(OldVal.IntVal, Val.IntVal);
+    break;
+  default:
+    throw std::logic_error("Unsupported operation in RMW instruction.");
+  }
+
+  SymData sd = GetSymData(*Ptr_sas, I.getType(), NewVal);
+  if (!TB.atomic_rmw(sd))
+  {
+    abort();
+    return;
+  }
+
+  /* Store NewVal */
+  if (DryRun)
+  {
+    DryRunMem.emplace_back(std::move(sd));
+    return;
+  }
+  StoreValueToMemory(NewVal, Ptr, I.getType());
+}
+
+// [snj]: check if an instruction accesses global variable
+bool Interpreter ::isGlobal(Instruction &I) {
+  for (const Use& Op : I.operands()){
+    if (const GlobalValue* G = dyn_cast<GlobalValue>(Op)) {
+      return true;
+    }
+    //check inside gepo for global arrays
+    else if (GEPOperator* gepo = dyn_cast<GEPOperator>(&Op)){
+      if (GlobalVariable* gv = dyn_cast<GlobalVariable>(gepo->getPointerOperand()))
+        return true;
+    
+      for (auto it = gepo->idx_begin(), et = gepo->idx_end(); it != et; ++it){
+        if (GlobalValue* gv = dyn_cast<GlobalValue>(*it)){
+            return true;
+        }
+      }
+    }
+  }
+
+  return false;      
+}
+
+// [snj]: check if a load instruction accesses global variable
+bool Interpreter ::isGlobalLoad(Instruction &I) {
+  return (isa<LoadInst>(I) && isGlobal(I));
+}
+
+// [snj]: check if a store instruction accesses global variable
+bool Interpreter ::isGlobalStore(Instruction &I) {
+  return (isa<StoreInst>(I) && isGlobal(I));
+}
+
+// [snj]: check if a store instruction accesses global variable
+bool Interpreter ::isGlobalRMW(Instruction &I) {
+  return (isa<AtomicRMWInst>(I) && isGlobal(I));
+}
+
 void Interpreter::visitReturnInst(ReturnInst &I)
 {
   ExecutionContext &SF = ECStack()->back();
@@ -1516,80 +1660,6 @@ void Interpreter::visitStoreInst(StoreInst &I)
   StoreValueToMemory(Val, Ptr, I.getOperand(0)->getType());
 }
 
-// [snj]: complete load for ViewEqTraceBuilder
-void Interpreter::completeLoadInst(LoadInst &I)
-{
-  ExecutionContext &SF = ECStack()->back();
-  GenericValue SRC = getOperandValue(I.getPointerOperand(), SF);
-  GenericValue *Ptr = (GenericValue *)GVTOP(SRC);
-  GenericValue Result;
-
-  LoadValueFromMemory(Result, Ptr, I.getType());
-  // [snj]: next 2 lines to check the value loaded from memory
-  // APInt a = Result.IntVal;
-  // llvm::outs() << "Loaded Value:"; a.print(llvm::outs(), true); llvm::outs() << "\n";
-  SetValue(&I, Result, SF);
-}
-
-// [snj]: complete store for ViewEqTraceBuilder
-void Interpreter::completeStoreInst(StoreInst &I)
-{
-  ExecutionContext &SF = ECStack()->back();
-  GenericValue Val = getOperandValue(I.getOperand(0), SF);
-  GenericValue *Ptr = (GenericValue *)GVTOP(getOperandValue(I.getPointerOperand(), SF));
-  
-  StoreValueToMemory(Val, Ptr, I.getOperand(0)->getType());
-}
-
-// [snj]: check if a load instruction accesses global variable
-bool Interpreter ::isGlobalLoad(Instruction &I) {
-  if (isa<LoadInst>(I)) {
-    for (const Use& Op : I.operands()){
-      if (const GlobalValue* G = dyn_cast<GlobalValue>(Op)) {
-        return true;
-      }
-      //check inside gepo for global arrays
-      else if (GEPOperator* gepo = dyn_cast<GEPOperator>(&Op)){
-        if (GlobalVariable* gv = dyn_cast<GlobalVariable>(gepo->getPointerOperand()))
-          return true;
-      
-        for (auto it = gepo->idx_begin(), et = gepo->idx_end(); it != et; ++it){
-          if (GlobalValue* gv = dyn_cast<GlobalValue>(*it)){
-              return true;
-          }
-        }
-      }
-    }
-    // if (GlobalVariable* GV = dyn_cast<GlobalVariable>(I.getOperand(0))) {
-    //   return true;
-    // }   
-  }
-  return false;      
-}
-
-// [snj]: check if a store instruction accesses global variable
-bool Interpreter ::isGlobalStore(Instruction &I) {
-  if (isa<StoreInst>(I)) {
-    for (const Use& Op : I.operands()){
-      if (const GlobalValue* G = dyn_cast<GlobalValue>(Op)) {
-        return true;
-      }
-      //check inside gepo for global arrays
-      else if (GEPOperator* gepo = dyn_cast<GEPOperator>(&Op)){
-        if (GlobalVariable* gv = dyn_cast<GlobalVariable>(gepo->getPointerOperand()))
-          return true;
-      
-        for (auto it = gepo->idx_begin(), et = gepo->idx_end(); it != et; ++it){
-          if (GlobalValue* gv = dyn_cast<GlobalValue>(*it)){
-              return true;
-          }
-        }
-      }
-    }   
-  }
-  return false;      
-}
-
 void Interpreter::visitAtomicCmpXchgInst(AtomicCmpXchgInst &I)
 {
   ExecutionContext &SF = ECStack()->back();
@@ -1671,6 +1741,13 @@ void Interpreter::visitAtomicRMWInst(AtomicRMWInst &I)
   Option<SymAddrSize> Ptr_sas = GetSymAddrSize(Ptr, I.getType());
   if (!Ptr_sas)
     return;
+
+  if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ && isGlobalRMW(I)) {
+    SymData sd = GetSymData(*Ptr_sas, I.getType(), Val);
+    if (!TB.atomic_rmw(sd))
+      abort();
+    return;
+  }
 
   /* Load old value at *Ptr */
   if (DryRun && DryRunMem.size())
@@ -4269,6 +4346,7 @@ void Interpreter::run()
     if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ) {
       if (isGlobalLoad(I)) completeLoadInst(static_cast<llvm::LoadInst&>(I));
       else if (isGlobalStore(I)) completeStoreInst(static_cast<llvm::StoreInst&>(I));
+      else if (isGlobalRMW(I)) completeAtomicRMWInst(static_cast<llvm::AtomicRMWInst&>(I));
       else visit(I);
 
       // llvm::outs() << "[" << e++ << "]Executing: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
@@ -4326,7 +4404,7 @@ void Interpreter::run()
       Instruction &I = *SF.CurInst;
 
       // llvm::outs() << "[" << p++ << "]Peeking: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
-      if (isGlobalLoad(I) || isGlobalStore(I)) {
+      if (isGlobalLoad(I) || isGlobalStore(I) || isGlobalRMW(I)) {
         visit(I); // visitLoadInst, visitStoreInst modified to peek and enable event but not execute
       }
     }

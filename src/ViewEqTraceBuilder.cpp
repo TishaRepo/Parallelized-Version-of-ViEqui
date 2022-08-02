@@ -994,6 +994,80 @@ void ViewEqTraceBuilder::report_redundant() {
   }
 }
 
+void ViewEqTraceBuilder::enable_rmw(const SymAddrSize &ml) {
+  bool ret = load(ml); 
+  // update load's rmw status
+  threads[current_thread].events[threads[current_thread].events.size()-1].is_rmw = true;
+  current_event.is_rmw = true; // same as last event of current thread ie the load event
+}
+
+void ViewEqTraceBuilder::complete_rmw(const SymData &ml) {
+  Event event(SymEv::Store(ml));
+  event.make_write();
+  current_event = event;
+
+  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+  current_event.is_rmw = true;
+  threads[current_thread].push_back(current_event);
+
+  if(current_thread == 0){
+    Visible vis(current_event.iid, current_event.value);
+    visible[current_event.object] = vis;
+  }
+  else
+    visible[current_event.object].add_enabled_write(current_event.iid, current_event.value);
+
+  last_write[current_event.object] = current_event.iid;
+  mem[current_event.object] = current_event.value;
+
+  // record current event as next in execution sequence
+  execution_sequence.push_back(current_event.iid);
+  prefix_state.push_back(current_state);
+  prefix_idx++;
+}
+
+bool ViewEqTraceBuilder::atomic_rmw(const SymData &ml) {
+  Event read_event(SymEv::Load(ml.get_ref()));
+  read_event.make_read();
+  read_event.value = mem[read_event.object];
+  
+  if (read_event.is_global()) {
+    if (threads[current_thread].events.size() > 0) {
+      Event last_thread_event = threads[current_thread].events[threads[current_thread].events.size()-1];
+      if (read_event.sym_event() == last_thread_event.sym_event()) {
+        complete_rmw(ml); // load of rmw peeked earlier, now complete store
+        return true;
+      }
+    }
+    enable_rmw(ml.get_ref()); // peeking new rmw event (peeking load)
+  } 
+  else {
+    /* exists_non_memory_access adds a no_load_store event in thread before executing
+       the next event of thread, if the next event is a non-global load or strore
+       then the no_load_store event is popped and load+store events are added to the
+       thread of the current_event.
+    */
+    threads[current_thread].pop_back();
+    execution_sequence.pop_back();
+
+    Event write_event(SymEv::Store(ml));
+    write_event.make_write();
+    
+    read_event.is_rmw = true;
+    write_event.is_rmw = true;
+
+    read_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    threads[current_thread].push_back(read_event);
+    execution_sequence.push_back(read_event.iid);
+
+    write_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    threads[current_thread].push_back(write_event);
+    execution_sequence.push_back(write_event.iid);
+  }
+
+  return true;
+}
+
 bool ViewEqTraceBuilder::compare_exchange(const SymData &sd, const SymData::block_type expected, bool success)
                                                     {out << "[snj]: cmp_exch being invoked!!\n"; assert(false); return false;}
 bool ViewEqTraceBuilder::sleepset_is_empty() const{out << "[snj]: sleepset_is_empty being invoked!!\n"; assert(false); return true;}
@@ -1063,12 +1137,20 @@ bool ViewEqTraceBuilder::Event::operator!=(Event event) {
 }
 
 std::string ViewEqTraceBuilder::Event::type_to_string() const {
+  if (is_rmw) {
+    switch(type) {
+      case WRITE: return "rmw-Write"; break;
+      case READ:  return "rmw-Read";  break;
+    }
+  }
+
   switch(type) {
     case WRITE: return "Write"; break;
     case READ:  return "Read";  break;
     case JOIN:  return "Join";  break;
     case SPAWN: return "Spawn"; break;
   }
+
   return "";
 }
 
