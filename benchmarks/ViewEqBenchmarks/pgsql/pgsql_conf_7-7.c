@@ -14,7 +14,7 @@
 #include <stdatomic.h>
 #include <pthread.h>
 
-#define LOOP 8
+#define LOOP 7
 #define N 7
 
 // shared variables
