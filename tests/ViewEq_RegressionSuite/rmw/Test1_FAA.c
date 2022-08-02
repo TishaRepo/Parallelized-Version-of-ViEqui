@@ -5,7 +5,7 @@
 atomic_int a;
 
 void *t0(void *arg){
-  atomic_load_explicit(&a, memory_order_seq_cst);
+  atomic_store_explicit(&a, 1, memory_order_seq_cst);
 
   return NULL;
 }
