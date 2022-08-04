@@ -213,6 +213,7 @@ protected:
         bool is_write() {return (symEvent.size()==1 && sym_event().addr().addr.block.is_global() && type == WRITE);}
         bool is_global() {return (symEvent.size()==1 && sym_event().addr().addr.block.is_global());}
         bool same_object(Event e);
+        bool corresponding_rmw_store(Event e);
         bool RWpair(Event e);
 
         IID<IPid> get_iid() const {return iid;}
@@ -363,6 +364,7 @@ protected:
 
         void push_back(Event event) {events.push_back(event);}
         void pop_front() {events.erase(events.begin());};
+        void push_at(event_sequence_iterator loc, Event event) {events.insert(loc, event);}
         
         void erase(Event event) {events.erase(events.begin() + index_of(event));}
         void erase(IID<IPid> event_id) {erase(find_iid(event_id));}
@@ -444,6 +446,10 @@ protected:
             merged_sequence.set_container_reference(s.container);
             container = s.container;
         }
+
+        // if lead has only read of rmw, add the corresponding write to it
+        // (only possible for forward leads, when the corresponding write is not known)
+        void add_rmw_write(IID<IPid> rmw_read, IID<IPid> rmw_write);
 
         /* this is prefix of l with view-adjustment */
         bool VA_isprefix(Lead& l);
