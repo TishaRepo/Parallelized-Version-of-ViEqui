@@ -1341,7 +1341,7 @@ bool Interpreter ::isGlobalStore(Instruction &I) {
 }
 
 // [snj]: check if a store instruction accesses global variable
-bool Interpreter ::isGlobalRMW(Instruction &I) {
+bool Interpreter::isGlobalRMW(Instruction &I) {
   return (isa<AtomicRMWInst>(I) && isGlobal(I));
 }
 
@@ -4405,7 +4405,8 @@ void Interpreter::run()
 
       // llvm::outs() << "[" << p++ << "]Peeking: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
       if (isGlobalLoad(I) || isGlobalStore(I) || isGlobalRMW(I)) {
-        visit(I); // visitLoadInst, visitStoreInst modified to peek and enable event but not execute
+        visit(I); // visitLoadInst, visitStoreInst, visitAtomicRMWInst 
+                  // modified to peek and enable event but not execute
       }
     }
   }

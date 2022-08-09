@@ -32,7 +32,6 @@ public:
     long long hash() {return polynomialRollingHash();}
 };
 
-
 class ViewEqTraceBuilder : public TSOPSOTraceBuilder
 {
 protected:
@@ -68,6 +67,14 @@ public:
     virtual NODISCARD bool store(const SymData &ml) override;
     virtual NODISCARD bool atomic_store(const SymData &ml) override;
     virtual NODISCARD bool load(const SymAddrSize &ml) override;
+    virtual NODISCARD bool atomic_rmw(const SymData &ml);
+    
+    // enable load corresponding to the rmw
+    void enable_rmw(const SymAddrSize &ml);
+    // add rmw to execution, do necessary analysis
+    void complete_rmw(const SymData &ml);
+
+    // void set_rmw_operation(RMWOperation op);
 
             void finish_up_lead(int replay_state_prefix);
             void finish_up_state(int replay_state_prefix);
@@ -149,13 +156,6 @@ public:
     void execute_next_lead();
 
     void analyse_unexplored_influenecers(IID<IPid> read_event);
-
-    // enable load corresponding to the rmw
-    void enable_rmw(const SymAddrSize &ml);
-    // add rmw to execution, do necessary analysis
-    void complete_rmw(const SymData &ml);
-    // complete local rmw
-    virtual NODISCARD bool atomic_rmw(const SymData &ml);
 
     //[nau]: added virtual function definitions for the sake of compiling
     //[snj]: added some more to the list
@@ -450,6 +450,8 @@ protected:
         // if lead has only read of rmw, add the corresponding write to it
         // (only possible for forward leads, when the corresponding write is not known)
         void add_rmw_write(IID<IPid> rmw_read, IID<IPid> rmw_write);
+        // update rmw write value according to current sequence
+        void fix_rmw_write_value(Event rmw_write);
 
         /* this is prefix of l with view-adjustment */
         bool VA_isprefix(Lead& l);
