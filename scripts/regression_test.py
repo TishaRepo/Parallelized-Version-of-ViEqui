@@ -52,7 +52,17 @@ test_results = {'basic': [(2,'N'), # Test1
                 'rmw':  [ (2,'N'),    # Test1
                             (2,'N'),  # Test2
                             (2,'N'),  # Test3
-                            (6,'N')]  # Test4
+                            (6,'N'),  # Test4
+                            (5,'N'), # Test5
+                            (4,'N'),  # Test6
+                            (8,'N'),  # Test7
+                            (8,'N'),  # Test8
+                            (2,'N'),  # Test9
+                            (3,'N'),  # Test10
+                            (4,'N'),  # Test11
+                            (12,'N'), # Test12
+                            (17,'N'), # Test13
+                            (18,'N')] # Test14
 }
 
 ignore_tests = []
@@ -72,7 +82,7 @@ def run_test_set(test_set):
     tests_completed = 0
 
     for test_index in range(1, len(test_results[test_set])+1):
-        test_name = [test_file for test_file in test_files if ('Test' + str(test_index) + '_') in test_file][0]
+        test_name = [test_file for test_file in test_files if test_file.startswith('Test' + str(test_index) + '_')][0]
 
         if test_index in ignore_tests:
             print (oc.YELLOW, 'Ignoring Test', test_index, oc.ENDC)
@@ -123,8 +133,12 @@ def run_test_set(test_set):
         if optimality_fail:
             fail_msg += '     Optimality failed\n'
 
-        if count_fail or violation_status_fail or optimality_fail:
+        if optimality_fail and out_traces > test_traces:
             failed_tests.append( (test_name, fail_msg) )
+            print(' optimality fail')
+        elif count_fail or violation_status_fail or optimality_fail:
+            failed_tests.append( (test_name, fail_msg) )
+            print(oc.RED, 'FAIL', oc.ENDC)
         else:
             print(oc.GREEN, 'OK', oc.ENDC)
 
