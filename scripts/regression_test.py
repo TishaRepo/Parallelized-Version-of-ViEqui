@@ -17,7 +17,7 @@ import os
 import subprocess
 from output_colors import output_colors as oc
 
-test_results = {'basic': [(2,'N'), # Test1
+test_results = {'basic': [(2,'N'),    # Test1
                             (3,'N'),  # Test2
                             (4,'N'),  # Test3
                             (5,'N'),  # Test4
@@ -48,12 +48,13 @@ test_results = {'basic': [(2,'N'), # Test1
                             (1,'N'),  # Test29
                             (8,'N'),  # Test30
                             (4,'N'),  # Test31
-                            (2,'N')], # Test32
+                            (2,'N'),  # Test32
+                            (8,'N')], # Test33
                 'rmw':  [ (2,'N'),    # Test1
                             (2,'N'),  # Test2
                             (2,'N'),  # Test3
                             (6,'N'),  # Test4
-                            (5,'N'), # Test5
+                            (5,'N'),  # Test5
                             (4,'N'),  # Test6
                             (8,'N'),  # Test7
                             (8,'N'),  # Test8
@@ -62,13 +63,19 @@ test_results = {'basic': [(2,'N'), # Test1
                             (4,'N'),  # Test11
                             (12,'N'), # Test12
                             (17,'N'), # Test13
-                            (18,'N')] # Test14
+                            (18,'N')],# Test14
+                'cmpxchg': [ (2,'N'), # Test1
+                            (5,'N'),  # Test2
+                            (5,'N'),  # Test3
+                            (12,'N'), # Test4
+                            (10,'N'), # Test5
+                            (12,'N')] # Test6
 }
 
 ignore_tests = []
 failed_tests = []
 
-test_sets = ['basic', 'rmw']
+test_sets = ['basic', 'rmw', 'cmpxchg']
 
 current_path = os.getcwd() + '/'
 base_path = current_path + 'tests/ViewEq_RegressionSuite/'

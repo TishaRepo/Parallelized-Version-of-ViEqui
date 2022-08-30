@@ -68,13 +68,18 @@ public:
     virtual NODISCARD bool atomic_store(const SymData &ml) override;
     virtual NODISCARD bool load(const SymAddrSize &ml) override;
     virtual NODISCARD bool atomic_rmw(const SymData &ml);
+    virtual NODISCARD bool compare_exchange(const SymData &sd, const SymData::block_type expected, bool success) override;
     
     // enable load corresponding to the rmw
     void enable_rmw(const SymAddrSize &ml);
     // add rmw to execution, do necessary analysis
     void complete_rmw(const SymData &ml);
-
-    // void set_rmw_operation(RMWOperation op);
+    // set the 'modify' operation of rmw
+    void set_rmw_operation(RMWOperation op, int val) override;
+    // set the 'modify' operation of cmpxchg
+    void set_rmw_operation(RMWOperation op, int expected_val, int xchg_val) override;
+    // compute the new write value of rmw, based on the new read value
+    int compute_modified_value(RMWOperation op, int read_value, int new_value, int exp_value = -42);
 
             void finish_up_lead(int replay_state_prefix);
             void finish_up_state(int replay_state_prefix);
@@ -158,8 +163,6 @@ public:
     void analyse_unexplored_influenecers(IID<IPid> read_event);
 
     //[nau]: added virtual function definitions for the sake of compiling
-    //[snj]: added some more to the list
-    virtual NODISCARD bool compare_exchange(const SymData &sd, const SymData::block_type expected, bool success) override;
     virtual NODISCARD bool fence() override;
     virtual bool sleepset_is_empty() const override;
     virtual bool check_for_cycles() override;
@@ -196,7 +199,11 @@ protected:
         // execution sequence, all value are initialized to 0 by default
         int value;
         std::pair<unsigned, unsigned> object; // <base, offset> - offset for arrays
+        
         bool is_rmw = false; // is a load or store of an rmw event
+        RMWOperation rmw_operation;
+        int rmw_value; // computation value for modify
+        int expected_value = -42; // if cmpxchg then expected value
         
         Event() {}
         Event(SymEv sym) {symEvent.push_back(sym); md = 0;}
@@ -612,6 +619,14 @@ protected:
 
     /* [snj]: forbidden values for the current trace */
     SOPFormula forbidden;
+
+    /* [snj]: pair(RMWOperation, computation value): 
+        details of rmw operation acquired from interpreter
+    */
+    std::pair<RMWOperation, int> current_rmw_operation;
+
+    /* [snj]: expected value of the current compare-exchange */
+    int current_cmpxchg_expected_value;
 };
 
 #endif

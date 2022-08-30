@@ -115,6 +115,11 @@ public:
    * traces that have been seen.
    */
   virtual long double estimate_trace_count() const { return 1; };
+
+  enum RMWOperation { CMPXCHG, XCHG, ADD, SUB, AND, NAND, OR, XOR, MAX, MIN, UMAX, UMIN };
+  virtual void set_rmw_operation(RMWOperation op, int val) {} // RMWOperation != CMPXCHG
+  virtual void set_rmw_operation(RMWOperation op, int expected_val, int xchg_val) {} // RMWOperation == CMPXCHG
+
 protected:
   const Configuration &conf;
   std::vector<Error*> errors;

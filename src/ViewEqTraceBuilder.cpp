@@ -22,13 +22,13 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun) {
 
   assert(execution_sequence.size() == prefix_state.size());
   if (is_replaying()) {
-    out << "REPLAYING: ";
+    // out << "REPLAYING: ";
     replay_schedule(proc);
     return true;
   }
 
   if (at_replay_point()) {
-    out << "AT REPLAY PT: \n";
+    // out << "AT REPLAY PT: \n";
     
     current_state = prefix_state[prefix_idx];
     assert(states[current_state].has_unexplored_leads());
@@ -55,15 +55,15 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun) {
   }
 
   // [snj]: Explore Algo function
-  out << "next RW\n";
+  // out << "next RW\n";
   make_new_state(); 
-  out << "made new state\n";
+  // out << "made new state\n";
   compute_new_leads(); 
-  out << "made new leads\n";
+  // out << "made new leads\n";
   
   if (states[current_state].has_unexplored_leads()) { // [snj]: TODO should be assert not check
     execute_next_lead();
-    out << "executed lead\n";
+    // out << "executed lead\n";
     // [snj]: execute current event from Interpreter::run() in Execution.cpp
     *proc = current_thread;
     return true;
@@ -411,18 +411,28 @@ void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula& forbidd
   }
   
   for (auto it = ei.begin(); it != ei.end(); it++) {
-    if (get_event((*it)).value == mem[event.object]
-        || ui_values.find(get_event((*it)).value) != ui_values.end())
+    Event eit = get_event(*it);
+    if (eit.value == mem[event.object] || ui_values.find(eit.value) != ui_values.end())
       continue; // skip current value, it is covered in fwd analysis
-
-    covered_read_values[event.get_iid()].push_back(get_event((*it)).value);
+    if (std::find(covered_read_values[event.get_iid()].begin(), covered_read_values[event.get_iid()].end(), eit.value)
+      != covered_read_values[event.get_iid()].end())
+      continue; // skip current value, it is covered by another ei
+    
+    covered_read_values[event.get_iid()].push_back(eit.value);
     int es_idx = execution_sequence.index_of((*it)); // index in execution_sequnce of ei
     
     Sequence start = execution_sequence.backseq((*it), event.iid);
     if (start.empty()) // cannot form view-start for (*it --rf--> event)
       continue;
 
-    int event_index = union_state_start(es_idx, (*it), start);
+    IID<IPid> event_at_union_state = (*it); // event explored from state of lead union
+    if (eit.is_rmw) {
+      // if the evnt is rmw (write), then shift 1 up to its corresponding read
+      es_idx--;
+      event_at_union_state = threads[it->get_pid()][it->get_index()-1].iid;
+    }
+
+    int event_index = union_state_start(es_idx, event_at_union_state, start);
 
     EventSequence constraint = states[event_index].alpha_sequence();
 
@@ -1002,7 +1012,17 @@ void ViewEqTraceBuilder::enable_rmw(const SymAddrSize &ml) {
   bool ret = load(ml); 
   // update load's rmw status
   threads[current_thread].events[threads[current_thread].events.size()-1].is_rmw = true;
+  threads[current_thread].events[threads[current_thread].events.size()-1].rmw_operation = current_rmw_operation.first;
+  threads[current_thread].events[threads[current_thread].events.size()-1].rmw_value = current_rmw_operation.second;  
+  
   current_event.is_rmw = true; // same as last event of current thread ie the load event
+  current_event.rmw_operation = current_rmw_operation.first;
+  current_event.rmw_value = current_rmw_operation.second;
+
+  if (current_rmw_operation.first == RMWOperation::CMPXCHG) {
+    threads[current_thread].events[threads[current_thread].events.size()-1].expected_value = current_cmpxchg_expected_value;
+    current_event.expected_value = current_cmpxchg_expected_value;
+  }
 }
 
 void ViewEqTraceBuilder::complete_rmw(const SymData &ml) {
@@ -1012,6 +1032,10 @@ void ViewEqTraceBuilder::complete_rmw(const SymData &ml) {
 
   current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
   current_event.is_rmw = true;
+  current_event.rmw_operation = threads[current_thread][threads[current_thread].size()-1].rmw_operation;
+  current_event.rmw_value = threads[current_thread][threads[current_thread].size()-1].rmw_value;
+  if (current_event.rmw_operation == RMWOperation::CMPXCHG)
+    current_event.expected_value = threads[current_thread][threads[current_thread].size()-1].expected_value;
   threads[current_thread].push_back(current_event);
 
   if(current_thread == 0){
@@ -1029,11 +1053,11 @@ void ViewEqTraceBuilder::complete_rmw(const SymData &ml) {
   states[prefix_state[states[current_state].lead_head_execution_prefix]].leads[alpha].fix_rmw_write_value(current_event);
   
   // add to backward leads of corresponding read
-  for (auto s = states[current_state].ei_leads.begin(); s != states[current_state].ei_leads.end(); s++) {
-    for (auto l = s->second.begin(); l != s->second.end(); l++) {
-      l->add_rmw_write(corresponding_read_iid, current_event.iid);
-    }
-  }
+  // for (auto s = states[current_state].ei_leads.begin(); s != states[current_state].ei_leads.end(); s++) {
+  //   for (auto l = s->second.begin(); l != s->second.end(); l++) {
+  //     l->add_rmw_write(corresponding_read_iid, current_event.iid);
+  //   }
+  // }
 
   if (!is_replaying()) {
     update_leads(current_event, forbidden);
@@ -1047,6 +1071,49 @@ void ViewEqTraceBuilder::complete_rmw(const SymData &ml) {
   mem[current_event.object] = current_event.value;
 
   prefix_idx++;
+}
+
+void ViewEqTraceBuilder::set_rmw_operation(RMWOperation op, int val) {
+  current_rmw_operation = std::make_pair(op, val);
+}
+
+void ViewEqTraceBuilder::set_rmw_operation(RMWOperation op, int expected_val, int xchg_val) {
+  assert(op == RMWOperation::CMPXCHG);
+  current_rmw_operation = std::make_pair(op, xchg_val);
+  current_cmpxchg_expected_value = expected_val;
+}
+
+int ViewEqTraceBuilder::compute_modified_value(RMWOperation op, int read_value, int new_value, int exp_value) {
+  switch(op) {
+    case RMWOperation::CMPXCHG:
+      if (read_value == exp_value)
+        return new_value;
+      return read_value;
+    case RMWOperation::XCHG:
+      return new_value;
+    case RMWOperation::ADD:
+      return read_value + new_value;
+    case RMWOperation::SUB:
+      return read_value - new_value;
+    case RMWOperation::AND:
+      return read_value & new_value;
+    case RMWOperation::NAND:
+      return ~(read_value & new_value);
+    case RMWOperation::OR:
+      return read_value | new_value;
+    case RMWOperation::XOR:
+      return read_value ^ new_value;
+    case RMWOperation::MAX:
+    case RMWOperation::UMAX:
+      return (read_value > new_value) ? read_value : new_value;
+    case RMWOperation::MIN:
+    case RMWOperation::UMIN:
+      return (read_value < new_value) ? read_value : new_value;
+  }
+
+  out << "WHY HERE?\n";
+  assert(false); // code must not reach here
+  return 0; 
 }
 
 // rmw read and write are stored as separate events in the execution sequence
@@ -1094,8 +1161,60 @@ bool ViewEqTraceBuilder::atomic_rmw(const SymData &ml) {
   return true;
 }
 
-bool ViewEqTraceBuilder::compare_exchange(const SymData &sd, const SymData::block_type expected, bool success)
-                                                    {out << "[snj]: cmp_exch being invoked!!\n"; assert(false); return false;}
+bool ViewEqTraceBuilder::compare_exchange(const SymData &sd, const SymData::block_type expected, bool success) {
+  Event read_event(SymEv::Load(sd.get_ref()));
+  read_event.make_read();
+  read_event.value = mem[read_event.object];
+  
+  if (read_event.is_global()) {
+    if (threads[current_thread].events.size() > 0) {
+      Event last_thread_event = threads[current_thread].events[threads[current_thread].events.size()-1];
+      if (read_event.sym_event() == last_thread_event.sym_event()) {
+        IID<IPid> prev_last_write = last_write[current_event.object];
+        complete_rmw(sd); // load of rmw peeked earlier, now complete store
+        if (!success) {
+          // restrore original value read
+          threads[current_thread].events[threads[current_thread].events.size()-1].value = last_thread_event.value;
+          last_write[current_event.object] = prev_last_write;
+          mem[current_event.object] = last_thread_event.value;
+        }
+        return true;
+      }
+    }
+    enable_rmw(sd.get_ref()); // peeking new rmw event (peeking load)
+  } 
+  else {
+    /* exists_non_memory_access adds a no_load_store event in thread before executing
+       the next event of thread, if the next event is a non-global load or strore
+       then the no_load_store event is popped and load+store events are added to the
+       thread of the current_event.
+    */
+    threads[current_thread].pop_back();
+    execution_sequence.pop_back();
+
+    Event write_event(SymEv::Store(sd));
+    write_event.make_write();
+    
+    read_event.is_rmw = true;
+    write_event.is_rmw = true;
+
+    read_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    threads[current_thread].push_back(read_event);
+    execution_sequence.push_back(read_event.iid);
+
+    write_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    threads[current_thread].push_back(write_event);
+    execution_sequence.push_back(write_event.iid);
+
+    if (!success) {
+      // restrore original value read
+      threads[current_thread].events[threads[current_thread].events.size()-1].value = read_event.value;
+    }
+  }
+
+  return true;
+}
+
 bool ViewEqTraceBuilder::sleepset_is_empty() const{out << "[snj]: sleepset_is_empty being invoked!!\n"; assert(false); return true;}
 bool ViewEqTraceBuilder::check_for_cycles(){out << "[snj]: check_for_cycles being invoked!!\n"; assert(false); return false;}
 bool ViewEqTraceBuilder::mutex_lock(const SymAddrSize &ml){out << "[snj]: mutex_lock being invoked!!\n"; assert(false); return true;}
@@ -1455,6 +1574,30 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::backseq(IID<IPid> e1,
 
     if (e1_delim != e1) // if not e1 already added
       causal_prefix.push_at(loc, e1);
+    
+    if (event.is_rmw) { // also add rmw read
+      int mem_val;
+      bool has_racing_write = false;
+      sequence_iterator rmw_write_loc = causal_prefix.find(e1);
+
+      for (auto it = causal_prefix.begin(); it != rmw_write_loc; it++) {
+        Event eit = container->get_event(*it);
+        if (event.same_object(eit) && eit.is_write()) {
+          has_racing_write = true;
+          mem_val = eit.value;
+        }
+      }
+
+      Event rmw_read = container->threads[e1.get_pid()][e1.get_index()-1];
+      if (has_racing_write) {
+        if (mem_val != rmw_read.value) {
+          causal_prefix.clear();
+          return causal_prefix;
+        }
+      }
+
+      causal_prefix.push_at(rmw_write_loc, rmw_read.iid);
+    }
   }
   else { // event.is_read()
     if (e1_delim != e2) { // events causal after e1 are in 'causal_prefix' then e1 cannot be added later for reading, infeasible (read, value) pair
@@ -1474,24 +1617,21 @@ void ViewEqTraceBuilder::Sequence::join_prefix(
 
   Sequence &merged_sequence = *this;
 
+  if (primary_begin == primary_end) {
+    for (auto it = other_begin; it != other_end; it++)
+      merged_sequence.push_back(*it);
+    return;
+  }
+
+  if (other_begin == other_end) {
+    for (auto it = primary_begin; it != primary_end; it++)
+      merged_sequence.push_back(*it);
+    return;
+  }
+
   auto primary_next = primary_begin;
   for (auto ito = other_begin; ito != other_end; ito++) {
     Event eo = container->get_event(*ito);
-
-    if (eo.is_read() && eo.is_rmw && (ito+1) != other_end)
-    // rmw read is not needed for analyses and is to added along with its write
-    { //// TODO remove
-      Event eo_next = container->get_event(*(ito+1));
-      if (!eo_next.is_write() || !eo_next.is_rmw) {
-        container->out << "SOMETHING IS WRONG WITH other_seq -- ABORTING";
-        merged_sequence.clear();
-        assert(false);
-        return;
-      }
-      ////
-      
-      continue;
-    }
 
     for (auto itp = primary_next; itp != primary_end; itp++) {
       Event ep = container->get_event(*itp);
@@ -1543,8 +1683,36 @@ void ViewEqTraceBuilder::Sequence::join_prefix(
       }
     }
 
-    if (eo.is_write() && eo.is_rmw) 
-      merged_sequence.push_back(*(ito-1));
+    if (eo.is_write() && eo.is_rmw) { // put rmw read along with its write
+      auto ito_read_in_merged = merged_sequence.find(*(ito-1));
+      // if rmw read already in the end, do nothing
+      if (ito_read_in_merged != merged_sequence.end()-1) {
+        // check if bringing rmw read to end will change its value
+        Event rit = container->get_event(*ito_read_in_merged);
+
+        bool has_racing_write = false;
+        int mem_val;
+        for (auto it = ito_read_in_merged+1; it != merged_sequence.end(); it++) {
+          Event eit = container->get_event(*it);
+          if (rit.RWpair(eit)) {
+            has_racing_write = true;
+            mem_val = eit.value;
+          }
+        }
+
+        if (has_racing_write && mem_val != rit.value) {
+          // bringing rmw read to end will change its value
+          merged_sequence.clear();
+          return;
+        }
+        else {
+          // okay to bring rmw read to the end
+          merged_sequence.erase(ito_read_in_merged);
+          merged_sequence.push_back(rit.get_iid());
+        }
+      }
+    }
+
     merged_sequence.push_back(*ito);
   }
 
@@ -1568,7 +1736,13 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::join(Sequence& other_
     if (it_in_other == other_seq.end()) // other_seq does not have *it
       continue;
 
-    merged_sequence.join_prefix(next_index_primary, it, next_index_other, it_in_other);
+    if (it != next_index_primary || it_in_other != next_index_other) {
+      // if the common event is the next event in both sequences then just push it
+      // otherwise join prefixes before pushing it
+      merged_sequence.join_prefix(next_index_primary, it, next_index_other, it_in_other);
+      if (merged_sequence.empty()) // prefixes could not be joined
+        return merged_sequence;
+    }
     merged_sequence.push_back(*it);
     
     next_index_primary = it+1;
@@ -1647,6 +1821,10 @@ ViewEqTraceBuilder::EventSequence ViewEqTraceBuilder::Sequence::to_event_sequenc
     Event e = container->get_event(*it);
 
     if (e.is_write()) {
+      if (e.is_rmw) {
+        int rmw_read_value = event_sequence.last().value;
+        e.value = container->compute_modified_value(e.rmw_operation, rmw_read_value, e.rmw_value, e.expected_value);
+      }
       mem_map[e.object] = e.value;
     }
 
@@ -1685,6 +1863,10 @@ ViewEqTraceBuilder::EventSequence ViewEqTraceBuilder::Sequence::to_event_sequenc
     }
 
     if (e.is_write()) {
+      if (e.is_rmw) {
+        int rmw_read_value = event_sequence.last().value;
+        e.value = container->compute_modified_value(e.rmw_operation, rmw_read_value, e.rmw_value, e.expected_value);
+      }
       mem_map[e.object] = e.value;
     }
 
@@ -1850,10 +2032,10 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::unexploredInfluencers(Event er
   for (int i = 0; i < Enabled.size(); i++){
     Event e = get_event(Enabled[i]);
     
-    //[nau]:not a write event or not same object or already taken value or already checked forbidden value
+    // not a write event or not same object or already taken value or already checked forbidden value
     if(!e.is_write() || !er.same_object(e) || values.find(e.value) != values.end() || forbidden_values.find(e.value) != forbidden_values.end()) continue;
 
-    //check if value of e is forbidden for er
+    // check if value of e is forbidden for er
     if (f.check_evaluation(std::make_pair(er.iid, e.value))== RESULT::TRUE) {
       forbidden_values.insert(e.value);
       continue;
@@ -1868,69 +2050,83 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::unexploredInfluencers(Event er
 
 std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredInfluencers(Event er, SOPFormula &f){
   std::unordered_set<IID<IPid>> ei;
-  std::unordered_set<int> values, forbidden_values;
+  std::unordered_set<int> forbidden_values;
+  // std::unordered_set<int> values, forbidden_values;
 
-  std::pair<unsigned, unsigned> o_id = er.object;
-  int pid = er.get_pid();
+  // std::pair<unsigned, unsigned> o_id = er.object;
+  // int pid = er.get_pid();
   
-  auto it = visible.find(o_id);
-  assert(it != visible.end());
-  assert(visible[o_id].mpo[0].size() == 1); //only the init event in first row
-  assert(visible[o_id].mpo.size() == visible[o_id].visible_start.size() + 1);
+  // auto it = visible.find(o_id);
+  // assert(it != visible.end());
+  // assert(visible[o_id].mpo[0].size() == 1); //only the init event in first row
+  // assert(visible[o_id].mpo.size() == visible[o_id].visible_start.size() + 1);
   
-  //[nau]: check if init event is visible to er
-  if(visible[o_id].check_init_visible(pid)) {
-    IID<IPid> initid = visible[o_id].mpo[0][0].first;
-    int init_value = visible[o_id].mpo[0][0].second;
+  // //[nau]: check if init event is visible to er
+  // if(visible[o_id].check_init_visible(pid)) {
+  //   IID<IPid> initid = visible[o_id].mpo[0][0].first;
+  //   int init_value = visible[o_id].mpo[0][0].second;
     
-    assert(init_value == 0);
-    if(f.check_evaluation(std::make_pair(initid, init_value)) != RESULT::TRUE ) ei.insert(initid);
-    else forbidden_values.insert(init_value);
-  }
+  //   assert(init_value == 0);
+  //   if(f.check_evaluation(std::make_pair(initid, init_value)) != RESULT::TRUE ) ei.insert(initid);
+  //   else forbidden_values.insert(init_value);
+  // }
   
-  //for writes other than init
-  // check if read is from thr0 after join
-  if(pid == 0){
-    if( ! visible[o_id].first_read_after_join ){
-      ei.insert(last_write[o_id]);
-      return ei;
-    }
-    for(int i = 1; i < visible[o_id].mpo.size(); i++){
-      if(visible[o_id].mpo[i].size() != 0){
-        std::pair<IID<IPid>, int> e = visible[o_id].mpo[i][visible[o_id].mpo[i].size() - 1];
-        IID<IPid> e_id = e.first;
-        int e_val = e.second;
-        if(values.find(e_val) != values.end() || forbidden_values.find(e_val) != forbidden_values.end() || find(Enabled.begin(), Enabled.end(), e_id) != Enabled.end() ) continue;
+  // //for writes other than init
+  // // check if read is from thr0 after join
+  // if(pid == 0){
+  //   if( ! visible[o_id].first_read_after_join ){
+  //     ei.insert(last_write[o_id]);
+  //     return ei;
+  //   }
+  //   for(int i = 1; i < visible[o_id].mpo.size(); i++){
+  //     if(visible[o_id].mpo[i].size() != 0){
+  //       std::pair<IID<IPid>, int> e = visible[o_id].mpo[i][visible[o_id].mpo[i].size() - 1];
+  //       IID<IPid> e_id = e.first;
+  //       int e_val = e.second;
+  //       if(values.find(e_val) != values.end() || forbidden_values.find(e_val) != forbidden_values.end() || find(Enabled.begin(), Enabled.end(), e_id) != Enabled.end() ) continue;
 
-        if(f.check_evaluation(std::make_pair(er.iid, e_val)) == RESULT::TRUE ) forbidden_values.insert(e_val);
-        else{
-          ei.insert(e_id);
-          values.insert(e_val);
-        }
+  //       if(f.check_evaluation(std::make_pair(er.iid, e_val)) == RESULT::TRUE ) forbidden_values.insert(e_val);
+  //       else{
+  //         ei.insert(e_id);
+  //         values.insert(e_val);
+  //       }
+  //     }
+  //   }
+  // }
+  // else{
+  //   for(int i = 0; i < visible[o_id].visible_start[pid - 1].size(); i++){
+  //         int j = visible[o_id].visible_start[pid - 1][i];
+  //         for( int k = j; k < visible[o_id].mpo[i + 1].size() + 1; k++){
+  //             if(k == 0) continue;
+  //             std::pair<IID<IPid>, int> e = visible[o_id].mpo[i + 1][k - 1];
+  //             IID<IPid> e_id = e.first;
+  //             int e_val = e.second;
+
+  //             //repeated value || already checked forbidden value || unexplored event
+  //             if(values.find(e_val) != values.end() || 
+  //               forbidden_values.find(e_val) != forbidden_values.end() || 
+  //               find(Enabled.begin(), Enabled.end(), e_id) != Enabled.end() ) continue;
+
+  //             if(f.check_evaluation(std::make_pair(er.iid, e_val)) == RESULT::TRUE ) forbidden_values.insert(e_val);
+  //             else{
+  //               ei.insert(e_id);
+  //               values.insert(e_val);
+  //             }
+  //         }
+  //     }
+  // }
+  for (int i = execution_sequence.size()-1; i >= 0; i--) {
+    Event ievent = get_event(execution_sequence[i]);
+    if (er.RWpair(ievent)) {
+      if (forbidden_values.find(ievent.value) != forbidden_values.end()) 
+        continue;
+      if (f.check_evaluation(std::make_pair(er.iid, ievent.value)) == RESULT::TRUE ) {
+        forbidden_values.insert(ievent.value);
+        continue;
       }
+
+      ei.insert(ievent.iid); // insert is not forbidden
     }
-  }
-  else{
-    for(int i = 0; i < visible[o_id].visible_start[pid - 1].size(); i++){
-          int j = visible[o_id].visible_start[pid - 1][i];
-          for( int k = j; k < visible[o_id].mpo[i + 1].size() + 1; k++){
-              if(k == 0) continue;
-              std::pair<IID<IPid>, int> e = visible[o_id].mpo[i + 1][k - 1];
-              IID<IPid> e_id = e.first;
-              int e_val = e.second;
-
-              //repeated value || already checked forbidden value || unexplored event
-              if(values.find(e_val) != values.end() || 
-                forbidden_values.find(e_val) != forbidden_values.end() || 
-                find(Enabled.begin(), Enabled.end(), e_id) != Enabled.end() ) continue;
-
-              if(f.check_evaluation(std::make_pair(er.iid, e_val)) == RESULT::TRUE ) forbidden_values.insert(e_val);
-              else{
-                ei.insert(e_id);
-                values.insert(e_val);
-              }
-          }
-      }
   }
   
   return ei;

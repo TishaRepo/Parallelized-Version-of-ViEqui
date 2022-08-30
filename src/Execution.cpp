@@ -1308,6 +1308,74 @@ void Interpreter::completeAtomicRMWInst(AtomicRMWInst &I)
   StoreValueToMemory(NewVal, Ptr, I.getType());
 }
 
+void Interpreter::completeAtomicCmpXchgInst(AtomicCmpXchgInst &I)
+{
+  ExecutionContext &SF = ECStack()->back();
+  GenericValue CmpVal = getOperandValue(I.getCompareOperand(), SF);
+  GenericValue NewVal = getOperandValue(I.getNewValOperand(), SF);
+  GenericValue SRC = getOperandValue(I.getPointerOperand(), SF);
+  GenericValue *Ptr = (GenericValue *)GVTOP(SRC);
+  Type *Ty = I.getCompareOperand()->getType();
+  GenericValue Result;
+
+  Option<SymAddrSize> Ptr_sas = GetSymAddrSize(Ptr, Ty);
+  if (!Ptr_sas)
+    return;
+  SymData::block_type expected = SymData::alloc_block(Ptr_sas->size);
+  StoreValueToMemory(CmpVal, static_cast<GenericValue *>((void *)expected.get()), Ty);
+
+#if defined(LLVM_CMPXCHG_SEPARATE_SUCCESS_FAILURE_ORDERING)
+  // Return a tuple (oldval,success)
+  Result.AggregateVal.resize(2);
+  if (DryRun && DryRunMem.size())
+  {
+    DryRunLoadValueFromMemory(Result.AggregateVal[0], Ptr, *Ptr_sas, Ty);
+  }
+  else
+  {
+    LoadValueFromMemory(Result.AggregateVal[0], Ptr, Ty);
+  }
+  GenericValue CmpRes = executeICMP_EQ(Result.AggregateVal[0], CmpVal, Ty);
+#else
+  // Return only the old value oldval
+  if (DryRun && DryRunMem.size())
+  {
+    DryRunLoadValueFromMemory(Result, Ptr, *Ptr_sas, Ty);
+  }
+  else
+  {
+    LoadValueFromMemory(Result, Ptr, Ty);
+  }
+  GenericValue CmpRes = executeICMP_EQ(Result, CmpVal, Ty);
+#endif
+  SymData sd = GetSymData(*Ptr_sas, Ty, NewVal);
+  if (!TB.compare_exchange(sd, expected, CmpRes.IntVal.getBoolValue()))
+  {
+    abort();
+    return;
+  }
+  if (CmpRes.IntVal.getBoolValue())
+  {
+#if defined(LLVM_CMPXCHG_SEPARATE_SUCCESS_FAILURE_ORDERING)
+    Result.AggregateVal[1].IntVal = 1;
+#endif
+    SetValue(&I, Result, SF);
+    if (DryRun)
+    {
+      DryRunMem.emplace_back(std::move(sd));
+      return;
+    }
+    StoreValueToMemory(NewVal, Ptr, Ty);
+  }
+  else
+  {
+#if defined(LLVM_CMPXCHG_SEPARATE_SUCCESS_FAILURE_ORDERING)
+    Result.AggregateVal[1].IntVal = 0;
+#endif
+    SetValue(&I, Result, SF);
+  }
+}
+
 // [snj]: check if an instruction accesses global variable
 bool Interpreter ::isGlobal(Instruction &I) {
   for (const Use& Op : I.operands()){
@@ -1343,6 +1411,51 @@ bool Interpreter ::isGlobalStore(Instruction &I) {
 // [snj]: check if a store instruction accesses global variable
 bool Interpreter::isGlobalRMW(Instruction &I) {
   return (isa<AtomicRMWInst>(I) && isGlobal(I));
+}
+
+bool Interpreter::isGlobalCmpXchg(Instruction &I) {
+  return (isa<AtomicCmpXchgInst>(I) && isGlobal(I));
+}
+
+void Interpreter::set_rmw_operation(AtomicRMWInst::BinOp op, int Val) {
+  switch (op)
+  {
+  case llvm::AtomicRMWInst::Xchg:
+    TB.set_rmw_operation(TraceBuilder::RMWOperation::XCHG, Val);
+    break;
+  case llvm::AtomicRMWInst::Add:
+    TB.set_rmw_operation(TraceBuilder::RMWOperation::ADD, Val);
+    break;
+  case llvm::AtomicRMWInst::Sub:
+    TB.set_rmw_operation(TraceBuilder::RMWOperation::SUB, Val);
+    break;
+  case llvm::AtomicRMWInst::And:
+    TB.set_rmw_operation(TraceBuilder::RMWOperation::AND, Val);
+    break;
+  case llvm::AtomicRMWInst::Nand:
+    TB.set_rmw_operation(TraceBuilder::RMWOperation::NAND, Val);
+    break;
+  case llvm::AtomicRMWInst::Or:
+    TB.set_rmw_operation(TraceBuilder::RMWOperation::OR, Val);
+    break;
+  case llvm::AtomicRMWInst::Xor:
+    TB.set_rmw_operation(TraceBuilder::RMWOperation::XOR, Val);
+    break;
+  case llvm::AtomicRMWInst::Max:
+    TB.set_rmw_operation(TraceBuilder::RMWOperation::MAX, Val);
+    break;
+  case llvm::AtomicRMWInst::Min:
+    TB.set_rmw_operation(TraceBuilder::RMWOperation::MIN, Val);
+    break;
+  case llvm::AtomicRMWInst::UMax:
+    TB.set_rmw_operation(TraceBuilder::RMWOperation::UMAX, Val);
+    break;
+  case llvm::AtomicRMWInst::UMin:
+    TB.set_rmw_operation(TraceBuilder::RMWOperation::UMIN, Val);
+    break;
+  default:
+    throw std::logic_error("Unsupported operation in RMW instruction.");
+  }
 }
 
 void Interpreter::visitReturnInst(ReturnInst &I)
@@ -1676,6 +1789,24 @@ void Interpreter::visitAtomicCmpXchgInst(AtomicCmpXchgInst &I)
   SymData::block_type expected = SymData::alloc_block(Ptr_sas->size);
   StoreValueToMemory(CmpVal, static_cast<GenericValue *>((void *)expected.get()), Ty);
 
+  if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ && isGlobalCmpXchg(I)) {
+    int cmpval, newval;
+    ConstantInt *ci_c = ConstantInt::get(I.getContext(), CmpVal.IntVal);
+    ConstantInt *ci_n = ConstantInt::get(I.getContext(), NewVal.IntVal);
+    if (ci_c->getBitWidth() <= 32) {
+      cmpval = ci_c->getSExtValue();
+    }
+    if (ci_n->getBitWidth() <= 32) {
+      newval = ci_n->getSExtValue();
+    }
+    TB.set_rmw_operation(TraceBuilder::RMWOperation::CMPXCHG, cmpval, newval);
+    
+    SymData sd = GetSymData(*Ptr_sas, Ty, NewVal);
+    if (!TB.compare_exchange(sd, expected, false))
+      abort();
+    return;
+  }
+
 #if defined(LLVM_CMPXCHG_SEPARATE_SUCCESS_FAILURE_ORDERING)
   // Return a tuple (oldval,success)
   Result.AggregateVal.resize(2);
@@ -1743,6 +1874,13 @@ void Interpreter::visitAtomicRMWInst(AtomicRMWInst &I)
     return;
 
   if (conf.dpor_algorithm == Configuration::DPORAlgorithm::VIEW_EQ && isGlobalRMW(I)) {
+    int intval;
+    ConstantInt *ci = ConstantInt::get(I.getContext(), Val.IntVal);
+    if (ci->getBitWidth() <= 32) {
+      intval = ci->getSExtValue();
+    }
+    set_rmw_operation(I.getOperation(), intval);
+
     SymData sd = GetSymData(*Ptr_sas, I.getType(), Val);
     if (!TB.atomic_rmw(sd))
       abort();
@@ -4283,7 +4421,7 @@ void Interpreter::run()
   int aux;
   bool rerun = false;
 
-  // int p=0,e=0;
+  int p=0,e=0;
   while (rerun || TB.schedule(&CurrentThread, &aux, &CurrentAlt, &DryRun))
   {
     assert(0 <= CurrentThread && CurrentThread < long(Threads.size()));
@@ -4347,9 +4485,10 @@ void Interpreter::run()
       if (isGlobalLoad(I)) completeLoadInst(static_cast<llvm::LoadInst&>(I));
       else if (isGlobalStore(I)) completeStoreInst(static_cast<llvm::StoreInst&>(I));
       else if (isGlobalRMW(I)) completeAtomicRMWInst(static_cast<llvm::AtomicRMWInst&>(I));
+      else if (isGlobalCmpXchg(I)) completeAtomicCmpXchgInst(static_cast<llvm::AtomicCmpXchgInst&>(I));
       else visit(I);
 
-      // llvm::outs() << "[" << e++ << "]Executing: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
+      llvm::outs() << "[" << e++ << "]Executing: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
     }
     else {
     /* 
@@ -4403,9 +4542,9 @@ void Interpreter::run()
       ExecutionContext &SF = ECStack()->back(); // Current stack frame
       Instruction &I = *SF.CurInst;
 
-      // llvm::outs() << "[" << p++ << "]Peeking: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
-      if (isGlobalLoad(I) || isGlobalStore(I) || isGlobalRMW(I)) {
-        visit(I); // visitLoadInst, visitStoreInst, visitAtomicRMWInst 
+      llvm::outs() << "[" << p++ << "]Peeking: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
+      if (isGlobalLoad(I) || isGlobalStore(I) || isGlobalRMW(I) || isGlobalCmpXchg(I)) {
+        visit(I); // visitLoadInst, visitStoreInst, visitAtomicRMWInst, visitAtomicCmpXchgInst 
                   // modified to peek and enable event but not execute
       }
     }
