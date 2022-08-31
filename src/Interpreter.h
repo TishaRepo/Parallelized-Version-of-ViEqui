@@ -349,7 +349,7 @@ namespace llvm
     void completeLoadInst(LoadInst &I);
     void completeStoreInst(StoreInst &I);
     void completeAtomicRMWInst(AtomicRMWInst &I);
-    void completeAtomicCmpXchgInst(AtomicCmpXchgInst &I);
+    bool completeAtomicCmpXchgInst(AtomicCmpXchgInst &I); // return status success/fail
 
     // Opcode Implementations
     virtual void visitReturnInst(ReturnInst &I);

@@ -1308,7 +1308,7 @@ void Interpreter::completeAtomicRMWInst(AtomicRMWInst &I)
   StoreValueToMemory(NewVal, Ptr, I.getType());
 }
 
-void Interpreter::completeAtomicCmpXchgInst(AtomicCmpXchgInst &I)
+bool Interpreter::completeAtomicCmpXchgInst(AtomicCmpXchgInst &I)
 {
   ExecutionContext &SF = ECStack()->back();
   GenericValue CmpVal = getOperandValue(I.getCompareOperand(), SF);
@@ -1320,7 +1320,7 @@ void Interpreter::completeAtomicCmpXchgInst(AtomicCmpXchgInst &I)
 
   Option<SymAddrSize> Ptr_sas = GetSymAddrSize(Ptr, Ty);
   if (!Ptr_sas)
-    return;
+    return false;
   SymData::block_type expected = SymData::alloc_block(Ptr_sas->size);
   StoreValueToMemory(CmpVal, static_cast<GenericValue *>((void *)expected.get()), Ty);
 
@@ -1352,7 +1352,7 @@ void Interpreter::completeAtomicCmpXchgInst(AtomicCmpXchgInst &I)
   if (!TB.compare_exchange(sd, expected, CmpRes.IntVal.getBoolValue()))
   {
     abort();
-    return;
+    return false;
   }
   if (CmpRes.IntVal.getBoolValue())
   {
@@ -1363,9 +1363,10 @@ void Interpreter::completeAtomicCmpXchgInst(AtomicCmpXchgInst &I)
     if (DryRun)
     {
       DryRunMem.emplace_back(std::move(sd));
-      return;
+      return false;
     }
     StoreValueToMemory(NewVal, Ptr, Ty);
+    return true;
   }
   else
   {
@@ -1373,7 +1374,9 @@ void Interpreter::completeAtomicCmpXchgInst(AtomicCmpXchgInst &I)
     Result.AggregateVal[1].IntVal = 0;
 #endif
     SetValue(&I, Result, SF);
+    return false;
   }
+  return false;
 }
 
 // [snj]: check if an instruction accesses global variable
@@ -4420,8 +4423,9 @@ void Interpreter::run()
 {
   int aux;
   bool rerun = false;
-
+  int complete_cmpxchg = 0;
   // int p=0,e=0;
+
   while (rerun || TB.schedule(&CurrentThread, &aux, &CurrentAlt, &DryRun))
   {
     assert(0 <= CurrentThread && CurrentThread < long(Threads.size()));
@@ -4485,8 +4489,18 @@ void Interpreter::run()
       if (isGlobalLoad(I)) completeLoadInst(static_cast<llvm::LoadInst&>(I));
       else if (isGlobalStore(I)) completeStoreInst(static_cast<llvm::StoreInst&>(I));
       else if (isGlobalRMW(I)) completeAtomicRMWInst(static_cast<llvm::AtomicRMWInst&>(I));
-      else if (isGlobalCmpXchg(I)) completeAtomicCmpXchgInst(static_cast<llvm::AtomicCmpXchgInst&>(I));
-      else visit(I);
+      else if (isGlobalCmpXchg(I)) { 
+        bool success = completeAtomicCmpXchgInst(static_cast<llvm::AtomicCmpXchgInst&>(I));
+        if (!success) {
+          complete_cmpxchg = 2;
+          rerun = true;
+        }
+      }
+      else { 
+        visit(I);
+        if (complete_cmpxchg > 0) complete_cmpxchg--;
+        if (complete_cmpxchg > 0) rerun = true;
+      }
 
       // llvm::outs() << "[" << e++ << "]Executing: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
     }
@@ -4526,6 +4540,10 @@ void Interpreter::run()
       else
       {
         TB.mark_unavailable(CurrentThread);
+      }
+
+      if (complete_cmpxchg) {
+        complete_cmpxchg = rerun = false;
       }
     }
 
