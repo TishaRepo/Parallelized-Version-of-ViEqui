@@ -4421,7 +4421,7 @@ void Interpreter::run()
   int aux;
   bool rerun = false;
 
-  int p=0,e=0;
+  // int p=0,e=0;
   while (rerun || TB.schedule(&CurrentThread, &aux, &CurrentAlt, &DryRun))
   {
     assert(0 <= CurrentThread && CurrentThread < long(Threads.size()));
@@ -4488,7 +4488,7 @@ void Interpreter::run()
       else if (isGlobalCmpXchg(I)) completeAtomicCmpXchgInst(static_cast<llvm::AtomicCmpXchgInst&>(I));
       else visit(I);
 
-      llvm::outs() << "[" << e++ << "]Executing: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
+      // llvm::outs() << "[" << e++ << "]Executing: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
     }
     else {
     /* 
@@ -4542,7 +4542,7 @@ void Interpreter::run()
       ExecutionContext &SF = ECStack()->back(); // Current stack frame
       Instruction &I = *SF.CurInst;
 
-      llvm::outs() << "[" << p++ << "]Peeking: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
+      // llvm::outs() << "[" << p++ << "]Peeking: "; I.print(llvm::outs(), true); llvm::outs() << "\n";
       if (isGlobalLoad(I) || isGlobalStore(I) || isGlobalRMW(I) || isGlobalCmpXchg(I)) {
         visit(I); // visitLoadInst, visitStoreInst, visitAtomicRMWInst, visitAtomicCmpXchgInst 
                   // modified to peek and enable event but not execute

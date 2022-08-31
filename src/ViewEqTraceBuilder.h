@@ -3,6 +3,7 @@
 #define __VIEW_EQ_TRACE_BUILDER_H__
 
 #include <unordered_map>
+#include <unordered_set>
 
 #include "TSOPSOTraceBuilder.h"
 #include "SymEv.h"
@@ -299,6 +300,8 @@ protected:
         sequence_iterator erase(sequence_iterator it) {return events.erase(it);}
         void erase(sequence_iterator begin, sequence_iterator end) {events.erase(begin, end);}
         void clear() {events.clear();}
+
+        void add_rmw_write(IID<IPid> rmw_read, IID<IPid> rmw_write);
         
         bool has(IID<IPid> event) {return std::find(events.begin(), events.end(), event) != events.end();}
         int  index_of(IID<IPid> event) {return (std::find(events.begin(), events.end(), event) - events.begin());}
@@ -364,9 +367,10 @@ protected:
             return tl;
         }
        
-        bool has(Event event) {return std::find(events.begin(), events.end(), event) != events.end();}
         event_sequence_iterator find(Event event) {return std::find(events.begin(), events.end(), event);}
         event_sequence_iterator find_iid(IID<IPid> iid);
+        bool has(Event event) {return find(event) != end();}
+        bool has(IID<IPid> iid) {return find_iid(iid) != end();}
         int  index_of(Event event) {return (std::find(events.begin(), events.end(), event) - events.begin());}
 
         void push_back(Event event) {events.push_back(event);}
@@ -376,6 +380,8 @@ protected:
         void erase(Event event) {events.erase(events.begin() + index_of(event));}
         void erase(IID<IPid> event_id) {erase(find_iid(event_id));}
         event_sequence_iterator erase(event_sequence_iterator it) {return events.erase(it);}
+
+        void add_rmw_write(IID<IPid> rmw_read, IID<IPid> rmw_write);
 
         Sequence to_iid_sequence();
         std::unordered_map<IID<IPid>, int> read_value_map();
@@ -425,6 +431,9 @@ protected:
         bool is_done = false;          // whether the lead has been explored
 
         ViewEqTraceBuilder* container;
+
+        bool pending_addition_of_rmw_write = false;
+        IID<IPid> pending_rmw_write;
         
         Lead() {}
         Lead(const Lead &l, SOPFormula f) {
@@ -437,6 +446,7 @@ protected:
             Sequence merged_sequence_id = start.consistent_merge(constraint);
             merged_sequence = merged_sequence_id.to_event_sequence(c, mem);
             merged_sequence.set_container_reference(s.container);
+            add_rmw_write();
             container = s.container;
         }
         Lead(Sequence s, SOPFormula f, std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn>& mem) {
@@ -444,6 +454,7 @@ protected:
             start = s; forbidden = f;
             merged_sequence = s.to_event_sequence(mem);
             merged_sequence.set_container_reference(s.container);
+            add_rmw_write();
             container = s.container;
         }
         Lead(EventSequence s, SOPFormula f) {
@@ -451,15 +462,17 @@ protected:
             start = s.to_iid_sequence(); forbidden = f;
             merged_sequence = s;
             merged_sequence.set_container_reference(s.container);
+            add_rmw_write();
             container = s.container;
         }
 
         // if lead has only read of rmw, add the corresponding write to it
         // (only possible for forward leads, when the corresponding write is not known)
         void add_rmw_write(IID<IPid> rmw_read, IID<IPid> rmw_write);
-        // update rmw write value according to current sequence
-        void fix_rmw_write_value(Event rmw_write);
-
+        void add_rmw_write();
+        // add details of an rmw write whose read is in the sequence
+        void update_pending_rmw_write(IID<IPid> rmw_write);
+        
         /* this is prefix of l with view-adjustment */
         bool VA_isprefix(Lead& l);
         /* same reads and same values of reads */
