@@ -494,7 +494,7 @@ DPORDriver::Result DPORDriver::run(){
       estimate = std::round(TB->estimate_trace_count());
     }
     if (conf.dpor_algorithm == Configuration::VIEW_EQ && conf.print_progress) {
-      std::cout << "\nTrace #" << (count++) << "\n"; 
+      llvm::outs() << "\nTrace #" << (count++) << "\n"; 
       TB->debug_print();
     }
   }while(TB->reset()); /* snj:

@@ -9,7 +9,6 @@
 #include "SymEv.h"
 #include "TraceUtil.h"
 #include "SOPFormula.h"
-#include "Visible.h"
 
 typedef llvm::SmallVector<SymEv, 1> sym_ty;
 
@@ -616,10 +615,6 @@ protected:
         maps object to event that performed the latest write on the object
     */
    std::unordered_map<std::pair<unsigned, unsigned>, IID<IPid>, HashFn> last_write;
-    /* object base -> object offset -> Visible (vpo)
-        maps object to its visible-partial-order
-    */
-    std::unordered_map<std::pair<unsigned, unsigned>, Visible, HashFn> visible;
 
     /* [snj]: state corresponding to execution sequence prefix */
     std::vector<int> prefix_state;

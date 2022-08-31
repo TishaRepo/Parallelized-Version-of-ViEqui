@@ -101,7 +101,6 @@ void ViewEqTraceBuilder::replay_memory_access(int next_replay_thread, IID<IPid> 
   }
   //update vpo when read is done
   if(current_event.is_read()) { 
-    visible[current_event.object].execute_read(current_event.get_pid(), last_write[current_event.object], mem[current_event.object]);
     current_event.value = mem[current_event.object];
     threads[current_thread][current_event.get_index()].value = current_event.value;
   }
@@ -234,7 +233,6 @@ void ViewEqTraceBuilder::execute_next_lead() {
   
   //update vpo when read is done
   if(current_event.is_read()) { 
-    visible[current_event.object].execute_read(current_event.get_pid(), last_write[current_event.object], mem[current_event.object]);
     current_event.value = mem[current_event.object];
     threads[current_thread][current_event.get_index()].value = current_event.value;    
   }
@@ -672,7 +670,6 @@ bool ViewEqTraceBuilder::reset() {
   // cond_vars.clear();
   
   mem.clear();
-  visible.clear();
   last_write.clear();
 
   forbidden = states[replay_state_prefix].forbidden;
@@ -770,9 +767,6 @@ bool ViewEqTraceBuilder::spawn()
   /* Spawn event of thread is dummy */
   threads.push_back(Thread(child_cpid, -42));
 
-  for(auto it1 = visible.begin(); it1 != visible.end(); it1++) {
-      (it1->second).add_thread();
-  }
   return true;
 }
 
@@ -814,12 +808,6 @@ bool ViewEqTraceBuilder::store(const SymData &ml) {
 
     assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
     Enabled.push_back(current_event.iid);
-    if(current_thread == 0){
-      Visible vis(current_event.iid, current_event.value);
-      visible[current_event.object] = vis;
-    }
-    else
-      visible[current_event.object].add_enabled_write(current_event.iid, current_event.value);
   }
   else {
     /* exists_non_memory_access adds a no_load_store event in thread before executing
@@ -856,13 +844,6 @@ bool ViewEqTraceBuilder::atomic_store(const SymData &ml) {
 
     assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
     Enabled.push_back(current_event.iid);
-
-    if(current_thread == 0){
-      Visible vis( current_event.iid, current_event.value);
-      visible[current_event.object] = vis;
-    }
-    else
-      visible[current_event.object].add_enabled_write(current_event.iid, current_event.value);
   }
   else {
     /* exists_non_memory_access adds a no_load_store event in thread before executing
@@ -1043,13 +1024,6 @@ void ViewEqTraceBuilder::complete_rmw(const SymData &ml) {
   if (current_event.rmw_operation == RMWOperation::CMPXCHG)
     current_event.expected_value = threads[current_thread][threads[current_thread].size()-1].expected_value;
   threads[current_thread].push_back(current_event);
-
-  if(current_thread == 0){
-    Visible vis(current_event.iid, current_event.value);
-    visible[current_event.object] = vis;
-  }
-  else
-    visible[current_event.object].add_enabled_write(current_event.iid, current_event.value);
 
   // add to alpha lead (only added for forward leads)
   IID<IPid> corresponding_read_iid = threads[current_thread][threads[current_thread].events.size()-2].iid;
@@ -2086,75 +2060,13 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::unexploredInfluencers(Event er
 std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredInfluencers(Event er, SOPFormula &f){
   std::unordered_set<IID<IPid>> ei;
   std::unordered_set<int> forbidden_values;
-  // std::unordered_set<int> values, forbidden_values;
 
-  // std::pair<unsigned, unsigned> o_id = er.object;
-  // int pid = er.get_pid();
-  
-  // auto it = visible.find(o_id);
-  // assert(it != visible.end());
-  // assert(visible[o_id].mpo[0].size() == 1); //only the init event in first row
-  // assert(visible[o_id].mpo.size() == visible[o_id].visible_start.size() + 1);
-  
-  // //[nau]: check if init event is visible to er
-  // if(visible[o_id].check_init_visible(pid)) {
-  //   IID<IPid> initid = visible[o_id].mpo[0][0].first;
-  //   int init_value = visible[o_id].mpo[0][0].second;
-    
-  //   assert(init_value == 0);
-  //   if(f.check_evaluation(std::make_pair(initid, init_value)) != RESULT::TRUE ) ei.insert(initid);
-  //   else forbidden_values.insert(init_value);
-  // }
-  
-  // //for writes other than init
-  // // check if read is from thr0 after join
-  // if(pid == 0){
-  //   if( ! visible[o_id].first_read_after_join ){
-  //     ei.insert(last_write[o_id]);
-  //     return ei;
-  //   }
-  //   for(int i = 1; i < visible[o_id].mpo.size(); i++){
-  //     if(visible[o_id].mpo[i].size() != 0){
-  //       std::pair<IID<IPid>, int> e = visible[o_id].mpo[i][visible[o_id].mpo[i].size() - 1];
-  //       IID<IPid> e_id = e.first;
-  //       int e_val = e.second;
-  //       if(values.find(e_val) != values.end() || forbidden_values.find(e_val) != forbidden_values.end() || find(Enabled.begin(), Enabled.end(), e_id) != Enabled.end() ) continue;
-
-  //       if(f.check_evaluation(std::make_pair(er.iid, e_val)) == RESULT::TRUE ) forbidden_values.insert(e_val);
-  //       else{
-  //         ei.insert(e_id);
-  //         values.insert(e_val);
-  //       }
-  //     }
-  //   }
-  // }
-  // else{
-  //   for(int i = 0; i < visible[o_id].visible_start[pid - 1].size(); i++){
-  //         int j = visible[o_id].visible_start[pid - 1][i];
-  //         for( int k = j; k < visible[o_id].mpo[i + 1].size() + 1; k++){
-  //             if(k == 0) continue;
-  //             std::pair<IID<IPid>, int> e = visible[o_id].mpo[i + 1][k - 1];
-  //             IID<IPid> e_id = e.first;
-  //             int e_val = e.second;
-
-  //             //repeated value || already checked forbidden value || unexplored event
-  //             if(values.find(e_val) != values.end() || 
-  //               forbidden_values.find(e_val) != forbidden_values.end() || 
-  //               find(Enabled.begin(), Enabled.end(), e_id) != Enabled.end() ) continue;
-
-  //             if(f.check_evaluation(std::make_pair(er.iid, e_val)) == RESULT::TRUE ) forbidden_values.insert(e_val);
-  //             else{
-  //               ei.insert(e_id);
-  //               values.insert(e_val);
-  //             }
-  //         }
-  //     }
-  // }
   for (int i = execution_sequence.size()-1; i >= 0; i--) {
     Event ievent = get_event(execution_sequence[i]);
     if (er.RWpair(ievent)) {
       if (forbidden_values.find(ievent.value) != forbidden_values.end()) 
         continue;
+        
       if (f.check_evaluation(std::make_pair(er.iid, ievent.value)) == RESULT::TRUE ) {
         forbidden_values.insert(ievent.value);
         continue;

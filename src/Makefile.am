@@ -49,7 +49,6 @@ libnidhugg_a_SOURCES = \
   TSOInterpreter.cpp TSOInterpreter.h \
   TSOPSOTraceBuilder.h \
   TSOTraceBuilder.cpp TSOTraceBuilder.h \
-  Visible.cpp Visible.h\
   VClock.cpp VClock.h VClock.tcc \
   vecset.h vecset.tcc \
   ViewEqTraceBuilder.cpp ViewEqTraceBuilder.h 
