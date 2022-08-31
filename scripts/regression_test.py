@@ -57,7 +57,7 @@ test_results = {'basic': [(2,'N'),    # Test1
                             (5,'N'),  # Test5
                             (4,'N'),  # Test6
                             (8,'N'),  # Test7
-                            (8,'N'),  # Test8
+                            (9,'N'),  # Test8
                             (2,'N'),  # Test9
                             (3,'N'),  # Test10
                             (4,'N'),  # Test11

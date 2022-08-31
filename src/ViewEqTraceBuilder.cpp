@@ -255,7 +255,6 @@ void ViewEqTraceBuilder::analyse_unexplored_influenecers(IID<IPid> read_event) {
 
 void ViewEqTraceBuilder::forward_analysis(Event event, SOPFormula& forbidden) {
   std::unordered_set<IID<IPid>> ui = unexploredInfluencers(event, forbidden);
-  Sequence uiseq(ui, this);
  
   SOPFormula fui_all = forbidden;
   for (auto it = ui.begin(); it != ui.end(); it++) {
@@ -264,19 +263,17 @@ void ViewEqTraceBuilder::forward_analysis(Event event, SOPFormula& forbidden) {
     fui_all || std::make_pair(event.iid, threads[(*it).get_pid()][(*it).get_index()].value);
   }
  
-  uiseq.push_front(event.iid); // first forward lead : (read event).(sequence of ui)
   std::vector<Lead> L;
 
   if (!(forbidden.check_evaluation(std::make_pair(event.iid, mem[event.object])) == RESULT::TRUE))
-    L.push_back(Lead(uiseq, fui_all, mem));
+    L.push_back(Lead(Sequence(event.iid, this), fui_all, mem));
    
   for (auto it = ui.begin(); it != ui.end(); it++) {
     if (get_event(*it).value == mem[event.object]) 
       continue; // ui value = curretn value, this value already seen in first forward lead
 
-    Sequence start = uiseq;  // start = read.ui1.ui2...it...uin
-    start.erase((*it));      // start = read.ui1.ui2...uin
-    start.push_front((*it)); // start = it.read.ui1.ui2...uin
+    Sequence start(event.iid, this);
+    start.push_front(*it);
 
     SOPFormula fui = forbidden; 
     fui || (std::make_pair(event.iid, mem[event.object]));
@@ -2066,7 +2063,7 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredInfluencers(Event er, 
     if (er.RWpair(ievent)) {
       if (forbidden_values.find(ievent.value) != forbidden_values.end()) 
         continue;
-        
+
       if (f.check_evaluation(std::make_pair(er.iid, ievent.value)) == RESULT::TRUE ) {
         forbidden_values.insert(ievent.value);
         continue;
@@ -2287,7 +2284,7 @@ bool ViewEqTraceBuilder::forward_lead(std::unordered_map<int, std::vector<Lead>>
       f || states[fwd_state].forbidden; // combine forbidden with forbidden of the state after current start
       fwd_const = states[fwd_state].alpha_sequence();
       
-      Lead fwd_lead(fwd_const, (lead).VA_suffix(states[state].leads[states[state].alpha]), f, states[fwd_state].mem);
+      Lead fwd_lead(fwd_const, lead.VA_suffix(states[state].leads[states[state].alpha]), f, states[fwd_state].mem);
       if (lead.pending_addition_of_rmw_write) {
         fwd_lead.update_pending_rmw_write(lead.pending_rmw_write);
       }
