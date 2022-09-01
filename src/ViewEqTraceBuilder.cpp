@@ -401,8 +401,8 @@ void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula& forbidd
   std::unordered_set<int> ui_values;
   SOPFormula fui(std::make_pair(event.iid, mem[event.object]));
   for (auto it = ui.begin(); it != ui.end(); it++) {
-    fui || std::make_pair(event.iid, get_event((*it)).value);
-    ui_values.insert(get_event((*it)).value);
+    fui || std::make_pair(event.iid, get_event(*it).value);
+    ui_values.insert(get_event(*it).value);
   }
   
   for (auto it = ei.begin(); it != ei.end(); it++) {
@@ -413,13 +413,11 @@ void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula& forbidd
       != covered_read_values[event.get_iid()].end())
       continue; // skip current value, it is covered by another ei
     
-    covered_read_values[event.get_iid()].push_back(eit.value);
-    int es_idx = execution_sequence.index_of((*it)); // index in execution_sequnce of ei
-    
     Sequence start = execution_sequence.backseq((*it), event.iid);
     if (start.empty()) // cannot form view-start for (*it --rf--> event)
       continue;
 
+    int es_idx = execution_sequence.index_of((*it)); // index in execution_sequnce of ei
     IID<IPid> event_at_union_state = (*it); // event explored from state of lead union
     if (eit.is_rmw) {
       // if the evnt is rmw (write), then shift 1 up to its corresponding read
@@ -442,6 +440,8 @@ void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula& forbidd
     inF || fui; inF || fei;
     Lead back_lead(constraint, start, inF, states[event_index].mem);
     L[event_index].push_back(back_lead);
+
+    covered_read_values[event.get_iid()].push_back(eit.value);
   }
 }
 
