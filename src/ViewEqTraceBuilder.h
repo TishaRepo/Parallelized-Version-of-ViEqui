@@ -212,7 +212,7 @@ protected:
         void make_join();
         void make_read();
         void make_write();
-        SymEv sym_event() const {return symEvent[0];}
+        SymEv sym_event() const {if (symEvent.size() > 0) return symEvent[0]; else return SymEv();}
 
         /* is read of shared object */
         bool is_read() {return (symEvent.size()==1 && sym_event().addr().addr.block.is_global() && type == READ);}
