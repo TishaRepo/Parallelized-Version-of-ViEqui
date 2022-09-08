@@ -207,6 +207,11 @@ void ViewEqTraceBuilder::execute_next_lead() {
   // if (it == Enabled.end()) {
   //   out << "not found " << next_event << " in Enabled\n";
   //   out << "current explored seq=" << execution_sequence.to_string() << "\n";
+  //   out << "Enabled:\n";
+  //   for (auto enit = Enabled.begin(); enit != Enabled.end(); enit++) {
+  //     out << (*enit) << ", ";
+  //   }
+  //   out << "\n";
   // }
   assert(it != Enabled.end());
   Enabled.erase(it);
@@ -1771,7 +1776,66 @@ ViewEqTraceBuilder::Sequence ViewEqTraceBuilder::Sequence::consistent_merge(Sequ
 
   // llvm::outs() << primary_seq.to_string() << " (+) " << other_seq.to_string() << " = ";
   // llvm::outs() << join(primary_seq, other_seq).to_string() << "\n";
-  return primary_seq.join(other_seq);;
+  Sequence result = primary_seq.join(other_seq);
+  if (!result.co_sanity(primary_seq, other_seq)) // co: causal order = --po--> U --rf-->
+    result.clear(); // co of result does not contain co of primary and other
+
+  return result;
+}
+
+std::vector<std::pair<IID<IPid>, IID<IPid>>> ViewEqTraceBuilder::Sequence::get_causal_order() {
+  std::unordered_map<unsigned, std::unordered_map<unsigned, IID<IPid>>> last_write; // memory object -> last write event
+  std::unordered_map<int, IID<IPid>> previous_thread_event; // thread-id -> last event
+
+  std::vector<std::pair<IID<IPid>, IID<IPid>>> co;
+
+  for (auto it = begin(); it != end(); it++) {
+    if (previous_thread_event.find(it->get_pid()) != previous_thread_event.end()) {
+      co.push_back(std::make_pair(previous_thread_event[it->get_pid()], (*it)));
+    }
+    previous_thread_event[it->get_pid()] = (*it);
+
+    Event e = container->get_event(*it);
+    if (e.is_read()) {
+      if (last_write[e.object.first].find(e.object.second) != last_write[e.object.first].end()) {
+        co.push_back(std::make_pair(last_write[e.object.first][e.object.second], (*it)));
+      }
+    }
+
+    if (e.is_write()) {
+      last_write[e.object.first][e.object.second] = (*it);
+    }
+  }
+
+  return co;
+}
+
+bool ViewEqTraceBuilder::Sequence::co_sanity(Sequence& seq1, Sequence& seq2) {
+  if (empty()) 
+    return false; // if this sequence is empty then co of seq1 and seq2 are trivially not contained in it
+
+  std::vector<std::pair<IID<IPid>, IID<IPid>>> co = get_causal_order();
+
+  std::vector<std::pair<IID<IPid>, IID<IPid>>> co1 = seq1.get_causal_order();
+  std::vector<std::pair<IID<IPid>, IID<IPid>>> co2 = seq2.get_causal_order();
+
+  for (auto it = co1.begin(); it != co1.end(); it++) {
+    if (std::find(co.begin(), co.end(), (*it)) == co.end())
+      return false; // co1 not contained in co
+  }
+
+  for (auto it = co2.begin(); it != co2.end(); it++) {
+    if (std::find(co.begin(), co.end(), (*it)) == co.end())
+      return false; // co2 not contained in co
+  }
+
+  for (auto it = co.begin(); it != co.end(); it++) {
+    if (std::find(co1.begin(), co1.end(), (*it)) == co1.end())
+      if (std::find(co2.begin(), co2.end(), (*it)) == co2.end())
+        return false; // co not contained in co1 U co2
+  }
+
+  return true;
 }
 
 std::string ViewEqTraceBuilder::EventSequence::to_string() {

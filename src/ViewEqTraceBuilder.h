@@ -335,6 +335,10 @@ protected:
         // [snj]: consistent merge, merges 2 sequences such that all read events maitain their sources
         //          i.e, reads-from relation remain unchanged
         Sequence consistent_merge(Sequence &other_seq);
+        // --co--> = --po--> U --rf-->
+        std::vector<std::pair<IID<IPid>, IID<IPid>>> get_causal_order();
+        // co of this = co of seq1 U co of seq 2
+        bool co_sanity(Sequence& seq1, Sequence& seq2);
 
         std::string to_string();
 
@@ -380,6 +384,8 @@ protected:
         void erase(IID<IPid> event_id) {erase(find_iid(event_id));}
         event_sequence_iterator erase(event_sequence_iterator it) {return events.erase(it);}
 
+        // add rmw write if only corresponding rmw read in sequence
+        // return true if value in sequence modified with addition, false otherwise
         void add_rmw_write(IID<IPid> rmw_read, IID<IPid> rmw_write);
 
         Sequence to_iid_sequence();
@@ -396,6 +402,7 @@ protected:
 
         bool operator==(EventSequence seq);
         bool operator!=(EventSequence seq);
+        Event& operator[](std::size_t i) {return events[i];}
 
         std::string to_string();
     };
@@ -518,7 +525,9 @@ protected:
         std::vector<Lead> unexplored_leads();
         Lead next_unexplored_lead();
 
+        // no alpha chosen yet
         bool alpha_empty() {return (alpha == -1);}
+        // merged sequence of alpha lead
         EventSequence alpha_sequence() {if (alpha == -1) {llvm::outs() << "MUST NOT BE HERE\n"; return EventSequence();} return leads[alpha].merged_sequence;}
         std::string print_leads();
     };
