@@ -1,158 +1,164 @@
-extern int __VERIFIER_nondet_int(void);
-extern void abort(void);
-void assume_abort_if_not(int cond) {
-  if(!cond) {abort();}
-}
-extern void abort(void);
 #include <assert.h>
-void reach_error() { assert(0); }
-
+#include <stdatomic.h>
 #include <pthread.h>
+#include <stdbool.h>
+
+#define NUM_THREADS 10
+#define LOOP_LIMIT 4
 
 /*
 to correctly model the cv_broadcast(COND) statement "b1_COND := 1;" must be manually changed to "b1_COND$ := 1;" in the abstract BP
 */
 
-#define assume(e) assume_abort_if_not(e)
-#define assert_nl(e) { if(!(e)) { goto ERROR; } }
-#undef assert
-#define assert(e) { if(!(e)) { ERROR: {reach_error();abort();}(void)0; } }
+atomic_int MTX;
+int COND;
 
-#define cv_wait(c,m){ \
-  c = 0; \
-  __VERIFIER_atomic_release(); \
-  assume(c); \
-  __VERIFIER_atomic_acquire(); }
-
-#define cv_broadcast(c) c = 1 //overapproximates semantics (for threader)
-
-#define LOCKED 1
-
-#define mutex_enter(m) __VERIFIER_atomic_acquire();assert_nl(m==LOCKED); //acquire lock and ensure no other thread unlocked it
-#define mutex_exit(m) __VERIFIER_atomic_release()
-
-volatile _Bool MTX = !LOCKED;
-__thread _Bool COND = 0;
-
-void __VERIFIER_atomic_acquire()
+bool acquire()
 {
-	assume(MTX==0);
-	MTX = 1;
+	int e = 0, v = 1;
+	return atomic_compare_exchange_strong_explicit(&MTX, &e, v, memory_order_seq_cst, memory_order_seq_cst);
 }
 
-void __VERIFIER_atomic_release()
+bool release()
 {
-	assume(MTX==1);
-	MTX = 0;
+	int e = 1, v = 0;
+	return atomic_exchange_explicit(&MTX, v, memory_order_seq_cst);
 }
 
-#define boolean_t _Bool
-#define ASSERT(e) assert_nl(e)
-#define MUTEX_HELD(e) (e==LOCKED)
-#define B_TRUE 1
-#define B_FALSE 0
+bool cv_wait(){
+  int ctr = 0;
+  COND = 0;
+  release();
+  while (ctr++ < LOOP_LIMIT) {
+    if (COND == 0)
+      continue;
 
-_Bool LOADED = 0;
-_Bool LOADING = 0;
+    return acquire(); 
+  }
 
-inline void space_map_contains(){
-	ASSERT(MUTEX_HELD(MTX));
-  assert(1);
+  return false;
 }
 
-inline void space_map_walk(){
-	ASSERT(MUTEX_HELD(MTX));
-  assert(1);
+void cv_broadcast() {
+  COND = 1; //overapproximates semantics (for threader)
 }
 
-inline void space_map_load_wait(){
-	ASSERT(MUTEX_HELD(MTX));
+int LOADED;
+int LOADING;
+
+void space_map_contains(){
+	assert(MTX == 1);
+  // assert(1);
+}
+
+void space_map_walk(){
+	assert(MTX == 1);
+  // assert(1);
+}
+
+void space_map_load_wait(){
+	assert(MTX == 1);
 	while (LOADING) {
-		ASSERT(!LOADED);
-		cv_wait(COND, MTX);
-		ASSERT(COND); }
-      	mutex_enter(MTX);
-  assert(1);
+		assert(!LOADED);
+		cv_wait();
+		assert(COND); }
+      	acquire();
+  // assert(1);
 }
 
-inline void space_map_load(){
-	ASSERT(MUTEX_HELD(MTX));
-	ASSERT(!LOADED);
-	ASSERT(!LOADING);
-	LOADING = B_TRUE;
-	mutex_exit(MTX);
-	mutex_enter(MTX);
-	for (;__VERIFIER_nondet_int();) {
-		mutex_exit(MTX);
-		mutex_enter(MTX);
-		if (__VERIFIER_nondet_int())
-			break; }
-	if (__VERIFIER_nondet_int())
-		LOADED = B_TRUE;
-	LOADING = B_FALSE;
-	cv_broadcast(COND);
-  assert(1);
+void space_map_load(int k){
+	int ctr = 0;
+
+	assert(MTX == 1);
+	assert(!LOADED);
+	assert(!LOADING);
+	LOADING = 1;
+	release();
+	acquire();
+	for (;k && ctr++ < LOOP_LIMIT;) {
+		release();
+		acquire();
+		if (k)
+			break; 
+	}
+	if (k)
+		LOADED = 1;
+	LOADING = 0;
+	cv_broadcast();
+  // assert(1);
 }
 
-inline void space_map_unload(){
-	ASSERT(MUTEX_HELD(MTX));
-	LOADED = B_FALSE;
-	ASSERT(MUTEX_HELD(MTX));
-  assert(1);
+void space_map_unload(){
+	assert(MTX == 1);
+	LOADED = 0;
+	assert(MTX == 1);
+  // assert(1);
 }
 
-inline int space_map_alloc(){
-	if (__VERIFIER_nondet_int())
-		ASSERT(MUTEX_HELD(MTX));
-  assert(1);
-	return __VERIFIER_nondet_int();
+int space_map_alloc(int k){
+	if (k)
+		assert(MTX == 1);
+  // assert(1);
+	return k;
 }
 
-inline void space_map_sync(){
-	ASSERT(MUTEX_HELD(MTX));
-	if (__VERIFIER_nondet_int())
+void space_map_sync(int k){
+	int ctr = 0;
+	assert(MTX == 1);
+	if (k)
 		return;
-	while (__VERIFIER_nondet_int()) {
-		while (__VERIFIER_nondet_int()) {
-			if (__VERIFIER_nondet_int()) {
-				mutex_exit(MTX);
-				mutex_enter(MTX); }}}
-	if (__VERIFIER_nondet_int()) {
-		mutex_exit(MTX);
-		mutex_enter(MTX); }
-  assert(1);
+	while (k && ctr++ < LOOP_LIMIT) {
+		while (k && ctr++ < LOOP_LIMIT) {
+			if (k) {
+				release();
+				acquire(); }}}
+	if (k) {
+		release();
+		acquire(); }
+  // assert(1);
 }
 
-inline void space_map_ref_generate_map(){
-	ASSERT(MUTEX_HELD(MTX));
-  assert(1);
+void space_map_ref_generate_map(){
+	assert(MTX == 1);
+  // assert(1);
 }
 
 void* thr1(void* arg){
-	mutex_enter(MTX);
-	switch(__VERIFIER_nondet_int()){
+	int k = *((int *)arg);
+	acquire();
+	switch((k+0)%9){
 		case 1: space_map_contains(); break;
 		case 2: space_map_walk(); break;
 		case 3: if(LOADING)
 				space_map_load_wait();
 			else if(!LOADED)
-				space_map_load();
+				space_map_load(k);
 			else
 				space_map_unload(); break;
 			break;
-		case 6: space_map_alloc(); break;
-		case 7: space_map_sync(); break;
+		case 6: space_map_alloc(k); break;
+		case 7: space_map_sync(k); break;
 		case 8: space_map_ref_generate_map(); break; }
-	ASSERT(MUTEX_HELD(MTX));
-	mutex_exit(MTX);
-  assert(1);
+	assert(MTX == 1);
+	release();
+  // assert(1);
 
   return 0;
 }
 
 int main(){
-  pthread_t t;
+  pthread_t t[NUM_THREADS];
 
-	while(1) pthread_create(&t, 0, thr1, 0);
+  atomic_init(&MTX, 0);
+  COND = 0;
+
+  LOADED = 0;
+  LOADING = 0;
+
+  int arg[NUM_THREADS];
+  for (int n = 0; n < NUM_THREADS; n++) {
+	arg[n] = n;
+    pthread_create(&t[n], 0, thr1, &arg[n]);
+  }
 }
 

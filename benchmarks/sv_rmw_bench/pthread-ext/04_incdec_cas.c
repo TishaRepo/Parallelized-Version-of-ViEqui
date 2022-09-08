@@ -1,46 +1,29 @@
-extern int __VERIFIER_nondet_int(void);
-extern void abort(void);
 #include <assert.h>
-void reach_error() { assert(0); }
 
 //http://www.ibm.com/developerworks/java/library/j-jtp04186/index.html
 //Listing 2. A nonblocking counter using CAS
 
+#include <stdatomic.h>
+#include <stdbool.h>
 #include <pthread.h>
 
-#undef assert
-#define assert(e) { if(!(e)) { ERROR: {reach_error();abort();}(void)0; } }
+#define NUM_THREADS 2
+#define LOOP_LIMIT 5
 
-void __VERIFIER_atomic_CAS(
-  volatile unsigned *v,
-  unsigned e,
-  unsigned u,
-  unsigned *r,
-  volatile unsigned *flag)
-{
-	if(*v == e)
-	{
-		*flag = 1, *v = u, *r = 1;
-	}
-	else
-	{
-		*r = 0;
-	}
-}
-
-volatile unsigned value = 0;
+atomic_uint value;
 
 /*helpers for the property*/
 volatile unsigned inc_flag = 0;
 volatile unsigned dec_flag = 0;
 
-void __VERIFIER_atomic_assert1(unsigned inc__v)
+void assert1(unsigned inc__v)
 {
 	assert(dec_flag || value > inc__v);
 }
 
-inline unsigned inc() {
-	unsigned inc__v, inc__vn, inc__casret;
+unsigned inc() {
+	unsigned inc__v, inc__vn;
+	int ctr = 0;
 
 	do {
 		inc__v = value;
@@ -51,22 +34,23 @@ inline unsigned inc() {
 
 		inc__vn = inc__v + 1;
 
-		__VERIFIER_atomic_CAS(&value,inc__v,inc__vn,&inc__casret,&inc_flag);
+		if (atomic_compare_exchange_strong_explicit(&value,&inc__v,inc__vn,memory_order_seq_cst,memory_order_seq_cst)) {
+			assert1(inc__v);
+		};
 	}
-	while (inc__casret==0);
-
-  __VERIFIER_atomic_assert1(inc__v);
+	while (++ctr < LOOP_LIMIT);
 
 	return inc__vn;
 }
 
-void __VERIFIER_atomic_assert2(unsigned dec__v)
+void assert2(unsigned dec__v)
 {
   assert(inc_flag || value < dec__v);
 }
 
-inline unsigned dec() {
-	unsigned dec__v, dec__vn, dec__casret;
+unsigned dec() {
+	unsigned dec__v, dec__vn;
+	int ctr = 0;
 
 	do {
 		dec__v = value;
@@ -77,29 +61,39 @@ inline unsigned dec() {
 
 		dec__vn = dec__v - 1;
 
-		__VERIFIER_atomic_CAS(&value,dec__v,dec__vn,&dec__casret,&dec_flag);
-
+		if (atomic_compare_exchange_strong_explicit(&value,&dec__v,dec__vn,memory_order_seq_cst,memory_order_seq_cst)) {
+			assert2(dec__v);
+		};
 	}
-	while (dec__casret==0);
+	while (++ctr < LOOP_LIMIT);
 
-  __VERIFIER_atomic_assert2(dec__v);
 	return dec__vn;
 }
 
 void* thr1(void* arg){
-	int r = __VERIFIER_nondet_int();
+	inc();
 
-	if(r){ inc(); }
-	else{ dec(); }
+  return NULL;
+}
 
-  return 0;
+void* thr2(void* arg){
+	dec();
+
+  return NULL;
 }
 
 int main(){
-  pthread_t t;
+  pthread_t t[NUM_THREADS];
 
-	while(1) {
-		pthread_create(&t, 0, thr1, 0);
-	}
+  atomic_init(&value,0);
+
+  inc_flag = 0;
+  dec_flag = 0;
+
+  for (int n = 0; n < NUM_THREADS; n+=2)
+	pthread_create(&t[n], NULL, thr1, NULL);
+
+  for (int n = 1; n < NUM_THREADS; n+=2)
+	pthread_create(&t[n], NULL, thr2, NULL);
 }
 

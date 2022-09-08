@@ -1,90 +1,106 @@
-extern void abort(void);
-void assume_abort_if_not(int cond) {
-  if(!cond) {abort();}
-}
-extern int __VERIFIER_nondet_int(void);
-extern void abort(void);
 #include <assert.h>
-void reach_error() { assert(0); }
 
 //http://www.ibm.com/developerworks/java/library/j-jtp04186/index.html
 //Listing 2. A counter using locks
 
+#include <stdatomic.h>
+#include <stdbool.h>
 #include <pthread.h>
 
-#define assume(e) assume_abort_if_not(e)
-#undef assert
-#define assert(e) { if(!(e)) { ERROR: {reach_error();abort();}(void)0; } }
+#define NUM_THREADS 2
+#define LOOP_LIMIT 2
 
-#define atomic_assert(e) {__VERIFIER_atomic_acquire();assert(e);__VERIFIER_atomic_release();}
+volatile unsigned value;
+atomic_uint m;
 
-volatile unsigned value = 0, m = 0;
-
-void __VERIFIER_atomic_acquire()
+bool acquire()
 {
-	assume(m==0);
-	m = 1;
+	unsigned int e = 0, v = 1;
+	return atomic_compare_exchange_strong_explicit(&m, &e, v, memory_order_seq_cst, memory_order_seq_cst);
 }
 
-void __VERIFIER_atomic_release()
+bool release()
 {
-	assume(m==1);
-	m = 0;
+	int e = 1, v = 0;
+	return atomic_exchange_explicit(&m, v, memory_order_seq_cst);
 }
 
 /*helpers for the property*/
-volatile unsigned inc_flag = 0;
-volatile unsigned dec_flag = 0;
+volatile unsigned inc_flag;
+volatile unsigned dec_flag;
 
-inline unsigned inc() {
+unsigned inc() {
 	unsigned inc_v = 0;
+	int ctr = 0;
 
-	__VERIFIER_atomic_acquire();
+	while (!acquire()) {
+		if (++ctr < LOOP_LIMIT) continue;
+		return 0;
+	}
+	
 	if(value == 0u-1) {
-		__VERIFIER_atomic_release();
+		release();
 		return 0;
 	}else{
 		inc_v = value;
 		inc_flag = 1, value = inc_v + 1; /*set flag, then update*/
-		__VERIFIER_atomic_release();
+		release();
 
-		atomic_assert(dec_flag || value > inc_v);
+		assert(dec_flag || value > inc_v);
 
 		return inc_v + 1;
 	}
 }
 
-inline unsigned dec() {
+unsigned dec() {
 	unsigned dec_v;
 
-	__VERIFIER_atomic_acquire();
+	int ctr = 0;
+
+	while (!acquire()) {
+		if (++ctr < LOOP_LIMIT) continue;
+		return 0;
+	}
 	if(value == 0) {
-		__VERIFIER_atomic_release();
+		release();
 
 		return 0u-1; /*decrement failed, return max*/
 	}else{
 		dec_v = value;
 		dec_flag = 1, value = dec_v - 1; /*set flag, then update*/
-		__VERIFIER_atomic_release();
+		release();
 
-		atomic_assert(inc_flag || value < dec_v);
+		assert(inc_flag || value < dec_v);
 
 		return dec_v - 1;
 	}
 }
 
 void* thr1(void* arg){
-	int r = __VERIFIER_nondet_int();
+	inc();
 
-	if(r){ inc(); }
-	else{ dec(); }
+  return NULL;
+}
 
-  return 0;
+void* thr2(void* arg){
+	dec();
+
+  return NULL;
 }
 
 int main(){
-  pthread_t t;
+  pthread_t t[NUM_THREADS];
 
-	while(1) { pthread_create(&t, 0, thr1, 0); }
+  volatile unsigned value = 0;
+  atomic_init(&m,0);
+
+  inc_flag = 0;
+  dec_flag = 0;
+
+  for (int n = 0; n < NUM_THREADS; n+=2)
+	pthread_create(&t[n], NULL, thr1, NULL);
+
+  for (int n = 1; n < NUM_THREADS; n+=2)
+	pthread_create(&t[n], NULL, thr2, NULL);
 }
 

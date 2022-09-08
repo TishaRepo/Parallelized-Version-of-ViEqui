@@ -1,47 +1,39 @@
-extern void abort(void);
-void assume_abort_if_not(int cond) {
-  if(!cond) {abort();}
-}
-extern void abort(void);
 #include <assert.h>
-void reach_error() { assert(0); }
 
 //Symmetry-Aware Predicate Abstraction for Shared-Variable Concurrent Programs (Extended Technical Report). CoRR abs/1102.2330 (2011)
 
+#include <stdatomic.h>
 #include <pthread.h>
 
-#define assume(e) assume_abort_if_not(e)
-#undef assert
-#define assert(e) { if(!(e)) { ERROR: {reach_error();abort();}(void)0; } }
+#define NUM_THREADS 4
+#define LOOP_LIMIT 2
 
-unsigned int r = 0;
-unsigned int s = 0;
-
-void __VERIFIER_atomic_inc_r()
-{
-  assume(r!=-1); //to avoid overflows
-  r = r + 1; 
-}
+atomic_uint r;
+atomic_uint s;
 
 void* thr1(void* arg){
   unsigned int l = 0;
+  int ctr = 0;
 
-  __VERIFIER_atomic_inc_r();
+  atomic_fetch_add_explicit(&r, 1, memory_order_seq_cst);
   if(r == 1){
-    L3: s = s + 1;
-    l = l + 1;
-    assert(s == l);
-    goto L3;
+    while (ctr++ < LOOP_LIMIT) {
+      L3: s = s + 1;
+      l = l + 1;
+      assert(s == l);
+    }
   }
 
   return 0;
 }
 
 int main(){
-  pthread_t t;
+  pthread_t t[NUM_THREADS];
 
-  while(1){
-    pthread_create(&t, 0, thr1, 0);
-  }
+  atomic_init(&r, 0);
+  atomic_init(&s, 0);
+
+  for (int n = 0; n < NUM_THREADS; n++)
+	  pthread_create(&t[n], NULL, thr1, NULL);
 }
 

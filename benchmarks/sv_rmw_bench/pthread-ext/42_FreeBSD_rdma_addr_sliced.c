@@ -1,107 +1,106 @@
-extern int __VERIFIER_nondet_int(void);
-extern void abort(void);
-void assume_abort_if_not(int cond) {
-  if(!cond) {abort();}
-}
-extern void abort(void);
 #include <assert.h>
-void reach_error() { assert(0); }
-
+#include <stdatomic.h>
 #include <pthread.h>
+#include <stdbool.h>
+
+#define NUM_THREADS 10
+#define LOOP_LIMIT 4
 
 /*
 to correctly model the cv_broadcast(COND) statement "b1_COND := 1;" must be manually changed to "b1_COND$ := 1;" in the abstract BP
 */
 
-#define assume(e) assume_abort_if_not(e)
-#define assert_nl(e) { if(!(e)) { goto ERROR; } }
-#undef assert
-#define assert(e) { if(!(e)) { ERROR: {reach_error();abort();}(void)0; } }
+atomic_int MTX;
+int COND;
 
-#define cv_wait(c,m){ \
-  c = 0; \
-  __VERIFIER_atomic_release(); \
-  assume(c); \
-  __VERIFIER_atomic_acquire(); }
-
-#define cv_broadcast(c) c = 1 //overapproximates semantics (for threader)
-
-#define LOCKED 1
-
-#define mtx_lock(m) __VERIFIER_atomic_acquire();assert_nl(m==LOCKED); //acquire lock and ensure no other thread unlocked it
-#define mtx_unlock(m) __VERIFIER_atomic_release()
-
-volatile _Bool MTX = !LOCKED;
-__thread _Bool COND = 0;
-
-void __VERIFIER_atomic_acquire()
+bool acquire()
 {
-	assume(MTX==0);
-	MTX = 1;
+	int e = 0, v = 1;
+	return atomic_compare_exchange_strong_explicit(&MTX, &e, v, memory_order_seq_cst, memory_order_seq_cst);
 }
 
-void __VERIFIER_atomic_release()
+bool release()
 {
-	assume(MTX==1);
-	MTX = 0;
+	int e = 1, v = 0;
+	return atomic_exchange_explicit(&MTX, v, memory_order_seq_cst);
 }
 
-volatile unsigned int refctr = 0;
+bool cv_wait(){
+  int ctr = 0;
+  COND = 0;
+  release();
+  while (ctr++ < LOOP_LIMIT) {
+    if (COND == 0)
+      continue;
 
-inline static void put_client(int client){
-	mtx_lock(MTX);
+    return acquire(); 
+  }
+
+  return false;
+}
+
+void cv_broadcast() {
+  COND = 1; //overapproximates semantics (for threader)
+}
+
+int refctr;
+
+static void put_client(int client){
+	acquire();
 	--refctr;
 	if (refctr == 0) {
-		cv_broadcast(COND); }
-	mtx_unlock(MTX);
-  assert(1);
+		cv_broadcast(); }
+	release();
+//   assert(1);
 }
 
-inline void rdma_addr_unregister_client(int client){
+void rdma_addr_unregister_client(int client){
 	put_client(client);
-	mtx_lock(MTX);
+	acquire();
 	if (refctr) {
-		cv_wait(COND,MTX); }
-	mtx_unlock(MTX);
-  assert(1);
+		cv_wait(); }
+		assert(COND);
+	release();
+//   assert(1);
 }
 
-inline static void queue_req(/*struct addr_req *req*/){
-	mtx_lock(MTX);
-	mtx_unlock(MTX);
-  assert(1);
+static void queue_req(/*struct addr_req *req*/){
+	acquire();
+	release();
+//   assert(1);
 }
 
-inline static void process_req(/*void *ctx, int pending*/){
-	mtx_lock(MTX);
-	mtx_unlock(MTX);
-  assert(1);
+static void process_req(/*void *ctx, int pending*/){
+	acquire();
+	release();
+//   assert(1);
 }
 
-inline void rdma_resolve_ip(/*struct rdma_addr_client *client,struct sockaddr *src_addr, struct sockaddr *dst_addr,struct rdma_dev_addr *addr, int timeout_ms,void (*callback)(int status, struct sockaddr *src_addr,struct rdma_dev_addr *addr, void *context),void *context*/){
-	mtx_lock(MTX);
+void rdma_resolve_ip(int v/*struct rdma_addr_client *client,struct sockaddr *src_addr, struct sockaddr *dst_addr,struct rdma_dev_addr *addr, int timeout_ms,void (*callback)(int status, struct sockaddr *src_addr,struct rdma_dev_addr *addr, void *context),void *context*/){
+	acquire();
 	refctr++;
-	mtx_unlock(MTX);
-	if(__VERIFIER_nondet_int()){
-		mtx_lock(MTX);
+	release();
+	if(v){
+		acquire();
 		refctr--;
-		mtx_unlock(MTX); }
-  assert(1);
+		release(); }
+//   assert(1);
 }
 
-inline void rdma_addr_cancel(/*struct rdma_dev_addr *addr*/){
-	mtx_lock(MTX);
-	mtx_unlock(MTX);
-  assert(1);
+void rdma_addr_cancel(/*struct rdma_dev_addr *addr*/){
+	acquire();
+	release();
+//   assert(1);
 }
 
 void* thr1(void* arg){
-  while(1)
-    switch(__VERIFIER_nondet_int()){
-    case 0: rdma_addr_unregister_client(__VERIFIER_nondet_int()); break;
+  int ctr = 0;
+  while(ctr++ < LOOP_LIMIT)
+    switch((ctr+3)%5){
+    case 0: rdma_addr_unregister_client(ctr); break;
     case 1: queue_req(); break;
     case 2: process_req(); break;
-    case 3: rdma_resolve_ip(); break;
+    case 3: rdma_resolve_ip(ctr); break;
     case 4: rdma_addr_cancel(); break; 
   }
 
@@ -109,8 +108,12 @@ void* thr1(void* arg){
 }
 
 int main(){
-  pthread_t t;
+  pthread_t t[NUM_THREADS];
 
-  while(1) pthread_create(&t, 0, thr1, 0);
+  atomic_init(&MTX, 0);
+  COND = 0;
+  refctr = 0;
+
+  for (int n = 0; n < NUM_THREADS; n++)
+    pthread_create(&t[n], 0, thr1, 0);
 }
-

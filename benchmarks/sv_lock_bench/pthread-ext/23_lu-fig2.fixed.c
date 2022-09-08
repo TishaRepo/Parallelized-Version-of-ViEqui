@@ -1,32 +1,24 @@
-extern void abort(void);
-void assume_abort_if_not(int cond) {
-  if(!cond) {abort();}
-}
-extern void abort(void);
 #include <assert.h>
-void reach_error() { assert(0); }
-
+#include <stdatomic.h>
+#include <stdbool.h>
 #include <pthread.h>
 
-#define assume(e) assume_abort_if_not(e)
-#undef assert
-#define assert(e) { if(!(e)) { ERROR: {reach_error();abort();}(void)0; } }
 
 int mThread=0;
 int start_main=0;
-int mStartLock=0;
+atomic_int mStartLock=0;
 int __COUNT__ =0;
 
-void __VERIFIER_atomic_acquire()
+bool acquire()
 {
-	assume(mStartLock==0);
-	mStartLock = 1;
+	unsigned int e = 0, v = 1;
+	return atomic_compare_exchange_strong_explicit(&mStartLock, &e, v, memory_order_seq_cst, memory_order_seq_cst);
 }
 
-void __VERIFIER_atomic_release()
+bool release()
 {
-	assume(mStartLock==1);
-	mStartLock = 0;
+	int e = 1, v = 0;
+	return atomic_exchange_explicit(&mStartLock, v, memory_order_seq_cst);
 }
 
 void __VERIFIER_atomic_thr1(int PR_CreateThread__RES)

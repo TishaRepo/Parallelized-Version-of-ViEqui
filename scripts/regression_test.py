@@ -49,7 +49,8 @@ test_results = {'basic': [(2,'N'),    # Test1
                             (8,'N'),  # Test30
                             (4,'N'),  # Test31
                             (2,'N'),  # Test32
-                            (8,'N')], # Test33
+                            (8,'N'),  # Test33
+                            (4,'N')], # Test34
                 'rmw':  [ (2,'N'),    # Test1
                             (2,'N'),  # Test2
                             (2,'N'),  # Test3

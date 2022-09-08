@@ -1,90 +1,95 @@
-extern int __VERIFIER_nondet_int(void);
-extern void abort(void);
-void assume_abort_if_not(int cond) {
-  if(!cond) {abort();}
-}
-extern void abort(void);
 #include <assert.h>
-void reach_error() { assert(0); }
-
+#include <stdatomic.h>
 #include <pthread.h>
+#include <stdbool.h>
+
+#define NUM_THREADS 2
+#define LOOP_LIMIT 2
 
 /*
 to correctly model the cv_broadcast(COND) statement "b1_COND := 1;" must be manually changed to "b1_COND$ := 1;" in the abstract BP
 */
 
-#define assume(e) assume_abort_if_not(e)
-#define assert_nl(e) { if(!(e)) { goto ERROR; } }
-#undef assert
-#define assert(e) { if(!(e)) { ERROR: {reach_error();abort();}(void)0; } }
+atomic_int MTX;
+int COND;
 
-#define cv_wait(c,m){ \
-  c = 0; \
-  __VERIFIER_atomic_release(); \
-  assume(c); \
-  __VERIFIER_atomic_acquire(); }
-
-#define cv_broadcast(c) c = 1 //overapproximates semantics (for threader)
-
-#define LOCKED 1
-
-#define mtx_lock(m) __VERIFIER_atomic_acquire();assert(m==LOCKED); //acquire lock and ensure no other thread unlocked it
-#define mtx_unlock(m) __VERIFIER_atomic_release()
-
-volatile _Bool MTX = !LOCKED;
-__thread _Bool COND = 0; //local
-_Bool buf = 0;
-
-void __VERIFIER_atomic_acquire()
+bool acquire()
 {
-	assume(MTX==0);
-	MTX = 1;
+	int e = 0, v = 1;
+	return atomic_compare_exchange_strong_explicit(&MTX, &e, v, memory_order_seq_cst, memory_order_seq_cst);
 }
 
-void __VERIFIER_atomic_release()
+bool release()
 {
-	assume(MTX==1);
-	MTX = 0;
+	int e = 1, v = 0;
+	return atomic_exchange_explicit(&MTX, v, memory_order_seq_cst);
 }
 
-inline static int adb_kbd_receive_packet(){
-	mtx_lock(MTX);
-	mtx_unlock(MTX);
+bool cv_wait(){
+  int ctr = 0;
+  COND = 0;
+  release();
+  while (ctr++ < LOOP_LIMIT) {
+    if (COND == 0)
+      continue;
+
+    return acquire(); 
+  }
+
+  return false;
+}
+
+void cv_broadcast() {
+  COND = 1; //overapproximates semantics (for threader)
+}
+
+int buf = 0;
+
+int adb_kbd_receive_packet(){
+	acquire();
+	release();
 	cv_broadcast(COND);
-	return 0; }
+	return 0; 
+}
 	
-inline static void akbd_repeat() {
-	mtx_lock(MTX);
-	mtx_unlock(MTX); }
+void akbd_repeat() {
+	acquire();
+	release(); 
+}
 	
-inline static void akbd_read_char(int wait) {
-	mtx_lock(MTX);
+void akbd_read_char(int wait) {
+	acquire();
 	if (!buf && wait){
-		cv_wait(COND,MTX);
-		assert_nl(COND);}
+		cv_wait();
+		assert(COND);
+  }
 	if (!buf) {
-		mtx_unlock(MTX);
-		return; 	}
-	mtx_unlock(MTX); }
+		release();
+		return; 	
+  }
+	release(); 
+}
 	
-inline static void akbd_clear_state(){
-	mtx_lock(MTX);
+void akbd_clear_state(){
+	acquire();
 	buf = 0;
-	mtx_unlock(MTX); }
+	release(); }
 
 void* thr1(void* arg){
-  while(1)
+  int ctr = 0;
+  while(ctr++ < LOOP_LIMIT)
   {
-    switch(__VERIFIER_nondet_int())
+    // switch((ctr+2+ctr*2)%5)
+    switch((ctr+1)%5)
     {
     case 0: adb_kbd_receive_packet(); break;
     case 1: akbd_repeat(); break;
-    case 2: akbd_read_char(__VERIFIER_nondet_int()); break;
+    case 2: akbd_read_char(ctr); break;
     case 3: akbd_clear_state(); break;
-    case 4: while(1){
-        mtx_lock(MTX);
+    case 4: {
+        acquire();
         buf = !buf;
-        mtx_unlock(MTX);
+        release();
       }
     }
   }
@@ -93,8 +98,13 @@ void* thr1(void* arg){
 }
 
 int main(){
-  pthread_t t;
+  pthread_t t[NUM_THREADS];
 
-  while(1) pthread_create(&t, 0, thr1, 0);
+  atomic_init(&MTX, 0);
+  COND = 0;
+  buf = 0;
+
+  for (int n = 0; n < NUM_THREADS; n++)
+    pthread_create(&t[n], 0, thr1, 0);
 }
 

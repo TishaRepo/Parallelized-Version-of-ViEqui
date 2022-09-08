@@ -1,95 +1,76 @@
-extern int __VERIFIER_nondet_int(void);
-extern void abort(void);
-void assume_abort_if_not(int cond) {
-  if(!cond) {abort();}
-}
-extern void abort(void);
 #include <assert.h>
-void reach_error() { assert(0); }
-
+#include <stdatomic.h>
 #include <pthread.h>
 
-int count = 0;
+#define NUM_THREADS 1
+#define LOOP_LIMIT 2
 
-#define assume(e) assume_abort_if_not(e)
-#define assert_nl(e) { if(!(e)) { goto ERROR; } }
-#undef assert
-#define assert(e) { if(!(e)) { ERROR: {reach_error();abort();}(void)0; } }
+atomic_int count;
 
-void __VERIFIER_atomic_acquire(int * m)
+atomic_int mutexa;
+atomic_int mutexb;
+
+void* thr0(void* arg)
 {
-	assume(*m==0);
-	*m = 1;
-}
-
-void __VERIFIER_atomic_release(int * m)
-{
-	assume(*m==1);
-	*m = 0;
-}
-
-void __VERIFIER_atomic_inc()
-{
-  count++;
-}
-
-void __VERIFIER_atomic_dec()
-{
-  count--;
-}
-
-int mutexa = 0;
-int mutexb = 0;
-inline void my_thread1()
-{
-  __VERIFIER_atomic_acquire(&mutexa);
-  __VERIFIER_atomic_inc();
-  __VERIFIER_atomic_dec();
-  __VERIFIER_atomic_release(&mutexa);
-}
-
-inline void my_thread2()
-{
-  __VERIFIER_atomic_acquire(&mutexb);
-  __VERIFIER_atomic_dec();
-  __VERIFIER_atomic_inc();
-  __VERIFIER_atomic_release(&mutexb);
+  int ctr = 0;
+  while(ctr++ < LOOP_LIMIT)
+  {
+    int e = 0;
+    if (atomic_compare_exchange_strong_explicit(&mutexa, &e, 1, memory_order_seq_cst, memory_order_seq_cst)) {
+      assert(count >= -1);
+      atomic_exchange_explicit(&mutexa, 0, memory_order_seq_cst);
+    }
+      
+    e = 0;
+    if (atomic_compare_exchange_strong_explicit(&mutexb, &e, 1, memory_order_seq_cst, memory_order_seq_cst)) {
+      assert(count <= 1);
+      atomic_exchange_explicit(&mutexb, 0, memory_order_seq_cst);
+    }
+  }
+  return 0;
 }
 
 void* thr1(void* arg)
 {
-  while(1)
-  {
-
-    __VERIFIER_atomic_acquire(&mutexa);
-    assert_nl(count >= -1);
-    __VERIFIER_atomic_release(&mutexa);
-
-    __VERIFIER_atomic_acquire(&mutexb);
-    assert(count <= 1);
-    __VERIFIER_atomic_release(&mutexb);
-
+  int ctr = 0;
+  while (ctr++ < LOOP_LIMIT) {
+    int e = 0;
+    if (atomic_compare_exchange_strong_explicit(&mutexa, &e, 1, memory_order_seq_cst, memory_order_seq_cst)) {
+      atomic_fetch_add_explicit(&count, 1, memory_order_seq_cst);
+      atomic_fetch_sub_explicit(&count, 1, memory_order_seq_cst);
+      atomic_exchange_explicit(&mutexa, 0, memory_order_seq_cst);
+    }
   }
   return 0;
 }
 
 void* thr2(void* arg)
 {
-  if(__VERIFIER_nondet_int())
-    my_thread1();
-  else
-    my_thread2();
+  int ctr = 0;
+  while (ctr++ < LOOP_LIMIT) {
+    int e = 0;
+    if (atomic_compare_exchange_strong_explicit(&mutexb, &e, 1, memory_order_seq_cst, memory_order_seq_cst)) {
+      atomic_fetch_sub_explicit(&count, 1, memory_order_seq_cst);
+      atomic_fetch_add_explicit(&count, 1, memory_order_seq_cst);
+      atomic_exchange_explicit(&mutexb, 0, memory_order_seq_cst);
+    }
+  }
   return 0;
 }
 
-int main(void)
-{
-  pthread_t t;
+int main(){
+  pthread_t t[NUM_THREADS];
 
-  pthread_create(&t, 0, thr1, 0);
-  while(1)
-  {
-      pthread_create(&t, 0, thr2, 0);
-  }
+  atomic_init(&count, 0);
+
+  atomic_init(&mutexa, 0);
+  atomic_init(&mutexb, 0);
+
+  pthread_create(&t[0], NULL, thr0, NULL);
+
+  for (int n = 1; n < NUM_THREADS; n+=2)
+	  pthread_create(&t[n], NULL, thr1, NULL);
+
+  for (int n = 2; n < NUM_THREADS; n+=2)
+	  pthread_create(&t[n], NULL, thr2, NULL);
 }
-

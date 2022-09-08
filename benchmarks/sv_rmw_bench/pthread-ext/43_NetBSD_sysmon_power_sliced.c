@@ -1,186 +1,195 @@
-extern int __VERIFIER_nondet_int(void);
-extern void abort(void);
-void assume_abort_if_not(int cond) {
-  if(!cond) {abort();}
-}
-extern void abort(void);
 #include <assert.h>
-void reach_error() { assert(0); }
-
+#include <stdatomic.h>
 #include <pthread.h>
+#include <stdbool.h>
+
+#define NUM_THREADS 10
+#define LOOP_LIMIT 4
 
 /*
 to correctly model the cv_broadcast(COND) statement "b1_COND := 1;" must be manually changed to "b1_COND$ := 1;" in the abstract BP
 */
 
-#define assume(e) assume_abort_if_not(e)
-#define assert_nl(e) { if(!(e)) { goto ERROR; } }
-#undef assert
-#define assert(e) { if(!(e)) { ERROR: {reach_error();abort();}(void)0; } }
+atomic_int MTX;
+int COND;
 
-#define cv_wait(c,m){ \
-  c = 0; \
-  __VERIFIER_atomic_release(); \
-  assume(c); \
-  __VERIFIER_atomic_acquire(); }
-
-#define cv_broadcast(c) c = 1 //overapproximates semantics (for threader)
-
-#define LOCKED 1
-
-#define mutex_enter(m) __VERIFIER_atomic_acquire();assert_nl(m==LOCKED); //acquire lock and ensure no other thread unlocked it
-#define mutex_exit(m) __VERIFIER_atomic_release()
-
-volatile _Bool MTX = !LOCKED;
-__thread _Bool COND = 0;
-
-void __VERIFIER_atomic_acquire()
+bool acquire()
 {
-	assume(MTX==0);
-	MTX = 1;
+	int e = 0, v = 1;
+	return atomic_compare_exchange_strong_explicit(&MTX, &e, v, memory_order_seq_cst, memory_order_seq_cst);
 }
 
-void __VERIFIER_atomic_release()
+bool release()
 {
-	assume(MTX==1);
-	MTX = 0;
+	int e = 1, v = 0;
+	return atomic_exchange_explicit(&MTX, v, memory_order_seq_cst);
+}
+
+bool cv_wait(){
+  int ctr = 0;
+  COND = 0;
+  release();
+  while (ctr++ < LOOP_LIMIT) {
+    if (COND == 0)
+      continue;
+
+    return acquire(); 
+  }
+
+  return false;
+}
+
+void cv_broadcast() {
+  COND = 1; //overapproximates semantics (for threader)
 }
 
 #define PSWITCH_EVENT_RELEASED 1
 #define PENVSYS_EVENT_NORMAL 2
 #define POWER_EVENT_RECVDICT 3
 
-#define KASSERT(e) assert_nl(e)
-#define is_locked(m) (m==LOCKED)
+int LOADED;
+int LOADING;
 
-inline int sysmon_queue_power_event(){
-	KASSERT(is_locked(MTX));
-  assert(1);
-	if (__VERIFIER_nondet_int())
+int sysmon_queue_power_event(int k){
+	assert(MTX == 1);
+  // assert(1);
+	if (k)
 		return 0;
 	return 1; }
 
-inline int sysmon_get_power_event(){
-	KASSERT(is_locked(MTX));
-  assert(1);
-	if (__VERIFIER_nondet_int())	
+int sysmon_get_power_event(int k){
+	assert(MTX == 1);
+  // assert(1);
+	if (k)	
 		return 0;
 	return 1; }
 
-inline int sysmon_power_daemon_task(){
-	if (__VERIFIER_nondet_int()) return __VERIFIER_nondet_int();
-	mutex_enter(MTX);
-	switch (__VERIFIER_nondet_int()) {
+int sysmon_power_daemon_task(int k){
+	if (k) return k;
+	acquire();
+	switch (k) {
 	case PSWITCH_EVENT_RELEASED:
-		KASSERT(is_locked(MTX));
-		if (__VERIFIER_nondet_int()) {
-			mutex_exit(MTX);
+		assert(MTX == 1);
+		if (k) {
+			release();
 			goto out;}
 		break;
 	case PENVSYS_EVENT_NORMAL:
-		KASSERT(is_locked(MTX));
-		if (__VERIFIER_nondet_int()) {
-			mutex_exit(MTX);
+		assert(MTX == 1);
+		if (k) {
+			release();
 			goto out;}
 		break;
 	default:
-		mutex_exit(MTX);
+		release();
 		goto out;}
-	sysmon_queue_power_event();
-	if (__VERIFIER_nondet_int()) {
-		mutex_exit(MTX);
+	sysmon_queue_power_event(k);
+	if (k) {
+		release();
 		goto out;} 
 	else {
-		cv_broadcast(COND);
-		mutex_exit(MTX);}
+		cv_broadcast();
+		release();}
 	out:
-  assert(1);
-	return __VERIFIER_nondet_int(); }
+  // assert(1);
+	return k; }
 
-inline void sysmonopen_power(){
-	mutex_enter(MTX);
-	if (__VERIFIER_nondet_int())
-		KASSERT(is_locked(MTX));
-	mutex_exit(MTX);
-  assert(1);
+void sysmonopen_power(int k){
+	acquire();
+	if (k)
+		assert(MTX == 1);
+	release();
+  // assert(1);
 }
 
-inline void sysmonclose_power(){
-	mutex_enter(MTX);
-	KASSERT(is_locked(MTX));
-	mutex_exit(MTX);
-  assert(1);
+void sysmonclose_power(int k){
+	acquire();
+	assert(MTX == 1);
+	release();
+  // assert(1);
 }
 
-inline void sysmonread_power(){
-	if (__VERIFIER_nondet_int()){
-		mutex_enter(MTX);
+void sysmonread_power(int k){
+	if (k){
+		acquire();
 		for (;;) {
-			if (sysmon_get_power_event()) {
+			if (sysmon_get_power_event(k)) {
 				break;}
-			if (__VERIFIER_nondet_int()) {
+			if (k) {
 				break;}
-			cv_wait(COND,MTX);
+			cv_wait();
       assert_nl(COND); }
-		mutex_exit(MTX); }
-  assert(1);
+		release(); }
+  // assert(1);
 }
 
-inline void sysmonpoll_power(){
-	if(__VERIFIER_nondet_int()){
-		mutex_enter(MTX);
-		mutex_exit(MTX); }
-  assert(1);
+void sysmonpoll_power(int k){
+	if(k){
+		acquire();
+		release(); }
+  // assert(1);
 }
 
-inline void filt_sysmon_power_rdetach(){
-	mutex_enter(MTX);
-	mutex_exit(MTX);
-  assert(1);
+void filt_sysmon_power_rdetach(){
+	acquire();
+	release();
+  // assert(1);
 }
 
-inline void filt_sysmon_power_read(){
-	mutex_enter(MTX);
-	mutex_exit(MTX);
-  assert(1);
+void filt_sysmon_power_read(){
+	acquire();
+	release();
+  // assert(1);
 }
 
-inline void sysmonkqfilter_power(){
-	mutex_enter(MTX);
-	mutex_exit(MTX);
-  assert(1);
+void sysmonkqfilter_power(){
+	acquire();
+	release();
+  // assert(1);
 }
 
-inline void sysmonioctl_power(){
-	switch (__VERIFIER_nondet_int()) {
+void sysmonioctl_power(int k){
+	switch (k) {
 	case POWER_EVENT_RECVDICT:
-		mutex_enter(MTX);
-		if (__VERIFIER_nondet_int()) {
-			mutex_exit(MTX);
+		acquire();
+		if (k) {
+			release();
 			break;}
-		mutex_exit(MTX);
-		mutex_enter(MTX);
-		mutex_exit(MTX);
+		release();
+		acquire();
+		release();
 		break; }
-  assert(1);
+  // assert(1);
 }
 
 void* thr1(void* arg){
-  while(1)
-    switch(__VERIFIER_nondet_int()){
-    case 0: sysmon_power_daemon_task(); break;
-    case 1: sysmonopen_power(); break;
-    case 2: sysmonclose_power(); break;
-    case 3: sysmonread_power(); break;
-    case 4: sysmonpoll_power(); break;
+  int ctr = 0;
+  while(ctr++ < LOOP_LIMIT)
+    switch((ctr+6)%9){
+    case 0: sysmon_power_daemon_task(ctr); break;
+    case 1: sysmonopen_power(ctr); break;
+    case 2: sysmonclose_power(ctr); break;
+    case 3: sysmonread_power(ctr); break;
+    case 4: sysmonpoll_power(ctr); break;
     case 5: filt_sysmon_power_rdetach(); break;
     case 6: filt_sysmon_power_read(); break;
     case 7: sysmonkqfilter_power(); break;
-    case 8: sysmonioctl_power(); break; }}
+    case 8: sysmonioctl_power(ctr); break; }
+}
 
 int main(){
-  pthread_t t;
+  pthread_t t[NUM_THREADS];
 
-  while(1) pthread_create(&t, 0, thr1, 0);
+  atomic_init(&MTX, 0);
+  COND = 0;
+
+  LOADED = 0;
+  LOADING = 0;
+
+  int arg[NUM_THREADS];
+  for (int n = 0; n < NUM_THREADS; n++) {
+	arg[n] = n;
+    pthread_create(&t[n], 0, thr1, &arg[n]);
+  }
 }
 
