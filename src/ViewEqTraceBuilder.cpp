@@ -44,27 +44,27 @@ bool ViewEqTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *DryRun) {
     return true;
   }
 
-  // [snj]: peak next read/write event / execute next non-read/write event
+  // peak next read/write event / execute next non-read/write event
   if (exists_non_memory_access(proc)) {
     return true;
   }
 
   if (Enabled.empty()) {
     assert(forbidden.evaluate != RESULT::TRUE);
-    return false; // [snj]: maximal trace explored
+    return false; // maximal trace explored
   }
 
-  // [snj]: Explore Algo function
+  // Explore Algo function
   // out << "next RW\n";
   make_new_state(); 
   // out << "made new state\n";
   compute_new_leads(); 
   // out << "made new leads\n";
   
-  if (states[current_state].has_unexplored_leads()) { // [snj]: TODO should be assert not check
+  if (states[current_state].has_unexplored_leads()) { // TODO should be assert not check
     execute_next_lead();
     // out << "executed lead\n";
-    // [snj]: execute current event from Interpreter::run() in Execution.cpp
+    // execute current event from Interpreter::run() in Execution.cpp
     *proc = current_thread;
     return true;
   }
@@ -90,7 +90,7 @@ void ViewEqTraceBuilder::replay_memory_access(int next_replay_thread, IID<IPid> 
   current_state = prefix_state[prefix_idx];
   current_thread = next_replay_thread;
   current_event = get_event(next_replay_event);
-  threads[current_thread].awaiting_load_store = false; // [snj]: next event after current may not be load or store
+  threads[current_thread].awaiting_load_store = false; // next event after current may not be load or store
   assert(current_event.is_write() || current_event.is_read());
   assert(0 <= current_thread && current_thread < long(threads.size()));
   
@@ -230,23 +230,23 @@ void ViewEqTraceBuilder::execute_next_lead() {
   assert(current_event.is_write() || current_event.is_read());
   assert(0 <= current_thread && current_thread < long(threads.size()));
 
-  //update last_write
+  //update memory
   if(current_event.is_write()){
     last_write[current_event.object] = current_event.iid;
     mem[current_event.object] = current_event.value;
   }
   
-  //update vpo when read is done
+  //update read value
   if(current_event.is_read()) { 
     current_event.value = mem[current_event.object];
     threads[current_thread][current_event.get_index()].value = current_event.value;    
   }
-  
-  // [snj]: record current event as next in execution sequence
+
+  // record current event as next in execution sequence
   execution_sequence.push_back(current_event.iid);
   prefix_state.push_back(current_state);
   prefix_idx++;
-  threads[current_thread].awaiting_load_store = false; // [snj]: next event after current may not be load or store
+  threads[current_thread].awaiting_load_store = false; // next event after current may not be load or store
 }
 
 void ViewEqTraceBuilder::analyse_unexplored_influenecers(IID<IPid> read_event) {
@@ -755,7 +755,7 @@ bool ViewEqTraceBuilder::spawn()
   threads[current_thread].pop_back();
   execution_sequence.pop_back();
   
-  // [snj]: create-event in thread that is spawning a new event
+  // create-event in thread that is spawning a new event
   current_event = event;
   current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
   update_spawn_summary(current_event);
@@ -763,7 +763,7 @@ bool ViewEqTraceBuilder::spawn()
   threads[current_thread].push_back(current_event);
   execution_sequence.push_back(current_event.iid);
 
-  // [snj]: setup new program thread
+  // setup new program thread
   IPid parent_ipid = current_event.iid.get_pid();
   CPid child_cpid = CPS.spawn(threads[parent_ipid].cpid);
   /* Spawn event of thread is dummy */
@@ -793,7 +793,7 @@ bool ViewEqTraceBuilder::join(int tgt_proc) {
 }
 
 bool ViewEqTraceBuilder::store(const SymData &ml) {
-  // [snj]: visitStoreInst in Execution.cpp lands in atomic_store not here
+  // visitStoreInst in Execution.cpp lands in atomic_store not here
   Event event(SymEv::Store(ml));
   event.make_write();
   current_event = event;
@@ -808,7 +808,7 @@ bool ViewEqTraceBuilder::store(const SymData &ml) {
     threads[current_thread].push_back(current_event);
     threads[current_thread].awaiting_load_store = true;
 
-    assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
+    assert(!is_enabled(current_thread)); // only 1 event of each thread is enabled
     Enabled.push_back(current_event.iid);
   }
   else {
@@ -829,7 +829,7 @@ bool ViewEqTraceBuilder::store(const SymData &ml) {
 }
 
 bool ViewEqTraceBuilder::atomic_store(const SymData &ml) {
-  // [snj]: visitStoreInst in Execution.cpp lands here not in store
+  // visitStoreInst in Execution.cpp lands here not in store
   Event event(SymEv::Store(ml));
   event.make_write();
   current_event = event;
@@ -844,7 +844,7 @@ bool ViewEqTraceBuilder::atomic_store(const SymData &ml) {
     threads[current_thread].push_back(current_event);
     threads[current_thread].awaiting_load_store = true;
 
-    assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
+    assert(!is_enabled(current_thread)); // only 1 event of each thread is enabled
     Enabled.push_back(current_event.iid);
   }
   else {
@@ -880,7 +880,7 @@ bool ViewEqTraceBuilder::load(const SymAddrSize &ml) {
     threads[current_thread].push_back(current_event);
     threads[current_thread].awaiting_load_store = true;
 
-    assert(!is_enabled(current_thread)); // [snj]: only 1 event of each thread is enabled
+    assert(!is_enabled(current_thread)); // only 1 event of each thread is enabled
     Enabled.push_back(current_event.iid);
   } 
   else {
@@ -901,7 +901,7 @@ bool ViewEqTraceBuilder::load(const SymAddrSize &ml) {
 }
 
 bool ViewEqTraceBuilder::fence() {
-  // [snj]: invoked at pthread create
+  // invoked at pthread create
   return true;
 }
 
@@ -925,7 +925,7 @@ Trace* ViewEqTraceBuilder::get_trace() const {
   return t;
 } 
 
-// [snj]: HOW TO READ
+// HOW TO READ
 //  - stack operations have been abstracted ( as they are mostly parameters 'void *arg')
 //  - heap operations also abstracted for now
 //  - Load(Global(object_id)(block_size))(Event::value)
@@ -1882,7 +1882,7 @@ ViewEqTraceBuilder::EventSequence ViewEqTraceBuilder::Sequence::to_event_sequenc
         e.value = mem[e.object];
       }
       else {
-        e.value = 0; // [snj]: every variable is expected to be initialized, algo must not reach here if that is followed
+        e.value = 0; // every variable is expected to be initialized, algo must not reach here if that is followed
       }
     }
 
@@ -1924,7 +1924,7 @@ ViewEqTraceBuilder::EventSequence ViewEqTraceBuilder::Sequence::to_event_sequenc
         e.value = mem[e.object];
       }
       else {
-        e.value = 0; // [snj]: every variable is expected to be initialized, algo must not reach here if that is followed
+        e.value = 0; // every variable is expected to be initialized, algo must not reach here if that is followed
       }
     }
 

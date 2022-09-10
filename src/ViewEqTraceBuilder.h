@@ -154,7 +154,7 @@ public:
     bool forward_lead(std::unordered_map<int, std::vector<Lead>>& forward_state_leads, int state, Lead lead);
     void forward_suffix_leads(std::unordered_map<int, std::vector<Lead>>& forward_state_leads, int state, std::vector<Lead>& L);    
 
-    // basic steps followed bu scedule
+    // basic steps followed by scedule
     bool exists_non_memory_access(int * proc);
     void make_new_state();
     void compute_new_leads();
@@ -247,7 +247,7 @@ protected:
     class Sequence
     {
     private:
-        // [snj]: required by consistent_merge function
+        // required by consistent_merge function
         Sequence join(Sequence& other_seq);
         // auxiliary function for join
         void join_prefix(std::vector<IID<IPid>>::iterator, std::vector<IID<IPid>>::iterator,
@@ -332,7 +332,7 @@ protected:
         /* poprefix(e1).(write out of e1, e2).(read out of e1, e2) */
         Sequence backseq(IID<IPid> e1, IID<IPid> e2);
 
-        // [snj]: consistent merge, merges 2 sequences such that all read events maitain their sources
+        // consistent merge, merges 2 sequences such that all read events maitain their sources
         //          i.e, reads-from relation remain unchanged
         Sequence consistent_merge(Sequence &other_seq);
         // --co--> = --po--> U --rf-->
@@ -411,7 +411,7 @@ protected:
     class Thread
     {
     public:
-        // [snj]: TODO is spawn event needed?
+        // [snj]: spawn event stored for leagcy reasons not needed by view-eq algo
         Thread(const CPid &cpid, int spawn_event) : cpid(cpid), spawn_event(spawn_event), available(true), awaiting_load_store(false){};
         Thread(const CPid &cpid) : cpid(cpid), available(true), awaiting_load_store(false){};
         CPid cpid;
