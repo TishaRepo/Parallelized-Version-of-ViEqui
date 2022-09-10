@@ -137,6 +137,7 @@ public:
     void backward_analysis_read(Event event, SOPFormula& forbidden, std::unordered_map<int, std::vector<Lead>>& L);
     void backward_analysis_write(Event event, SOPFormula& forbidden, std::unordered_map<int, std::vector<Lead>>& L);
     void backward_analysis(Event event, SOPFormula& forbidden);
+    void prefix_analysis(Lead& l1, Lead& l2, std::vector<Lead>& added_leads, int state);
 
     // is e1 ordered before due to a corresponding join event
     bool ordered_by_join(IID<IPid> e1, IID<IPid> e2);
@@ -263,7 +264,7 @@ protected:
             IID<IPid>& e1, IID<IPid>& e1_delim, Event event, int idx);
         void prefix_rf_source(Sequence* prefix, std::vector<unsigned>* threads_of_prefix, 
             std::unordered_map<unsigned, std::unordered_set<unsigned>>* objects_for_source, Event& event, 
-            bool& added_to_prefix, int idx);
+            bool& added_to_prefix, int idx, EventSequence& source);
     public:
         std::vector<IID<IPid>> events;
         ViewEqTraceBuilder* container;
@@ -273,6 +274,7 @@ protected:
         Sequence(std::vector<IID<IPid>> &seq, ViewEqTraceBuilder* c){events = seq; container = c;}
         Sequence(IID<IPid>& e, ViewEqTraceBuilder* c) {events.push_back(e); container = c;}
         Sequence(std::unordered_set<IID<IPid>> a, ViewEqTraceBuilder* c) {events.insert(events.begin(), a.begin(), a.end()); container = c;}
+        Sequence(Sequence& s, int idx) {events = vector<IID<IPid>>(s.events.begin(), s.events.begin()+idx); container = s.container;}
         
         void set_container_reference(ViewEqTraceBuilder* c) {container = c;}
         EventSequence to_event_sequence(std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn>& mem);
@@ -320,7 +322,7 @@ protected:
         /* if this is prefix of seq */
         bool isprefix(Sequence &seq);
         /* execution subsequence from e1 to e2 including events between e1 and e2 that causally preceed e2 */
-        std::pair<IID<IPid>, Sequence> causal_prefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end);
+        std::pair<IID<IPid>, Sequence> causal_prefix(IID<IPid> e1, IID<IPid> e2, sequence_iterator begin, sequence_iterator end, EventSequence& source);
         /* program ordered prefix upto end of ev in this */
         
         /* In the sequence attempt to shift events from thread of e1 (including e1)
@@ -331,6 +333,7 @@ protected:
         std::pair<bool, std::pair<IID<IPid>, IID<IPid>>> conflicts_with(Sequence &other_seq);
         /* poprefix(e1).(write out of e1, e2).(read out of e1, e2) */
         Sequence backseq(IID<IPid> e1, IID<IPid> e2);
+        Sequence backseq(IID<IPid> e1, IID<IPid> e2, EventSequence& seq);
 
         // consistent merge, merges 2 sequences such that all read events maitain their sources
         //          i.e, reads-from relation remain unchanged
@@ -379,6 +382,7 @@ protected:
         void push_back(Event event) {events.push_back(event);}
         void pop_front() {events.erase(events.begin());};
         void push_at(event_sequence_iterator loc, Event event) {events.insert(loc, event);}
+        void concatenate(EventSequence seq) { events.insert(events.end(), seq.events.begin(), seq.events.end()); }
         
         void erase(Event event) {events.erase(events.begin() + index_of(event));}
         void erase(IID<IPid> event_id) {erase(find_iid(event_id));}
@@ -479,12 +483,23 @@ protected:
         // add details of an rmw write whose read is in the sequence
         void update_pending_rmw_write(IID<IPid> rmw_write);
         
-        /* this is prefix of l with view-adjustment */
+        // this is prefix of l with view-adjustment
+        // this.merged_sequence can be extended to l.merged_sequence
+        // such that all reads in entension and l read the same value
         bool VA_isprefix(Lead& l);
-        /* same reads and same values of reads */
+        // same reads and same values of reads
         bool VA_equivalent(Lead& l);
-        /* suffix of a view-adjusted prefix */
+        // if there exists a sequence seq such that
+        // this.merged_sequence.seq VA_isprefix to l.merged_sequence
+        bool VA_isweakly_prefix(Lead& l);
+        // if there exists sequences seq1 and seq2 such that
+        // this.merged_sequence.seq1 VA_isweakly_prefix to l.merged_sequence
+        // l.merged_sequence.seq2 VA_isweakly_prefix to this.merged_sequence
+        bool VA_isweakly_equivalent(Lead& l);
+        // suffix of a view-adjusted prefix
         Sequence VA_suffix(Lead& l);
+        // weak prefix of this and l
+        Lead VA_weak_prefix(Lead& l);
         
         bool operator==(Lead l);
         std::ostream &operator<<(std::ostream &os){return os << to_string();}
