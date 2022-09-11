@@ -2325,14 +2325,14 @@ bool ViewEqTraceBuilder::Lead::VA_isprefix(Lead& l) {
   return true;
 }
 
-bool ViewEqTraceBuilder::Lead::VA_isweakly_prefix(Lead& l) {
+bool ViewEqTraceBuilder::Lead::VA_isweakly_prefix(Lead& l,
+      std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn>& post_prefix_memory_map) {
   Sequence this_iid_seq = merged_sequence.to_iid_sequence();
   Sequence l_iid_seq = l.merged_sequence.to_iid_sequence();
   if (this_iid_seq.isprefix(l_iid_seq))
     return true; // lead sequence is a prefix wihtout needing view-adjustment
 
   EventSequence suffix = l.merged_sequence;
-  std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn> post_prefix_memory_map;
 
   for (auto it = merged_sequence.begin(); it != merged_sequence.end(); it++) {
     auto its = suffix.find_iid(it->iid);
@@ -2366,8 +2366,24 @@ bool ViewEqTraceBuilder::Lead::VA_isweakly_prefix(Lead& l) {
 }
 
 bool ViewEqTraceBuilder::Lead::VA_isweakly_equivalent(Lead& l) {
-  if (!VA_isweakly_prefix(l)) return false;
-  if (!l.VA_isweakly_prefix(*this)) return false;
+  std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn> memory_map1;
+  std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn> memory_map2;
+
+  if (!VA_isweakly_prefix(l, memory_map1)) return false;
+  if (!l.VA_isweakly_prefix((*this), memory_map2)) return false;
+
+  for (auto it = memory_map1.begin(); it != memory_map1.end(); it++) {
+    if (memory_map2.find(it->first) == memory_map2.end()) // more writes in map1
+      return false;
+    if (it->second != memory_map2[it->first]) // final memory values are unequal
+      return false;
+    
+    memory_map2.erase(it->first);
+  }
+
+  if (!memory_map2.empty()) // more writes in map2
+    return false;
+
   return true;
 }
 

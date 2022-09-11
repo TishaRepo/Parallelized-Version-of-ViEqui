@@ -491,7 +491,7 @@ protected:
         bool VA_equivalent(Lead& l);
         // if there exists a sequence seq such that
         // this.merged_sequence.seq VA_isprefix to l.merged_sequence
-        bool VA_isweakly_prefix(Lead& l);
+        bool VA_isweakly_prefix(Lead& l, std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn>& post_prefix_memory_map);
         // if there exists sequences seq1 and seq2 such that
         // this.merged_sequence.seq1 VA_isweakly_prefix to l.merged_sequence
         // l.merged_sequence.seq2 VA_isweakly_prefix to this.merged_sequence
