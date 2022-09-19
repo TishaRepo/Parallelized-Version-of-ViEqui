@@ -1,21 +1,13 @@
-extern void __VERIFIER_atomic_begin(void);
-extern void __VERIFIER_atomic_end(void);
-extern int __VERIFIER_nondet_int(void);
-extern void abort(void);
 #include <assert.h>
-void reach_error() { assert(0); }
-
+#include <stdatomic.h>
 #include <pthread.h>
-
-#undef assert
-#define assert(e) { if(!(e)) { ERROR: {reach_error();abort();}(void)0; } }
+#include <stdbool.h>
 
 int s;
 
 void* thr1(void* arg)
 {
-    int l = __VERIFIER_nondet_int();
-    l = 4;
+    int l = 4;
     __VERIFIER_atomic_begin();
     s = l;
     __VERIFIER_atomic_end();

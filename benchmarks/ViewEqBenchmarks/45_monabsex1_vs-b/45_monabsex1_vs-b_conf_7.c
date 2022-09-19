@@ -1,7 +1,7 @@
 #include <assert.h>
 #include <pthread.h>
 
-#define NUM_THREADS 5
+#define NUM_THREADS 7
 
 int s;
 

@@ -78,7 +78,7 @@ def generate_assumed_TO_configs(config, last_config, last_status_TO):
                     strictly_larger_test = True # new config is strictly larger a TOed config
                     break
                     
-            if strictly_larger_test: # new config is strictly larger a TOed config
+            if strictly_larger_test: # new config is strictly larger than a TOed config
                 assumed_TO_configs.append(i) # this config will also TO, so do not test
     
     return assumed_TO_configs

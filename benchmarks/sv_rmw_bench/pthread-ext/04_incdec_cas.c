@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include <pthread.h>
 
-#define NUM_THREADS 2
+#define NUM_THREADS 5
 #define LOOP_LIMIT 5
 
 atomic_uint value;

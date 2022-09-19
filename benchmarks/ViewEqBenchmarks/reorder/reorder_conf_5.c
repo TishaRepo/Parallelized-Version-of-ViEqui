@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 
-#define iSet 5
+#define iSet 100
 #define iCheck 5
 
 static int a;

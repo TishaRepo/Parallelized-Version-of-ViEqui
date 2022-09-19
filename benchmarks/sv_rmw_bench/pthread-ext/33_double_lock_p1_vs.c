@@ -4,7 +4,7 @@
 #include <stdbool.h>
 
 #define NUM_THREADS 3
-#define LOOP_LIMIT 1
+#define LOOP_LIMIT 2
 
 atomic_int count;
 

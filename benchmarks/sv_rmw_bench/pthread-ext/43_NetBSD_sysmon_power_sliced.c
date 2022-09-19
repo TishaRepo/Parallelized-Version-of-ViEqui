@@ -3,8 +3,8 @@
 #include <pthread.h>
 #include <stdbool.h>
 
-#define NUM_THREADS 10
-#define LOOP_LIMIT 4
+#define NUM_THREADS 5
+#define LOOP_LIMIT 5
 
 /*
 to correctly model the cv_broadcast(COND) statement "b1_COND := 1;" must be manually changed to "b1_COND$ := 1;" in the abstract BP
@@ -118,7 +118,7 @@ void sysmonread_power(int k){
 			if (k) {
 				break;}
 			cv_wait();
-      assert_nl(COND); }
+      assert(COND); }
 		release(); }
   // assert(1);
 }
@@ -175,6 +175,8 @@ void* thr1(void* arg){
     case 6: filt_sysmon_power_read(); break;
     case 7: sysmonkqfilter_power(); break;
     case 8: sysmonioctl_power(ctr); break; }
+
+	return NULL;
 }
 
 int main(){

@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include <pthread.h>
 
-#define NUM_THREADS 30	
+#define NUM_THREADS 100	
 #define LOOP_LIMIT 30
 
 volatile unsigned value;

@@ -5,8 +5,8 @@
 #include <unistd.h>
 #include <assert.h>
 
-#define NUM_THREADS 5
-#define MAX_SPIN 5
+#define NUM_THREADS 2
+#define MAX_SPIN 1
 
 using namespace std;
 
@@ -80,7 +80,7 @@ SafeStack stack;
 
 void* thread(void* arg)
 {
-  int idx = (int)(size_t)arg;
+  int idx = *((int *)arg);
     for (size_t i = 0; i != 2; i += 1)
     {
         int elem;
@@ -106,8 +106,10 @@ int main()
 
   stack.init(3);
 
+  int arg[NUM_THREADS];
   for (unsigned i = 0; i < NUM_THREADS; ++i) {
-    pthread_create(&threads[i], NULL, thread, (void*)i);
+    arg[i] = i;
+    pthread_create(&threads[i], NULL, thread, &arg[i]);
   }
   
   for (unsigned i = 0; i < NUM_THREADS; ++i) {

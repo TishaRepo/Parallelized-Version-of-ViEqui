@@ -3,8 +3,8 @@
 #include <pthread.h>
 #include <stdbool.h>
 
-#define NUM_THREADS 10
-#define LOOP_LIMIT 4
+#define NUM_THREADS 5
+#define LOOP_LIMIT 5
 
 /*
 to correctly model the cv_broadcast(COND) statement "b1_COND := 1;" must be manually changed to "b1_COND$ := 1;" in the abstract BP
