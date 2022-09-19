@@ -7,7 +7,7 @@ atomic_int __fence_var;
 atomic_int x;
 atomic_int y ;
 atomic_int _cc_x;
-#define LOOP 100
+#define LOOP 10
 
 void* t0(void *)
 {

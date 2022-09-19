@@ -13,7 +13,7 @@
 
 int i, j;
 
-#define NUM 7
+#define NUM 5
 #define LIMIT (2*NUM+6)
 
 void *t1(void *arg) {
