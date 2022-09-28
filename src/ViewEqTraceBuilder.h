@@ -122,6 +122,9 @@ public:
     // helper functions of backward analysis
     // compute the start of the next lead and compute the state to add it to
     int  union_state_start(int prefix_idx, IID<IPid> event, Sequence& start);
+    // for non-rmw cases return alpha sequence at state_id,
+    // for rmw no constraint if forward analysis at state_id
+    EventSequence get_constraint(int state_id, Sequence& start, Event event);
     // check if an event in a start has different causal dependence in different extensions
     bool indepenent_event_in_leads(int state, IID<IPid> event);
     // check if the causal dependence all events in the lead-start remain the same for all extensions
@@ -491,7 +494,7 @@ protected:
         bool VA_equivalent(Lead& l);
         // if there exists a sequence seq such that
         // this.merged_sequence.seq VA_isprefix to l.merged_sequence
-        bool VA_isweakly_prefix(Lead& l, std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn>& post_prefix_memory_map);
+        bool VA_isweakly_prefix(Lead& l);
         // if there exists sequences seq1 and seq2 such that
         // this.merged_sequence.seq1 VA_isweakly_prefix to l.merged_sequence
         // l.merged_sequence.seq2 VA_isweakly_prefix to this.merged_sequence

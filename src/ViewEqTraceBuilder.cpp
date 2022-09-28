@@ -314,6 +314,19 @@ int ViewEqTraceBuilder::union_state_start (int prefix_idx, IID<IPid> event, Sequ
   return event_index;
 }
 
+ViewEqTraceBuilder::EventSequence ViewEqTraceBuilder::get_constraint(int state_id, Sequence& start, Event event) {
+  EventSequence constraint = states[state_id].alpha_sequence();
+  if (!states[state_id].performed_fwd_analysis || !event.is_rmw)
+    return constraint;
+
+  Event fwd_read = *constraint.find_iid(states[state_id].fwd_read);
+  if (!fwd_read.is_rmw)
+    return constraint;
+
+  constraint.clear();
+  return constraint;
+}
+
 bool ViewEqTraceBuilder::indepenent_event_in_leads(int state, IID<IPid> event) {
   bool found_event_in_another_lead = false;
   int  previously_found_value = -42; // dummy value
@@ -431,9 +444,9 @@ void ViewEqTraceBuilder::backward_analysis_read(Event event, SOPFormula& forbidd
     }
 
     int event_index = union_state_start(es_idx, event_at_union_state, start);
-
-    EventSequence constraint = states[event_index].alpha_sequence();
-
+    
+    EventSequence constraint = get_constraint(event_index, start, event);
+    
     SOPFormula fei;
     for (auto i = ei.begin(); i != ei.end(); i++) {
       if (i == it) continue;
@@ -467,7 +480,7 @@ void ViewEqTraceBuilder::backward_analysis_write(Event event, SOPFormula& forbid
 
     int event_index = union_state_start(execution_sequence.index_of((*it)), (*it), start);
 
-    EventSequence constraint = states[event_index].alpha_sequence();
+    EventSequence constraint = get_constraint(event_index, start, event);
     SOPFormula inF = states[event_index].leads[states[event_index].alpha].forbidden;
     (inF || std::make_pair((*it),it_val));
 
@@ -2325,40 +2338,38 @@ bool ViewEqTraceBuilder::Lead::VA_isprefix(Lead& l) {
   return true;
 }
 
-bool ViewEqTraceBuilder::Lead::VA_isweakly_prefix(Lead& l,
-      std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn>& post_prefix_memory_map) {
+bool ViewEqTraceBuilder::Lead::VA_isweakly_prefix(Lead& l) {
   Sequence this_iid_seq = merged_sequence.to_iid_sequence();
   Sequence l_iid_seq = l.merged_sequence.to_iid_sequence();
-  if (this_iid_seq.isprefix(l_iid_seq))
-    return true; // lead sequence is a prefix wihtout needing view-adjustment
-
   EventSequence suffix = l.merged_sequence;
+
+  std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn> memory_map;
 
   for (auto it = merged_sequence.begin(); it != merged_sequence.end(); it++) {
     auto its = suffix.find_iid(it->iid);
     if (its != suffix.end()) {
-      if (it->is_read() && its->value != it->value) 
-        return false; // if event of current read exists in l but values don't match
+      if (it->is_read() && its->value != it->value)
+          return false; // if event of current read exists in l but values don't match
 
       // remove event *it from its current index to create suffix
       suffix.erase(its->iid);
     }
 
     if (it->is_write())
-      post_prefix_memory_map[it->object] = it->value;
+      memory_map[it->object] = it->value;
   }
 
   for (auto it = suffix.begin(); it != suffix.end(); it++) {
     if (it->is_read()) {
-      if (post_prefix_memory_map.find(it->object) != post_prefix_memory_map.end()) {
-        if (post_prefix_memory_map[it->object] != it->value) {
+      if (memory_map.find(it->object) != memory_map.end()) {
+        if (memory_map[it->object] != it->value) {
           // values don't match in original and modified sequences
           return false;
         }
       }
     }
     else { // it->is_write()
-      post_prefix_memory_map[it->object] = it->value;
+      memory_map[it->object] = it->value;
     }
   }
 
@@ -2366,23 +2377,8 @@ bool ViewEqTraceBuilder::Lead::VA_isweakly_prefix(Lead& l,
 }
 
 bool ViewEqTraceBuilder::Lead::VA_isweakly_equivalent(Lead& l) {
-  std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn> memory_map1;
-  std::unordered_map<std::pair<unsigned, unsigned>, int, HashFn> memory_map2;
-
-  if (!VA_isweakly_prefix(l, memory_map1)) return false;
-  if (!l.VA_isweakly_prefix((*this), memory_map2)) return false;
-
-  for (auto it = memory_map1.begin(); it != memory_map1.end(); it++) {
-    if (memory_map2.find(it->first) == memory_map2.end()) // more writes in map1
-      return false;
-    if (it->second != memory_map2[it->first]) // final memory values are unequal
-      return false;
-    
-    memory_map2.erase(it->first);
-  }
-
-  if (!memory_map2.empty()) // more writes in map2
-    return false;
+  if (!VA_isweakly_prefix(l)) return false;
+  if (!l.VA_isweakly_prefix(*this)) return false;
 
   return true;
 }
@@ -2464,6 +2460,12 @@ ViewEqTraceBuilder::Lead ViewEqTraceBuilder::State::next_unexplored_lead() {
     if (!leads[i].is_done) {
       leads[i].is_done = true;
       alpha = i;
+
+      if (performed_fwd_analysis) {
+        if (leads[i].merged_sequence.find_iid(fwd_read) == leads[i].merged_sequence.end()) // all fwd leads are done
+          performed_fwd_analysis = false;
+      }
+
       return leads[i];
     }
   }
@@ -2616,14 +2618,10 @@ void ViewEqTraceBuilder::consistent_union(int state, std::vector<Lead>& L) {
       }
 
       if (sl->merged_sequence != states[state].alpha_sequence() && sl->VA_isweakly_equivalent(*l)) {
-        // out << "weakly-equivalent " << sl->to_string() << " and " << l->to_string() << "\n";
-        if (!sl->is_done) {
-          rem.insert(sl - states[state].leads.begin());
-          Lead lead = sl->VA_weak_prefix(*l);
-          add.push_back(lead);
-        }
-        else {
-          prefix_analysis((*sl), (*l), L_, state);
+        prefix_analysis((*sl), (*l), L_, state);
+        for (auto sl_ = sl+1; sl_ != states[state].leads.end(); sl_++) {
+          if (sl_->merged_sequence != states[state].alpha_sequence() && sl_->VA_isweakly_equivalent(*l))
+            prefix_analysis((*sl_), (*l), L_, state);
         }
 
         combined_with_existing = true;
