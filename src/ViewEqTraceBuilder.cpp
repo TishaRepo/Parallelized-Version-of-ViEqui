@@ -125,7 +125,7 @@ bool ViewEqTraceBuilder::exists_non_memory_access(int *proc) {
   // reverse loop to prioritize newly created threads
   for (int i = threads.size()-1; i >=0 ; i--) {
     if (threads[i].available && !threads[i].awaiting_load_store) {
-      IID<IPid> iid = IID<IPid>(IPid(i), threads[i].events.size());
+      IID<IPid> iid = IID<IPid>(IPid(i), threads[i].size());
       Event non_global(iid);
       threads[i].push_back(non_global);
       execution_sequence.push_back(iid);
@@ -753,8 +753,10 @@ bool ViewEqTraceBuilder::reset() {
 }
 
 IID<CPid> ViewEqTraceBuilder::get_iid() const{
-  IID<CPid> i;
-  return i;
+  int i = execution_sequence.size() - 1;
+  IPid pid = execution_sequence[i].get_pid();
+  int  idx = execution_sequence[i].get_index() + 1;
+  return IID<CPid>(threads[pid].cpid, idx);
 }
 
 void ViewEqTraceBuilder::refuse_schedule() {
@@ -819,7 +821,7 @@ bool ViewEqTraceBuilder::spawn()
   
   // create-event in thread that is spawning a new event
   current_event = event;
-  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].size());
   update_spawn_summary(current_event);
 
   threads[current_thread].push_back(current_event);
@@ -845,7 +847,7 @@ bool ViewEqTraceBuilder::join(int tgt_proc) {
   execution_sequence.pop_back();
 
   current_event = event;
-  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].size());
   update_join_summary(current_event);
   
   threads[current_thread].push_back(current_event);
@@ -866,7 +868,7 @@ bool ViewEqTraceBuilder::store(const SymData &ml) {
        by exists_non_memory_access function and thus there is no pop in case
        of a global event.
     */
-    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].size());
     threads[current_thread].push_back(current_event);
     threads[current_thread].awaiting_load_store = true;
 
@@ -882,7 +884,7 @@ bool ViewEqTraceBuilder::store(const SymData &ml) {
     threads[current_thread].pop_back();
     execution_sequence.pop_back();
 
-    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].size());
     threads[current_thread].push_back(current_event);
     execution_sequence.push_back(current_event.iid);
   }
@@ -902,7 +904,7 @@ bool ViewEqTraceBuilder::atomic_store(const SymData &ml) {
        by exists_non_memory_access function and thus there is no pop in case
        of a global event.
     */
-    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].size());
     threads[current_thread].push_back(current_event);
     threads[current_thread].awaiting_load_store = true;
 
@@ -918,7 +920,7 @@ bool ViewEqTraceBuilder::atomic_store(const SymData &ml) {
     threads[current_thread].pop_back();
     execution_sequence.pop_back();
 
-    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].size());
     threads[current_thread].push_back(current_event);
     execution_sequence.push_back(current_event.iid);
   }
@@ -938,7 +940,7 @@ bool ViewEqTraceBuilder::load(const SymAddrSize &ml) {
        by exists_non_memory_access function and thus there is no pop in case
        of a global event.
     */
-    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].size());
     threads[current_thread].push_back(current_event);
     threads[current_thread].awaiting_load_store = true;
 
@@ -954,7 +956,7 @@ bool ViewEqTraceBuilder::load(const SymAddrSize &ml) {
     threads[current_thread].pop_back();
     execution_sequence.pop_back();
 
-    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].size());
     threads[current_thread].push_back(current_event);
     execution_sequence.push_back(current_event.iid);
   }
@@ -973,7 +975,7 @@ Trace* ViewEqTraceBuilder::get_trace() const {
   std::vector<Error *> errs;
   
   for (unsigned i = 0; i < execution_sequence.size(); i++) {
-    cmp.push_back(IID<CPid>(threads[execution_sequence[i].get_pid()].cpid, execution_sequence[i].get_index()));
+    cmp.push_back(IID<CPid>(threads[execution_sequence[i].get_pid()].cpid, execution_sequence[i].get_index()+1));
     cmp_md.push_from(get_event(execution_sequence[i]).md);
   };
 
@@ -1062,16 +1064,16 @@ void ViewEqTraceBuilder::report_redundant() {
 void ViewEqTraceBuilder::enable_rmw(const SymAddrSize &ml) {
   bool ret = load(ml); 
   // update load's rmw status
-  threads[current_thread].events[threads[current_thread].events.size()-1].is_rmw = true;
-  threads[current_thread].events[threads[current_thread].events.size()-1].rmw_operation = current_rmw_operation.first;
-  threads[current_thread].events[threads[current_thread].events.size()-1].rmw_value = current_rmw_operation.second;  
+  threads[current_thread].events[threads[current_thread].size()-1].is_rmw = true;
+  threads[current_thread].events[threads[current_thread].size()-1].rmw_operation = current_rmw_operation.first;
+  threads[current_thread].events[threads[current_thread].size()-1].rmw_value = current_rmw_operation.second;  
   
   current_event.is_rmw = true; // same as last event of current thread ie the load event
   current_event.rmw_operation = current_rmw_operation.first;
   current_event.rmw_value = current_rmw_operation.second;
 
   if (current_rmw_operation.first == RMWOperation::CMPXCHG) {
-    threads[current_thread].events[threads[current_thread].events.size()-1].expected_value = current_cmpxchg_expected_value;
+    threads[current_thread].events[threads[current_thread].size()-1].expected_value = current_cmpxchg_expected_value;
     current_event.expected_value = current_cmpxchg_expected_value;
   }
 }
@@ -1081,7 +1083,7 @@ void ViewEqTraceBuilder::complete_rmw(const SymData &ml) {
   event.make_write();
   current_event = event;
 
-  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+  current_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].size());
   current_event.is_rmw = true;
   current_event.rmw_operation = threads[current_thread][threads[current_thread].size()-1].rmw_operation;
   current_event.rmw_value = threads[current_thread][threads[current_thread].size()-1].rmw_value;
@@ -1090,7 +1092,7 @@ void ViewEqTraceBuilder::complete_rmw(const SymData &ml) {
   threads[current_thread].push_back(current_event);
 
   // add to alpha lead (only added for forward leads)
-  IID<IPid> corresponding_read_iid = threads[current_thread][threads[current_thread].events.size()-2].iid;
+  IID<IPid> corresponding_read_iid = threads[current_thread][threads[current_thread].size()-2].iid;
   int alpha = states[prefix_state[states[current_state].lead_head_execution_prefix]].alpha;
   states[prefix_state[states[current_state].lead_head_execution_prefix]].leads[alpha].add_rmw_write(corresponding_read_iid, current_event.iid);
   
@@ -1167,8 +1169,8 @@ bool ViewEqTraceBuilder::atomic_rmw(const SymData &ml) {
   read_event.value = mem[read_event.object];
   
   if (read_event.is_global()) {
-    if (threads[current_thread].events.size() > 0) {
-      Event last_thread_event = threads[current_thread].events[threads[current_thread].events.size()-1];
+    if (threads[current_thread].size() > 0) {
+      Event last_thread_event = threads[current_thread].events[threads[current_thread].size()-1];
       if (read_event.sym_event() == last_thread_event.sym_event()) {
         complete_rmw(ml); // load of rmw peeked earlier, now complete store
         return true;
@@ -1191,11 +1193,11 @@ bool ViewEqTraceBuilder::atomic_rmw(const SymData &ml) {
     read_event.is_rmw = true;
     write_event.is_rmw = true;
 
-    read_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    read_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].size());
     threads[current_thread].push_back(read_event);
     execution_sequence.push_back(read_event.iid);
 
-    write_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    write_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].size());
     threads[current_thread].push_back(write_event);
     execution_sequence.push_back(write_event.iid);
   }
@@ -1209,14 +1211,14 @@ bool ViewEqTraceBuilder::compare_exchange(const SymData &sd, const SymData::bloc
   read_event.value = mem[read_event.object];
   
   if (read_event.is_global()) {
-    if (threads[current_thread].events.size() > 0) {
-      Event last_thread_event = threads[current_thread].events[threads[current_thread].events.size()-1];
+    if (threads[current_thread].size() > 0) {
+      Event last_thread_event = threads[current_thread].events[threads[current_thread].size()-1];
       if (read_event.sym_event() == last_thread_event.sym_event()) {
         IID<IPid> prev_last_write = last_write[current_event.object];
         complete_rmw(sd); // load of rmw peeked earlier, now complete store
         if (!success) {
           // restrore original value read
-          threads[current_thread].events[threads[current_thread].events.size()-1].value = last_thread_event.value;
+          threads[current_thread].events[threads[current_thread].size()-1].value = last_thread_event.value;
           last_write[current_event.object] = prev_last_write;
           mem[current_event.object] = last_thread_event.value;
         }
@@ -1240,17 +1242,17 @@ bool ViewEqTraceBuilder::compare_exchange(const SymData &sd, const SymData::bloc
     read_event.is_rmw = true;
     write_event.is_rmw = true;
 
-    read_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    read_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].size());
     threads[current_thread].push_back(read_event);
     execution_sequence.push_back(read_event.iid);
 
-    write_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].events.size());
+    write_event.iid = IID<IPid>(IPid(current_thread), threads[current_thread].size());
     threads[current_thread].push_back(write_event);
     execution_sequence.push_back(write_event.iid);
 
     if (!success) {
       // restrore original value read
-      threads[current_thread].events[threads[current_thread].events.size()-1].value = read_event.value;
+      threads[current_thread].events[threads[current_thread].size()-1].value = read_event.value;
     }
   }
 
