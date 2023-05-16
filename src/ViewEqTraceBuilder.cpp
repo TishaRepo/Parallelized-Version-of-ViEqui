@@ -1,4 +1,11 @@
 #include "ViewEqTraceBuilder.h"
+#include <algorithm>
+#include <future>
+#include <vector>
+#include <unordered_set>
+#include <iostream>
+
+#include <omp.h>
 
 typedef int IPid;
 
@@ -186,6 +193,7 @@ void ViewEqTraceBuilder::compute_new_leads() {
     to_explore.pop_front();
   }
 }
+
 
 void ViewEqTraceBuilder::execute_next_lead() {
   // ////
@@ -2038,11 +2046,8 @@ std::string ViewEqTraceBuilder::Sequence::to_string() {
 }
 
 ViewEqTraceBuilder::event_sequence_iterator ViewEqTraceBuilder::EventSequence::find_iid(IID<IPid> iid) {
-  for (auto it = begin(); it != end(); it++) {
-    if (it->iid == iid) 
-      return it;
-  }
-  return end();
+  auto it = std::find_if(begin(), end(), [&](const Event& event) { return event.iid == iid; });
+  return (it != end()) ? it : end();
 }
 
 void ViewEqTraceBuilder::EventSequence::add_rmw_write(IID<IPid> rmw_read, IID<IPid> rmw_write) {
@@ -2145,12 +2150,22 @@ bool ViewEqTraceBuilder::EventSequence::view_adjust(Event e1, Event e2) {
 
 std::pair<bool, std::pair<ViewEqTraceBuilder::Event, ViewEqTraceBuilder::Event>> 
 ViewEqTraceBuilder::EventSequence::conflicts_with(EventSequence& other_seq) {
+  // Initialize a buffer for storing the iterators from other_seq.
+  std::vector<event_sequence_iterator> buffer(events.size());
+
+  // Producer loop: find the iterator for each event in other_seq.
+  #pragma omp parallel for schedule(static)
   for(int i = 0; i < events.size(); i++){
-    for(int j = i + 1; j < events.size() ; j++){
-      event_sequence_iterator it1 = other_seq.find_iid(events[i].iid);
-      event_sequence_iterator it2 = other_seq.find_iid(events[j].iid);
-      if (it1 != other_seq.end() && it2 != other_seq.end()) {
-        if ((it1 - it2) > 0) {
+    buffer[i] = other_seq.find_iid(events[i].iid);
+  }
+
+  // Consumer loop: check for conflicts between pairs of events.
+  for(int i = 0; i < events.size(); i++){
+    event_sequence_iterator it1 = buffer[i];
+    if (it1 != other_seq.end()) {
+      for(int j = i + 1; j < events.size() ; j++){
+        event_sequence_iterator it2 = buffer[j];
+        if (it2 != other_seq.end() && (it1 - it2) > 0) {
           return std::make_pair(true, std::make_pair((*it1), (*it2)));
         }
       }
@@ -2224,6 +2239,8 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredWitnesses(Event ew, SO
   assert(ew.is_write());
   
   std::unordered_set<IID<IPid>> explored_witnesses;
+  
+  #pragma omp parallel for
   for(int i = 0; i < execution_sequence.size(); i++){
     IID<IPid> er = execution_sequence[i];
     
@@ -2236,12 +2253,16 @@ std::unordered_set<IID<IPid>> ViewEqTraceBuilder::exploredWitnesses(Event ew, SO
     }
 
     if(forbidden_at_read.check_evaluation(std::make_pair(er, ew.value)) != RESULT::TRUE) {
-      explored_witnesses.insert(er);
+      #pragma omp critical
+      {
+        explored_witnesses.insert(er);
+      }
     }
   }
   
   return explored_witnesses;
 }
+
 
 bool ViewEqTraceBuilder::Lead::VA_equivalent(Lead& l) {
   if (merged_sequence.to_iid_sequence() == l.merged_sequence.to_iid_sequence())
